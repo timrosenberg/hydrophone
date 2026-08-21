@@ -33,7 +33,7 @@ prints `.git` — never from inside another worktree:
 
 ```sh
 git fetch origin --prune
-git worktree add -b issue-<n>-<slug> .worktrees/issue-<n>-<slug> origin/main
+git worktree add --no-track -b issue-<n>-<slug> .worktrees/issue-<n>-<slug> origin/main
 cd .worktrees/issue-<n>-<slug>
 ```
 
@@ -41,6 +41,10 @@ Guards, all before you write code:
 
 - Branch or path already exists → stop and report; never reuse or force.
 - Base the branch on `origin/main`, never on another issue branch.
+- `--no-track` matters: without it the branch tracks `origin/main`, `git status`
+  reads "ahead of origin/main", and git's own push hint becomes
+  `git push origin HEAD:main` — issue work straight onto `main`. The upstream is
+  set later, correctly, by `git push -u origin <branch>`.
 - `.worktrees/` is gitignored; the primary checkout's `git status` must stay clean.
 
 ## 3. Implement
@@ -148,6 +152,11 @@ git merge origin/main       # inside the worktree; never rebase
 
 resolve, re-run the full done gate, push. Lockfiles and generated files get regenerated
 by their tooling, never hand-edited.
+
+`docs/PROGRESS.md` conflicts on nearly every refresh — both sides insert a newest-first
+entry at the top of the file. It is the one predictable conflict class, and its
+resolution is mechanical: **keep both entries**, ordered newest-first by date, nothing
+dropped or reworded. Everything else still stops for Tim.
 
 ## Cloud sessions (Claude Code on the web)
 

@@ -10,7 +10,8 @@
 
 ## BRANCH
 - one_worktree_per_branch: `.worktrees/<branch>` — directory name equals branch name
-- create_from: `origin/main`, run from the primary checkout, never nested in a worktree
+- create_from: `git worktree add --no-track -b <branch> .worktrees/<branch> origin/main` — from the primary checkout, never nested in a worktree
+- no_track: without `--no-track` the branch tracks `origin/main` and git suggests `git push origin HEAD:main`
 - name_issue: `issue-<n>-<slug>`
 - name_unticketed: `fix-<slug>` · `chore-<slug>` · `docs-<slug>`
 - worktrees_gitignored: `.worktrees/` never committed
@@ -55,6 +56,7 @@
 ## STALE_OR_CONFLICT
 - default: stop and report — never self-resolve
 - on_request: `git merge origin/main` inside the worktree, never rebase, then re-run the full gate
+- progress_conflict: `docs/PROGRESS.md` collides on almost every refresh — resolve by keeping both entries, newest-first; drop nothing
 
 ## PARALLEL
 - assignment: Tim names the issues; agents never pick their own

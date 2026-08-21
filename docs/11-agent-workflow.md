@@ -115,6 +115,15 @@ so. It does not rebase (that would rewrite the branch), and it does not merge
 On request it merges `origin/main` into the branch, resolves, re-runs the whole
 gate, and pushes — a refresh is a new state, so it earns a new verification.
 
+One conflict is guaranteed rather than possible: `docs/PROGRESS.md`. Every branch
+adds its entry at the top of the same file, so any two branches in flight collide
+there, and the second one to merge always will. The resolution is mechanical —
+keep both entries, newest-first, drop nothing — which is worth knowing in advance
+so a routine collision doesn't read like a design problem. It is the expected
+cost of keeping the log entry on the branch with the code it describes; the
+alternative (a separate log file per branch, or entries added on `main` after the
+merge) breaks that pairing, which is the more valuable property.
+
 ## Cloud sessions
 
 Claude Code on the web runs on Linux: no Xcode, no simulator, no DAC, no music
