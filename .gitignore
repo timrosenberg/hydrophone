@@ -11,6 +11,9 @@ Screenshot*.png
 *.log
 log.txt
 
+# Per-issue agent worktrees (see docs/11-agent-workflow.md)
+.worktrees/
+
 # Release pipeline output
 build/
 # Local marketing drafts — not for the public repo

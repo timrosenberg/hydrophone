@@ -31,6 +31,7 @@ After that, the numbered docs can be read in any order; the roadmap
 | [08-testing.md](08-testing.md) | Swift Testing units, mocking, UI tests, manual verification checklist |
 | [09-design-system.md](09-design-system.md) | `claude_design` import workflow, mapping cues to native SwiftUI |
 | [10-roadmap.md](10-roadmap.md) | Milestones M0–M8, exit criteria, risks, spikes |
+| [11-agent-workflow.md](11-agent-workflow.md) | Branch/worktree workflow, done gate, PR-then-stop, merge & cleanup policy |
 | [PROGRESS.md](PROGRESS.md) | Running build log — what's implemented, verified, deferred |
 
 ## Status legend
