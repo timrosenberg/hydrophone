@@ -32,7 +32,7 @@ struct SearchResultsView: View {
                     }
                     if !results.songs.isEmpty {
                         TrackTableView(tracks: results.songs,
-                                       columns: [.title, .artist, .album, .quality, .time],
+                                       columns: [.title, .artist, .album, .composer, .quality, .time],
                                        sortAutosaveKey: "search")
                     } else {
                         Spacer()

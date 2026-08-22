@@ -19,7 +19,7 @@ struct AlbumDetailView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            TrackTableView(tracks: tracks, columns: [.number, .title, .artist, .genre, .quality, .time],
+            TrackTableView(tracks: tracks, columns: [.number, .title, .artist, .composer, .genre, .quality, .time],
                            sortAutosaveKey: "album",
                            discHeaders: discSubtitles)
         }
