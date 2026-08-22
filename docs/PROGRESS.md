@@ -66,6 +66,13 @@ same way Album resets on an Artist change) and `.composer` in its table too.
 Composer-pane track completeness inherits an existing data-fetch limitation
 (see "Known limitations" above) — flagged, not fixed, here; a real fix needs
 a song-fetch rework, tracked as a separate follow-up.
+Post-refresh live verification also found that the demo server returns empty
+`displayComposer` strings for some songs, which created a blank Composer pane
+row whose selection behaved like **All Composers**. `Song` now exposes a
+shared UI accessor that treats empty or whitespace-only composer text as
+missing while preserving non-empty server text verbatim; the browser, table
+sorting and cells, and Get Info all use it. Regression coverage verifies both
+blank-value normalization and preservation of valid composer text.
 Full suite green, swiftlint clean, build clean.
 
 ## Composer row in Get Info sheet (2026-08-22)

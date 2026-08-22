@@ -81,12 +81,12 @@ struct ColumnBrowserView: View {
     }
 
     private var composers: [String] {
-        uniqueSorted(albumScoped.compactMap(\.displayComposer))
+        uniqueSorted(albumScoped.compactMap(\.nonEmptyDisplayComposer))
     }
 
     private var filteredTracks: [Song] {
         albumScoped.filter { song in
-            selectedComposer == nil || song.displayComposer == selectedComposer
+            selectedComposer == nil || song.nonEmptyDisplayComposer == selectedComposer
         }
     }
 

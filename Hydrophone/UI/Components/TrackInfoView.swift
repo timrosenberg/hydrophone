@@ -35,7 +35,7 @@ struct TrackInfoView: View {
                 if let genre = song.displayGenre {
                     LabeledContent("Genre", value: genre)
                 }
-                if let composer = song.displayComposer, !composer.isEmpty {
+                if let composer = song.nonEmptyDisplayComposer {
                     LabeledContent("Composer", value: composer)
                 }
                 if let year = song.year {

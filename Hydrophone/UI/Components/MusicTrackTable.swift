@@ -151,7 +151,7 @@ struct MusicTrackTable: NSViewRepresentable {
                     result = (lhs.discNumber ?? 1, lhs.track ?? 0)
                         < (rhs.discNumber ?? 1, rhs.track ?? 0)
                 case "artist": result = text(lhs.artist, rhs.artist)
-                case "composer": result = text(lhs.displayComposer, rhs.displayComposer)
+                case "composer": result = text(lhs.nonEmptyDisplayComposer, rhs.nonEmptyDisplayComposer)
                 case "album": result = text(lhs.album, rhs.album)
                 case "genre": result = text(lhs.displayGenre, rhs.displayGenre)
                 case "quality": result = lhs.qualityRank < rhs.qualityRank
@@ -276,7 +276,7 @@ struct MusicTrackTable: NSViewRepresentable {
             case "number": text = song.track.map(String.init) ?? ""
             case "title": text = song.title
             case "artist": text = song.artist ?? "—"
-            case "composer": text = song.displayComposer ?? "—"
+            case "composer": text = song.nonEmptyDisplayComposer ?? "—"
             case "album": text = song.album ?? "—"
             case "genre": text = song.displayGenre ?? "—"
             case "time": text = formatTime(song.duration)

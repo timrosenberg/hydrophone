@@ -39,6 +39,15 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     var isStarred: Bool { starred != nil }
     /// Genre for display, preferring the legacy field, then the OpenSubsonic array.
     var displayGenre: String? { genre ?? genres?.first?.name }
+    /// Composer text for UI consumers. Some servers send an empty string
+    /// instead of omitting the field; treat whitespace-only values as missing
+    /// while preserving non-empty server text verbatim.
+    var nonEmptyDisplayComposer: String? {
+        guard let displayComposer,
+              !displayComposer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return displayComposer
+    }
 
     /// File suffixes of lossless encodings, where the format says more than the
     /// (high, variable) bit rate.
