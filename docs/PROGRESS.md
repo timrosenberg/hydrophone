@@ -68,6 +68,14 @@ Composer-pane track completeness inherits an existing data-fetch limitation
 a song-fetch rework, tracked as a separate follow-up.
 Full suite green, swiftlint clean, build clean.
 
+## Composer row in Get Info sheet (2026-08-22)
+Issue #5 (part of #1, blocked by #2). `TrackInfoView`'s `Form` gains a
+Composer row next to Genre, shown only when `song.displayComposer` is
+present and non-empty — no placeholder when absent, matching the Genre/Year
+rows. Display-only, same as the rest of the sheet. Full suite green,
+swiftlint clean; live-verified against a real server (composer column and
+value confirmed present for a track with a composer).
+
 ## Composer column: `TrackColumn` + table wiring (2026-08-22)
 Issue #3 (part of #1, blocked by #2). `TrackColumn` gains a `.composer` case
 (id `"composer"`, header "Composer", artist widths, default-left alignment).
