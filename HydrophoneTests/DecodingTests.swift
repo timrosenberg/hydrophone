@@ -178,6 +178,41 @@ struct DecodingTests {
         #expect(starred.song?.count == 2)
     }
 
+    @Test func decodesDisplayComposer() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Track","artist":"A","duration":200,
+        "displayComposer":"Johann Sebastian Bach"}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let song = try #require(wrapper.response.body?.items.first)
+        #expect(song.displayComposer == "Johann Sebastian Bach")
+    }
+
+    @Test func decodesDisplayComposerVerbatimForMultipleComposers() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Track","artist":"A","duration":200,
+        "displayComposer":"J.S. Bach, G.F. Handel"}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let song = try #require(wrapper.response.body?.items.first)
+        #expect(song.displayComposer == "J.S. Bach, G.F. Handel")
+    }
+
+    @Test func decodesMissingDisplayComposerAsNil() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Track","artist":"A","duration":200}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let song = try #require(wrapper.response.body?.items.first)
+        #expect(song.displayComposer == nil)
+    }
+
     @Test func decodesDatesWithoutFractionalSeconds() throws {
         let json = """
         {"subsonic-response":{"status":"ok","version":"1.16.1","album":{
