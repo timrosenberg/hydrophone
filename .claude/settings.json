@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r \".tool_input.command // empty\" | { read -r cmd; if printf \"%s\" \"$cmd\" | grep -Eq 'git[[:space:]]+push[^&|;]*(--delete|--force|[[:space:]]-f([[:space:]]|$))|git[[:space:]]+reset[[:space:]]+--hard|git[[:space:]]+checkout[[:space:]]+--([[:space:]]|$)|git[[:space:]]+restore([[:space:]]|$)|git[[:space:]]+clean[[:space:]]+-[a-zA-Z]*f|git[[:space:]]+branch[[:space:]]+-D|git[[:space:]]+rebase([[:space:]]|$)'; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Destructive/shared git op (force/delete push, reset --hard, checkout --/restore, clean -f, branch -D, rebase) requires Tim'\"'\"'s explicit approval - see docs/11-agent-workflow.md\"}}'; fi; }",
+            "statusMessage": "Checking against destructive-git-op policy..."
+          }
+        ]
+      }
+    ]
+  }
+}

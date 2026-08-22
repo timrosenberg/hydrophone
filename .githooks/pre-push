@@ -1,0 +1,17 @@
+#!/bin/sh
+# Blocks direct pushes to main. Land via `gh pr merge` (see docs/11-agent-workflow.md).
+# Override for a genuine emergency: ALLOW_PUSH_MAIN=1 git push ...
+
+remote="$1"
+protected="refs/heads/main"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	if [ "$remote_ref" = "$protected" ] && [ -z "$ALLOW_PUSH_MAIN" ]; then
+		echo "error: direct push to main is blocked." >&2
+		echo "Merge via 'gh pr merge --merge' (the /land workflow) instead." >&2
+		echo "Emergency override: ALLOW_PUSH_MAIN=1 git push ..." >&2
+		exit 1
+	fi
+done
+
+exit 0
