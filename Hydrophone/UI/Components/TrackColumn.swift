@@ -4,7 +4,7 @@ import SwiftUI
 /// favorite-star columns are always present (fixed-width affordances); these are
 /// the content columns each call site opts into explicitly.
 enum TrackColumn {
-    case number, title, artist, album, genre, quality, time
+    case number, title, artist, composer, album, genre, quality, time
 
     struct Widths {
         let initial: CGFloat
@@ -17,6 +17,7 @@ enum TrackColumn {
         case .number: "number"
         case .title: "title"
         case .artist: "artist"
+        case .composer: "composer"
         case .album: "album"
         case .genre: "genre"
         case .quality: "quality"
@@ -28,6 +29,7 @@ enum TrackColumn {
         case .number: "#"
         case .title: "Title"
         case .artist: "Artist"
+        case .composer: "Composer"
         case .album: "Album"
         case .genre: "Genre"
         case .quality: "Quality"
@@ -39,6 +41,7 @@ enum TrackColumn {
         case .number: Widths(initial: 34, min: 30, max: 44)
         case .title: Widths(initial: 240, min: 120, max: 10_000)
         case .artist: Widths(initial: 170, min: 80, max: 10_000)
+        case .composer: Widths(initial: 170, min: 80, max: 10_000)
         case .album: Widths(initial: 170, min: 80, max: 10_000)
         case .genre: Widths(initial: 100, min: 60, max: 400)
         case .quality: Widths(initial: 78, min: 64, max: 110)

@@ -52,6 +52,19 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Composer column: `TrackColumn` + table wiring (2026-08-22)
+Issue #3 (part of #1, blocked by #2). `TrackColumn` gains a `.composer` case
+(id `"composer"`, header "Composer", artist widths, default-left alignment).
+`MusicTrackTable.Coordinator` renders it via the shared `SecondaryTextCell`
+path (`song.displayComposer ?? "—"`) and sorts it case-insensitively via
+`displayComposer`. No screen shows the column yet — that's #4. While here,
+split `MusicTrackTable.swift`'s `NSViewRepresentable` lifecycle
+(`makeNSView`/`addColumns`/`updateNSView`) and the private `InnerTableView`
+class into a new `TrackTableLifecycle.swift`, following the file's existing
+`TrackTableCells.swift`/`TrackTablePersistence.swift` split pattern — the
+two added lines pushed the file 2 lines past SwiftLint's 450-line
+`file_length` warning threshold. Full suite green, swiftlint clean.
+
 ## Composer decoding: `Song.displayComposer` added (2026-08-22)
 Data-model-only change for issue #2 (part of #1). `Song` now decodes
 OpenSubsonic's `displayComposer` string field verbatim (server already
