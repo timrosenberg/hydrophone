@@ -52,6 +52,22 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Composer column shown in Album, Songs, Favorites, Search (2026-08-22)
+Issue #4 (part of #1, blocked by #3). Adds `.composer` to the `columns:`
+array in `AlbumDetailView`, `SongsView`'s flat-table branch, `FavoritesView`,
+and `SearchResultsView` — right after `.album` (`.artist` in Album View,
+which has no Album column), matching the "who" cluster placement rule.
+Live verification surfaced that Songs defaults to the column browser
+(`showColumnBrowser = true`), which has its own separate `TrackTableView`
+call the issue's scope guard explicitly excluded — so the fix was invisible
+in the common case. Per direction, widened scope: `ColumnBrowserView` gains
+a fourth **Composer** pane (Genre → Artist → Album → Composer, cascading the
+same way Album resets on an Artist change) and `.composer` in its table too.
+Composer-pane track completeness inherits an existing data-fetch limitation
+(see "Known limitations" above) — flagged, not fixed, here; a real fix needs
+a song-fetch rework, tracked as a separate follow-up.
+Full suite green, swiftlint clean, build clean.
+
 ## Composer column: `TrackColumn` + table wiring (2026-08-22)
 Issue #3 (part of #1, blocked by #2). `TrackColumn` gains a `.composer` case
 (id `"composer"`, header "Composer", artist widths, default-left alignment).
@@ -1353,12 +1369,25 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   design (no offline playback), so library metadata stays in-memory per
   `LibraryModel`. Artwork is cached persistently on disk instead
   (`Services/ArtworkCache.swift`); see `05-data-and-caching.md`.
-- ✅ Column browser (Genre → Artist → Album) — delivered in M4.
+- ✅ Column browser (Genre → Artist → Album) — delivered in M4; a fourth
+  Composer pane added 2026-08-22 (see below and the known limitation it
+  inherits).
 
 ## Known limitations / deferrals
 - ⏳ **Songs view uses `getRandomSongs`** (Subsonic has no "all songs"
   endpoint). Tracked for a fuller aggregation later (see
   `05-data-and-caching.md`).
+- ⏳ **Column browser results are incomplete without a song-fetch rework.**
+  There's no `getSongsByComposer` (or equivalent) endpoint, so every pane's
+  track results come from whatever's already loaded client-side: the
+  `getRandomSongs` 500-song sample when no genre is selected, or
+  `getSongsByGenre` capped at the first 100 songs (offset 0, unpaginated)
+  once one is. Artist/Album selection has always inherited this, but it's
+  most visible on Composer — picking one exact composer readily surfaces a
+  sample's gaps in a way broader Artist/Album browsing usually doesn't.
+  Fixing this for real needs a song-fetch strategy rework (pagination and/or
+  a server-side filter query), not a column-browser change — tracked
+  separately, not part of issue #4.
 - ✅ ~~Playback is stubbed~~ — superseded: the real `AVAudioEngine` streaming +
   gapless engine landed in M3/M4 (`03-playback-engine.md`).
 - ⏳ Accessibility pass, state restoration, MAS packaging — per roadmap M7–M8.
