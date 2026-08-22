@@ -2,6 +2,7 @@ excluded:
   - DerivedData
   - .build
   - drafts
+  - .worktrees   # per-issue agent worktrees are full source copies (docs/11)
 
 # PlayerModel.swift carries the queue/transport core plus the restore hook;
 # separable subsystems already live in extension files (+RemoteCommands,

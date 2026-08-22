@@ -74,6 +74,19 @@ fallback to `artist`/`albumArtist`). Three new tests in
 first, confirmed to fail to compile, then made to pass. Full suite green,
 swiftlint clean. No UI consumes the field yet.
 
+## Agent workflow codified: worktree → PR → stop → merge (2026-08-21)
+All feature/fix work now runs in its own git worktree under `.worktrees/`
+(gitignored) on an `issue-<n>-<slug>` branch cut from `origin/main`. An agent
+must clear the four-part gate — build clean, tests pass, `swiftlint` clean,
+live-verified against a real server — plus a PROGRESS entry on the same branch
+before opening a PR, then **stops**: no CI chasing, no review-comment fixes, no
+self-merging. Merges happen only on request, always `gh pr merge --merge` (true
+merge commit, never squash or rebase) so each issue's fork and join stay visible
+in the graph; the worktree and both branch refs are deleted afterwards. Written
+up in `docs/11-agent-workflow.md` (rationale), `AGENTS.md` (enforceable short
+form, also for Codex/Copilot), and the `/issue` + `/land` skills under
+`.claude/skills/`. Cloud sessions can't meet the gate, so they open draft PRs.
+
 ## Navidrome client directory: submission opened (2026-08-16)
 PR navidrome/website#425 adds Hydrophone to the official client apps
 directory (assets/apps/hydrophone: schema-validated YAML + five WebP

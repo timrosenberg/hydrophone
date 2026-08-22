@@ -22,9 +22,26 @@ swiftlint   # config in .swiftlint.yml; must pass clean
 - API/networking/auth → `02` · playback engine/gapless/devices → `03`
 - UI/UX rationale & interaction rules → `04` · artwork cache → `05`
 - system integration → `06` · release/distribution → `07` · testing → `08`
+- how work is branched, verified, reviewed and merged → `11`
 - `PROGRESS.md` — running build log, newest-first dated entries. Append an
   entry for every substantive change; keep the "Milestone status" and
   "Verification status" blocks at the top current.
+
+## Working agreement (see `AGENTS.md`, `docs/11-agent-workflow.md`)
+
+- Feature/fix work happens in its own worktree + branch: `.worktrees/issue-<n>-<slug>`
+  on `issue-<n>-<slug>`, cut from `origin/main`. Run `/issue` — the procedure is
+  `.claude/skills/issue/SKILL.md`. Docs/PROGRESS/site tweaks may go straight to `main`
+  when asked directly.
+- Before the PR, all four: build clean, tests pass, `swiftlint` clean, and the change
+  live-verified against a real server — plus a `PROGRESS.md` entry on the same branch.
+- Open the PR, report it, **stop**. No CI chasing, no review-comment fixes, no merging,
+  no rolling on to the next issue until Tim says so.
+- Merging is `/issue`'s sibling `/land`, on Tim's explicit word only: `gh pr merge
+  --merge` (true merge commit — never squash, never rebase), then worktree removed and
+  both branch refs deleted.
+- Stale or conflicting branch → stop and report. Never rebase; refresh only on request
+  by merging `origin/main` in, then re-run the full gate.
 
 ## House rules
 
