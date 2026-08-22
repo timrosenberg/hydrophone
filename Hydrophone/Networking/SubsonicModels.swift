@@ -29,6 +29,9 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     var size: Int?
     var starred: Date?
     var genres: [GenreRef]?
+    /// OpenSubsonic display-ready composer string (the server joins multiple
+    /// composers itself). Absent when the file/server has no composer tag.
+    var displayComposer: String?
     /// OpenSubsonic loudness tags, carried through by Navidrome when the
     /// files are tagged. Drives volume normalization (see ReplayGainMode).
     var replayGain: ReplayGainInfo?
@@ -65,6 +68,7 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, title, artist, artistId, album, albumId, coverArt, duration
         case track, discNumber, year, genre, genres, bitRate, suffix, contentType, size, starred
+        case displayComposer
         case replayGain
     }
 }

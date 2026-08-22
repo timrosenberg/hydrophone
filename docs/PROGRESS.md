@@ -52,6 +52,15 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Composer decoding: `Song.displayComposer` added (2026-08-22)
+Data-model-only change for issue #2 (part of #1). `Song` now decodes
+OpenSubsonic's `displayComposer` string field verbatim (server already
+joins multiple composers into one string; no client-side splitting or
+fallback to `artist`/`albumArtist`). Three new tests in
+`DecodingTests.swift` cover present/multi-composer/absent cases — written
+first, confirmed to fail to compile, then made to pass. Full suite green,
+swiftlint clean. No UI consumes the field yet.
+
 ## Navidrome client directory: submission opened (2026-08-16)
 PR navidrome/website#425 adds Hydrophone to the official client apps
 directory (assets/apps/hydrophone: schema-validated YAML + five WebP
