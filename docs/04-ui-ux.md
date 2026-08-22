@@ -109,10 +109,11 @@ rendered visibly washed out.
 ## Column browser ✅
 
 Above the track table, a horizontal multi-pane browser filtering
-**Genre → Artist → Album** (iTunes pattern). Selecting in a left pane narrows
-the panes to its right and the track table below. Implemented as adjacent
-selectable lists; selections are part of restorable view state. Toggleable
-(View menu / shortcut) so users who prefer a plain table can hide it.
+**Genre → Artist → Album → Composer** (iTunes pattern, extended with a
+Composer pane). Selecting in a left pane narrows the panes to its right and
+the track table below. Implemented as adjacent selectable lists; selections
+are part of restorable view state. Toggleable (View menu / shortcut) so users
+who prefer a plain table can hide it.
 
 ## Now Playing panel (Up Next / play queue) ✅
 

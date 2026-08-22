@@ -31,7 +31,7 @@ struct SongsView: View {
                     .padding(.vertical, 6)
                     Divider()
                     TrackTableView(tracks: library.songs,
-                                   columns: [.title, .artist, .album, .genre, .quality, .time],
+                                   columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
                                    sortAutosaveKey: "songs",
                                    scrollAutosaveKey: "songs")
                 }

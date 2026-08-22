@@ -188,6 +188,7 @@ struct DecodingTests {
                                          from: Data(json.utf8))
         let song = try #require(wrapper.response.body?.items.first)
         #expect(song.displayComposer == "Johann Sebastian Bach")
+        #expect(song.nonEmptyDisplayComposer == "Johann Sebastian Bach")
     }
 
     @Test func decodesDisplayComposerVerbatimForMultipleComposers() throws {
@@ -200,6 +201,7 @@ struct DecodingTests {
                                          from: Data(json.utf8))
         let song = try #require(wrapper.response.body?.items.first)
         #expect(song.displayComposer == "J.S. Bach, G.F. Handel")
+        #expect(song.nonEmptyDisplayComposer == "J.S. Bach, G.F. Handel")
     }
 
     @Test func decodesMissingDisplayComposerAsNil() throws {
@@ -211,6 +213,18 @@ struct DecodingTests {
                                          from: Data(json.utf8))
         let song = try #require(wrapper.response.body?.items.first)
         #expect(song.displayComposer == nil)
+    }
+
+    @Test func treatsBlankDisplayComposerAsMissing() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Empty","displayComposer":""},
+        {"id":"s2","title":"Whitespace","displayComposer":"     "}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let songs = try #require(wrapper.response.body?.items)
+        #expect(songs.map(\.nonEmptyDisplayComposer) == [nil, nil])
     }
 
     @Test func decodesDatesWithoutFractionalSeconds() throws {

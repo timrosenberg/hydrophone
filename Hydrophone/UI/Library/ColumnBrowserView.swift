@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// iTunes-style column browser: Genre → Artist → Album panes above a filtered
-/// track table. Selecting in a pane narrows the panes to its right and the
-/// tracks below. See docs/04-ui-ux.md.
+/// iTunes-style column browser: Genre → Artist → Album → Composer panes above
+/// a filtered track table. Selecting in a pane narrows the panes to its right
+/// and the tracks below. See docs/04-ui-ux.md.
 struct ColumnBrowserView: View {
     @Environment(LibraryModel.self) private var library
 
@@ -10,15 +10,18 @@ struct ColumnBrowserView: View {
     @State private var isLoading = false
 
     // Pane selections persist across launches ("" = nothing selected). The
-    // cascade (genre resets artist+album, artist resets album) lives in the
-    // binding setters so restore doesn't re-trigger it.
+    // cascade (genre resets artist+album+composer, artist resets
+    // album+composer, album resets composer) lives in the binding setters so
+    // restore doesn't re-trigger it.
     @AppStorage("browser.genre") private var storedGenre = ""
     @AppStorage("browser.artist") private var storedArtist = ""
     @AppStorage("browser.album") private var storedAlbum = ""
+    @AppStorage("browser.composer") private var storedComposer = ""
 
     private var selectedGenre: String? { storedGenre.isEmpty ? nil : storedGenre }
     private var selectedArtist: String? { storedArtist.isEmpty ? nil : storedArtist }
     private var selectedAlbum: String? { storedAlbum.isEmpty ? nil : storedAlbum }
+    private var selectedComposer: String? { storedComposer.isEmpty ? nil : storedComposer }
 
     private var genreSelection: Binding<String?> {
         Binding(
@@ -27,6 +30,7 @@ struct ColumnBrowserView: View {
                 storedGenre = genre ?? ""
                 storedArtist = ""
                 storedAlbum = ""
+                storedComposer = ""
                 Task { await loadGenre(genre) }
             })
     }
@@ -37,11 +41,21 @@ struct ColumnBrowserView: View {
             set: { artist in
                 storedArtist = artist ?? ""
                 storedAlbum = ""
+                storedComposer = ""
             })
     }
 
     private var albumSelection: Binding<String?> {
-        Binding(get: { selectedAlbum }, set: { storedAlbum = $0 ?? "" })
+        Binding(
+            get: { selectedAlbum },
+            set: { album in
+                storedAlbum = album ?? ""
+                storedComposer = ""
+            })
+    }
+
+    private var composerSelection: Binding<String?> {
+        Binding(get: { selectedComposer }, set: { storedComposer = $0 ?? "" })
     }
 
     /// With no genre selected, browse the all-songs sample; otherwise the genre's
@@ -54,15 +68,25 @@ struct ColumnBrowserView: View {
         uniqueSorted(baseSongs.compactMap(\.artist))
     }
 
+    private var artistScoped: [Song] {
+        selectedArtist == nil ? baseSongs : baseSongs.filter { $0.artist == selectedArtist }
+    }
+
     private var albums: [String] {
-        let scoped = selectedArtist == nil ? baseSongs : baseSongs.filter { $0.artist == selectedArtist }
-        return uniqueSorted(scoped.compactMap(\.album))
+        uniqueSorted(artistScoped.compactMap(\.album))
+    }
+
+    private var albumScoped: [Song] {
+        selectedAlbum == nil ? artistScoped : artistScoped.filter { $0.album == selectedAlbum }
+    }
+
+    private var composers: [String] {
+        uniqueSorted(albumScoped.compactMap(\.nonEmptyDisplayComposer))
     }
 
     private var filteredTracks: [Song] {
-        baseSongs.filter { song in
-            (selectedArtist == nil || song.artist == selectedArtist)
-                && (selectedAlbum == nil || song.album == selectedAlbum)
+        albumScoped.filter { song in
+            selectedComposer == nil || song.nonEmptyDisplayComposer == selectedComposer
         }
     }
 
@@ -83,6 +107,11 @@ struct ColumnBrowserView: View {
                      items: albums,
                      selection: albumSelection,
                      allLabel: "All Albums")
+                Divider()
+                pane(title: "Composer",
+                     items: composers,
+                     selection: composerSelection,
+                     allLabel: "All Composers")
             }
             .frame(height: 200)
 
@@ -92,7 +121,7 @@ struct ColumnBrowserView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 TrackTableView(tracks: filteredTracks,
-                               columns: [.title, .artist, .album, .genre, .quality, .time],
+                               columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
                                sortAutosaveKey: "browser",
                                scrollAutosaveKey: "browser")
             }
