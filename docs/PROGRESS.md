@@ -52,6 +52,65 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## #26: Navidrome native-feature detection + song-index invalidation hook (2026-08-23)
+`ConnectionModel` gains `nativeFeaturesState` (`.unknown`/`.checking`/
+`.available`/`.unavailable`) — the on/off switch later E4/E5 classical-metadata
+UI will check before using `NavidromeClient`. Detected automatically (never a
+Settings toggle): after a successful Subsonic connect (`saveAndConnect()` or
+`refresh()`), a real `NavidromeClient.login()` probe decides it; any failure
+(network, 401, non-Navidrome server, API-key auth with no password to log in
+with) settles on `.unavailable`. `testConnection()` deliberately never probes
+— it verifies unsaved form credentials, while `login()` always reads the
+persisted store, so probing there would check the wrong server.
+`disconnect()` resets the flag to `.unknown`.
+
+`AppModel` now constructs a `NavidromeClient` in its composition root and
+hands it to `ConnectionModel`, its only consumer for now. Settings →
+Connection shows a read-only status line reflecting the probe result, next to
+the existing scan-trigger UI.
+
+`ConnectionModel.startLibraryScan()` now calls `NavidromeClient.
+invalidateSongIndex()` (#24) after a successful scan request, so a rescan's
+adds/removes/retags aren't served stale by the in-memory song-index cache —
+the next consumer (no UI yet; E4/E5) rebuilds it from scratch.
+
+Added `ConnectionModelNativeFeaturesTests` (7 tests): probe outcomes
+(available/unavailable/API-key-no-network-call), `testConnection()`'s
+deliberate non-probing, `disconnect()`'s reset, and the scan → invalidation
+hook. Own `ConnectionProbeMockProtocol` (not the existing
+`NavidromeMockProtocol`) since this suite has to stub both `SubsonicClient`'s
+`/rest/...` calls and `NavidromeClient`'s native ones in the same test, and
+two `.serialized` suites sharing one mock's static state would race. Suite
+count: 167 → 174.
+
+**Live-verified (2026-08-23) against `demo.navidrome.org` 0.63.2** via a
+standalone harness compiling `NavidromeClient`/`SubsonicClient` + their model
+dependencies with `swiftc` and reproducing `ConnectionModel`'s exact call
+sequence (works around the documented `xcodebuild test` env-forwarding gap
+above `## Environment`):
+- Real demo credentials → Subsonic ping OK (type `navidrome`, version
+  `0.63.2`), `login()` succeeded → `nativeFeaturesState` would land on
+  `.available`.
+- Wrong password → Subsonic ping itself fails (`code 40, Wrong username or
+  password`) before the native probe ever runs — exactly `ConnectionModel`'s
+  control flow, so the flag never claims availability and nothing else is
+  affected. (The API-key-with-Subsonic-still-connected branch of the probe —
+  where `login()`'s local `apiKeyAuthUnsupported` guard fires without a
+  network call — isn't reproducible against the demo server, since it has no
+  API key configured; that exact branch is covered instead by
+  `ConnectionModelNativeFeaturesTests`, which can force it deterministically.)
+- Scan-invalidation hook: `songIndex()` (14,794 songs) cached at ~2×10⁻⁵s on
+  repeat, then `invalidateSongIndex()` (the literal call
+  `startLibraryScan()` makes) forced a full ~4.4s re-walk on the next call —
+  confirms the cache is actually cleared, not just marked stale.
+- Not captured: a UI click-through of the Settings status line itself — this
+  session's browser/GUI automation lacks the Accessibility permission needed
+  to drive the running app, so the visual result wasn't screenshotted. The
+  status line is a direct SwiftUI `switch` over the now-verified
+  `nativeFeaturesState`, and the harness above proves the state machine it
+  reads produces the right value end-to-end against a real server.
+- The harness was deleted after verification (kept out of the repo).
+
 ## PR #31: refresh song-index branch from `main` (2026-08-23)
 Merged `origin/main` at `40283cb7ddb3f0e94df30543f20518a8fa991630`
 into `issue-24-navidrome-song-index` after GitHub reported PR #31 as
@@ -1777,10 +1836,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 167 tests,
-  0 failures — count current after merging #23's composer-roster coverage
-  into #24/PR #31's song-index branch, 2026-08-23; see those entries above),
-  and CI repeats the run on every push (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 174 tests,
+  0 failures — count current after #26's `ConnectionModelNativeFeaturesTests`,
+  2026-08-23; see that entry above), and CI repeats the run on every push
+  (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
