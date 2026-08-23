@@ -52,6 +52,37 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #34: decode expanded track-column Song fields (2026-08-23)
+E2 (#10), sub-issue 1 of 5; spec #7. Adds 8 new optional `Song` fields —
+`displayAlbumArtist`, `comment`, `groupings`, `created`, `played`,
+`playCount`, `samplingRate`, `sortName` — tolerant-decoded, no UI change.
+`created`/`played` ride the existing custom `Date.ISO8601FormatStyle`
+decoder (`SubsonicClient.makeDecoder()`), so no new date-decoding path was
+needed.
+
+**Bug found by live verification, fixed before it shipped:** the issue
+(and #7's spec) assumed `groupings` decodes as a single string, mirroring
+`displayComposer`. A standalone `swiftc` harness (`SubsonicModels.swift` +
+`SubsonicResponse.swift` + a throwaway `main.swift`, same pattern E3 used)
+hit `demo.navidrome.org`'s real `getRandomSongs` endpoint and the decode
+threw `typeMismatch` on `groupings` for every song — Navidrome actually
+sends it as a JSON string array. `Song.groupings` is now `[String]?`;
+formatting it for display (join vs. first-only) is left to #35, which owns
+column cell rendering.
+
+**Live verification (2026-08-23) against `demo.navidrome.org`:** the fixed
+harness decoded 50/50 real songs from `getRandomSongs` with 0 throws, all
+8 new fields populated (`groupings` correctly decoded as `[]` — the demo
+library has no non-empty grouping tags, but the empty-array shape decodes
+without error). Sample: `samplingRate=44100`, `playCount=113`, real
+`created`/`played` timestamps. The scratch harness was deleted after
+verification, nothing added to the repo.
+
+Build clean, zero warnings; full suite green (182 tests, up from 180 by
+these two); SwiftLint clean across 90 files.
+
+---
+
 ## PR #32: refresh native-feature-detection branch from `main` (2026-08-23)
 Merged `origin/main` at `7bcff5e24866e312d0c21f196360e97c36cc7e52`
 into `issue-26-navidrome-feature-detection` after PR #33 landed issue #25.
@@ -1915,11 +1946,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 180 tests,
-  0 failures — count current after combining #25's composer-song-lookup and
-  #26's `ConnectionModelNativeFeaturesTests` coverage,
-  2026-08-23; see that entry above), and CI repeats the run on every push
-  (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 182 tests,
+  0 failures — count current after #34's two new expanded-track-column
+  decoding tests, 2026-08-23; see that entry above), and CI repeats the run
+  on every push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
