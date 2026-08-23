@@ -52,6 +52,91 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #37: header context-menu column picker (2026-08-23)
+E2 (#10), sub-issue 4 of 5; blocked by #35 and #36. Right-click a column
+header → checkable list of every togglable column; reorder/resize (already
+native `NSTableView` behavior) now persist too.
+
+**Rolled out via an opt-in flag, not globally.** `MusicTrackTable`/
+`TrackTableView` gain `columnsCustomizable: Bool = false`. Since all six
+`TrackTableView` call sites share this exact implementation, shipping the
+picker without a gate would have turned it on everywhere at once —
+un-verified on five views the issue explicitly scoped out ("do not wire
+this into more than one view for now"). Only `SongsView` opts in this
+round; #38 flips the flag on the rest after confirming each view's column
+set makes sense with it.
+
+**`UI/Components/TrackColumnPicker.swift`** (new): `columnPickerMenu(for:)`
+builds a checkable `NSMenu` from `TrackColumn.allCases` (minus `.number` —
+see below); `toggleColumn(_:)` adds/removes the column live, refusing to
+drop the last one; `observeColumnChanges(of:)` hooks
+`columnDidResizeNotification`/`columnDidMoveNotification` to persist
+width/order via #36's `TrackColumnPreferences`, keyed by `sortAutosaveKey`.
+New columns land just before the trailing favorite column, matching
+`addColumns(to:)`'s own construction order.
+
+**`.number` is deliberately excluded from the picker.** It doubles as the
+now-playing indicator column (`addColumns(to:)` only adds the fixed
+`"indicator"` column when `.number` is absent from the list) — toggling it
+generically would mean swapping that fixed column in or out too, a
+call-site decision (`AlbumDetailView` wants `.number`, `SongsView` doesn't),
+not something a one-size-fits-all picker should own. Deferred, not solved.
+
+**`TrackColumn` gains `makeTableColumn(sortable:)`**, shared by
+`addColumns(to:)` and the picker's add-column path — the single place an
+`NSTableColumn` gets built from a case, instead of duplicating the
+construction logic in two files.
+
+**Bug found and fixed during live verification:** the `addColumns(to:)`
+refactor (extracting a `addFixedColumn` helper for the indicator/favorite
+columns) dropped the explicit `col.title = ""` the original code had.
+`NSTableColumn`'s own default title isn't blank — it's a generic
+placeholder ("Field") — so both fixed columns briefly showed visible
+truncated header text ("F…" / "Fi…") instead of nothing. Caught from a
+screenshot crop, not from the running app at a glance; fixed by restoring
+the explicit empty title.
+
+**Live verification (2026-08-23), driving the Debug build against Tim's
+real Navidrome library** (`music.tail9575a5.ts.net`): no GUI-automation
+tool was available this session (as in #35), so verification combined
+Accessibility-API scripting, `cliclick` for drag/right-click gestures, and
+`screencapture` crops for anything text-precision-sensitive. Confirmed,
+each via a genuine fresh process relaunch (not just live in-session state):
+- Right-click renders all 15 togglable columns, checkmarked correctly
+  against the live table.
+- Toggling a column on/off updates the table immediately and survives
+  relaunch (`Comments` added, `Album` removed, both still correct after
+  quitting and reopening).
+- Dragging a column border resizes it and the new width survives relaunch
+  (`Quality` 68→110pt, confirmed on two separate subsequent launches).
+- Dragging a header to reorder columns persists the new order (`Genre`
+  moved before `Artist`, confirmed after relaunch).
+- Toggling columns off one at a time down to a single remaining column,
+  then attempting to remove that last one too, correctly refuses — the
+  column stays.
+- One verification wrinkle worth recording: `defaults read`/`plutil`
+  against the sandboxed app's own preferences file consistently failed to
+  show the newly-written `trackColumns.songs`/`trackColumnWidth.*` keys —
+  even immediately, even after `killall cfprefsd`, even with the app still
+  running — while the app's own genuine relaunch behavior (the actual
+  end-user scenario) repeatedly and consistently proved the values were
+  correctly written and read back. Treated the app's own behavior as
+  ground truth rather than the CLI inspection tooling, which appears
+  unreliable for freshly-written sandboxed-container keys in this
+  environment specifically (older keys from earlier sessions, e.g.
+  `trackSort.album`, *do* show up via the same commands).
+- Restored the column set to the original 7-column default (Title, Artist,
+  Composer, Album, Genre, Quality, Time) before finishing, since `UserDefaults`
+  is keyed by bundle id (`app.hydrophone`) — shared with any other build of
+  the app Tim might run, not scoped to this Debug binary.
+
+Build clean, zero warnings; full suite green (190 tests, unchanged — this
+is AppKit header/menu interaction with no hermetic coverage per
+`docs/08-testing.md`, matching #35's precedent); SwiftLint clean across 95
+files.
+
+---
+
 ## Issue #36: per-view column-visibility/order/width persistence (2026-08-23)
 E2 (#10), sub-issue 3 of 5; blocked by #35. Storage only — no picker UI, no
 `MusicTrackTable` wiring (both land in #37).

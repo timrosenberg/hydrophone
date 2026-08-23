@@ -23,6 +23,8 @@ struct TrackTableView: View {
     /// Disc → subtitle; non-nil opts into disc group headers on multi-disc
     /// content (the album page passes this).
     var discHeaders: [Int: String]?
+    /// Opts into the header right-click column picker (#37). Off by default.
+    var columnsCustomizable: Bool = false
 
     @Environment(AppModel.self) private var app
     @Environment(LibraryModel.self) private var library
@@ -45,6 +47,7 @@ struct TrackTableView: View {
             sortAutosaveKey: isPlaylist ? nil : sortAutosaveKey,
             scrollAutosaveKey: isPlaylist ? nil : scrollAutosaveKey,
             columns: columns,
+            columnsCustomizable: columnsCustomizable,
             discHeaders: discHeaders,
             nowPlayingID: player.currentTrack?.id,
             starSignature: library.starSignature,

@@ -45,8 +45,16 @@ struct MusicTrackTable: NSViewRepresentable {
     /// across launches (Songs/Favorites/browser) — content-specific views
     /// (album detail, search) would restore a stranger's offset.
     var scrollAutosaveKey: String?
-    /// Content columns to show, in order. Caller decides explicitly.
+    /// Content columns to show, in order. Caller decides explicitly — the
+    /// default/fallback list when nothing's persisted yet (or customization
+    /// is off).
     var columns: [TrackColumn]
+    /// Opts into the header right-click column picker (#37): show/hide,
+    /// reorder, and resize persist via `TrackColumnPreferences`, keyed by
+    /// `sortAutosaveKey`. Off by default — rolled out per call site
+    /// (`SongsView` first; the rest in #38) rather than globally at once,
+    /// since every `TrackTableView` caller shares this same implementation.
+    var columnsCustomizable: Bool = false
     /// Disc → subtitle; non-nil opts into disc group headers on multi-disc
     /// content (album page). Headers appear only in disc order — the natural
     /// order or an ascending # sort — since other sorts interleave discs.
