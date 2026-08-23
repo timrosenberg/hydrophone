@@ -236,4 +236,44 @@ struct DecodingTests {
         let wrapper = try decoder.decode(SubsonicResponseWrapper<ObjectBody<Album>>.self, from: data)
         #expect(wrapper.response.body?.value.isStarred == true)
     }
+
+    @Test func decodesExpandedTrackColumnFields() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Track","artist":"A","duration":200,
+        "displayAlbumArtist":"Various Artists","comment":"Live take",
+        "groupings":"Movement II","created":"2024-03-01T10:00:00.000Z",
+        "played":"2024-06-15T20:30:00.000Z","playCount":42,"samplingRate":44100,
+        "sortName":"Track, The"}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let song = try #require(wrapper.response.body?.items.first)
+        #expect(song.displayAlbumArtist == "Various Artists")
+        #expect(song.comment == "Live take")
+        #expect(song.groupings == "Movement II")
+        #expect(song.created != nil)
+        #expect(song.played != nil)
+        #expect(song.playCount == 42)
+        #expect(song.samplingRate == 44_100)
+        #expect(song.sortName == "Track, The")
+    }
+
+    @Test func decodesMissingExpandedTrackColumnFieldsAsNil() throws {
+        let json = """
+        {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
+        {"id":"s1","title":"Track","artist":"A","duration":200}]}}}
+        """
+        let wrapper = try decoder.decode(SubsonicResponseWrapper<ListBody<Song>>.self,
+                                         from: Data(json.utf8))
+        let song = try #require(wrapper.response.body?.items.first)
+        #expect(song.displayAlbumArtist == nil)
+        #expect(song.comment == nil)
+        #expect(song.groupings == nil)
+        #expect(song.created == nil)
+        #expect(song.played == nil)
+        #expect(song.playCount == nil)
+        #expect(song.samplingRate == nil)
+        #expect(song.sortName == nil)
+    }
 }
