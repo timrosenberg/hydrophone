@@ -219,6 +219,13 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   JSON body). `NavidromeClient.paginatedGet<T>` walks a resource fully,
   fetching pages concurrently after the first (bounded by the same
   `AsyncLimiter(limit: 6)` `ArtworkCache` uses).
+- **Composer roster:** `GET /api/artist?role=composer` genuinely filters
+  server-side (unlike the song-level filter below) — `NavidromeClient.composers()`
+  walks it via `paginatedGet`, sorted by name. Rows include Navidrome's own
+  synthetic joint-credit entities (e.g. one row named "A, B, and C" for a
+  jointly-credited track, with its own id, distinct from A/B/C's individual
+  rows) — surfaced as-is, not deduplicated, matching `displayComposer`'s
+  show-the-server's-string convention (#23).
 - **No server-side "songs by composer" filter exists** — confirmed by testing
   every plausible query param combination live; they're silently ignored.
   Composer/work-movement lookups are client-side filters over one fully

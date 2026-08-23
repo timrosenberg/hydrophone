@@ -52,6 +52,32 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient: composer roster — `composers()` (2026-08-23)
+Closes #23 (E3, epic #11), built on #22's `paginatedGet` helper.
+
+- Added `Composer` (`Networking/NavidromeModels.swift`): `id`, `name`, plus
+  optional `songCount`/`albumCount` read tolerantly from the nested
+  `stats.composer` object via a custom `init(from:)` — every field but
+  `id`/`name` is optional since this is an internal/undocumented API.
+- Added `NavidromeClient.composers()`: walks `/api/artist` via `paginatedGet`
+  with `role=composer`, `sort=name`, `order=ASC`.
+- Roster rows are surfaced exactly as Navidrome presents them, including its
+  synthetic joint-credit entities (e.g. one row named "A, B, and C" for a
+  jointly-credited track, with its own id, distinct from A/B/C's individual
+  rows) — matching the existing `displayComposer` show-the-server's-string
+  convention. No dedup attempted; that's explicitly out of scope.
+- Hermetic fixture decode test (`NavidromeClientTests.decodesComposerRoster`)
+  covers a regular row, a joint-credit row, and a row missing `stats`
+  entirely (tolerant decode must not throw).
+- Live-verified against Tim's real library (`music.tail9575a5.ts.net`,
+  14,794 tracks): `composers()` returned all 1,696 composer rows,
+  name-sorted, matching a direct `curl` cross-check of the same endpoint
+  (`X-Total-Count: 1696`); covered by a new opt-in
+  `NavidromeLiveTests.composersReturnsNonEmptyNameSortedRoster`.
+- No UI — `Composer` is a data-layer method only; E4 (#12) consumes it later.
+
+---
+
 ## NavidromeClient: address PR #27 re-review findings (2026-08-23)
 Re-review of #27 found the first credential-binding fix (previous entry) was
 incomplete, plus a leftover stale count.
@@ -1558,10 +1584,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 155 tests,
-  0 failures — count current as of the E3/NavidromeClient foundation work,
-  2026-08-23; see that entry above for the added suites), and CI repeats the
-  run on every push (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 157 tests,
+  0 failures — count current as of the #23 composer-roster work, 2026-08-23;
+  see that entry above for the added tests), and CI repeats the run on every
+  push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
