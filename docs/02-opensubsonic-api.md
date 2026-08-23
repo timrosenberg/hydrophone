@@ -221,7 +221,10 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   `AsyncLimiter(limit: 6)` `ArtworkCache` uses).
 - **Composer roster:** `GET /api/artist?role=composer` genuinely filters
   server-side (unlike the song-level filter below) — `NavidromeClient.composers()`
-  walks it via `paginatedGet`, sorted by name. Rows include Navidrome's own
+  walks it via `paginatedGet`. The server's `_sort=name` keeps page boundaries
+  stable; after all pages arrive, the client applies `localizedStandardCompare`
+  so database collation differences do not leak into the macOS-visible order.
+  Rows include Navidrome's own
   synthetic joint-credit entities (e.g. one row named "A, B, and C" for a
   jointly-credited track, with its own id, distinct from A/B/C's individual
   rows) — surfaced as-is, not deduplicated, matching `displayComposer`'s
