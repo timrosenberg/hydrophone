@@ -43,8 +43,8 @@ struct NavidromeLiveTests {
     }
 
     /// Proof the pagination helper round-trips against a real list endpoint.
-    /// Full composer/song decoding isn't in scope here (#23/#24) — this only
-    /// confirms paging + auth-header plumbing against `/api/artist`.
+    /// Full song decoding isn't in scope here (#24) — this only confirms
+    /// paging + auth-header plumbing against `/api/artist`.
     @Test func paginatedGetRoundTripsAgainstRealArtistList() async throws {
         guard let env = liveEnv() else { return }
         struct MinimalArtist: Decodable, Sendable { let id: String }
@@ -52,5 +52,15 @@ struct NavidromeLiveTests {
             path: "artist", sort: "name", pageSize: 50, as: MinimalArtist.self
         )
         #expect(!artists.isEmpty)
+    }
+
+    /// `composers()` (#23): a non-empty, name-sorted roster against a real
+    /// server.
+    @Test func composersReturnsNonEmptyNameSortedRoster() async throws {
+        guard let env = liveEnv() else { return }
+        let composers = try await client(env).composers()
+        #expect(!composers.isEmpty)
+        let names = composers.map(\.name)
+        #expect(names == names.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
     }
 }
