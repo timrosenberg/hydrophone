@@ -43,8 +43,8 @@ struct NavidromeLiveTests {
     }
 
     /// Proof the pagination helper round-trips against a real list endpoint.
-    /// Full song decoding isn't in scope here (#24) — this only confirms
-    /// paging + auth-header plumbing against `/api/artist`.
+    /// The minimal row type deliberately isolates paging + auth-header
+    /// plumbing; composer and song-domain coverage live in the tests below.
     @Test func paginatedGetRoundTripsAgainstRealArtistList() async throws {
         guard let env = liveEnv() else { return }
         struct MinimalArtist: Decodable, Sendable { let id: String }
@@ -52,6 +52,28 @@ struct NavidromeLiveTests {
             path: "artist", sort: "name", pageSize: 50, as: MinimalArtist.self
         )
         #expect(!artists.isEmpty)
+    }
+
+    /// Full library pull via `songIndex()` — proves the concurrent walk,
+    /// tolerant decode of `participants`/`tags`, and in-session cache all
+    /// work end to end against a real library. Elapsed time is printed, not
+    /// asserted on (server-dependent; ~5-15s measured against a real
+    /// 14,794-track library — see #24).
+    @Test func songIndexReturnsFullLibraryAndCachesOnSecondCall() async throws {
+        guard let env = liveEnv() else { return }
+        let sharedClient = client(env)
+
+        let start = Date()
+        let index = try await sharedClient.songIndex()
+        let elapsed = Date().timeIntervalSince(start)
+        print("songIndex(): \(index.count) songs in \(String(format: "%.1f", elapsed))s")
+        #expect(!index.isEmpty)
+
+        let cachedStart = Date()
+        let cached = try await sharedClient.songIndex()
+        let cachedElapsed = Date().timeIntervalSince(cachedStart)
+        print("songIndex() cached: \(cached.count) songs in \(String(format: "%.3f", cachedElapsed))s")
+        #expect(cached.count == index.count)
     }
 
     /// `composers()` (#23): a non-empty, name-sorted roster against a real

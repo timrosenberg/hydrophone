@@ -136,4 +136,47 @@ struct NavidromeClientTests {
         #expect(NavidromeClient.apiPath(basePath: "", resource: "song") == "/api/song")
         #expect(NavidromeClient.apiPath(basePath: "/", resource: "song") == "/api/song")
     }
+
+    // MARK: - NativeSongRecord decoding
+
+    /// Representative of a real `/api/song` page entry (captured shape,
+    /// trimmed to the fields `NativeSongRecord` cares about): participants
+    /// and work/movement tags both populated. See #24.
+    @Test func decodesNativeSongRecordWithParticipantsAndTags() throws {
+        let json = """
+        {
+          "id": "abc123",
+          "title": "Symphony No. 5 in C minor, Op. 67: I. Allegro con brio",
+          "participants": {
+            "composer": [{"id": "c1", "name": "Ludwig van Beethoven"}],
+            "artist": [{"id": "a1", "name": "Berlin Philharmonic"}],
+            "albumartist": [{"id": "a1", "name": "Berlin Philharmonic"}]
+          },
+          "tags": {
+            "work": ["Symphony No. 5 in C minor, Op. 67"],
+            "movementname": ["Allegro con brio"],
+            "movement": ["1"],
+            "movementtotal": ["4"],
+            "genre": ["Classical"]
+          }
+        }
+        """
+        let record = try JSONDecoder().decode(NativeSongRecord.self, from: Data(json.utf8))
+        #expect(record.id == "abc123")
+        #expect(record.title == "Symphony No. 5 in C minor, Op. 67: I. Allegro con brio")
+        #expect(record.participants?.composer?.first?.name == "Ludwig van Beethoven")
+        #expect(record.participants?.artist?.first?.id == "a1")
+        #expect(record.tags?["work"] == ["Symphony No. 5 in C minor, Op. 67"])
+        #expect(record.tags?["movementname"] == ["Allegro con brio"])
+    }
+
+    /// A missing key isn't a decode error — most songs have no work/movement
+    /// tags or unusual participant roles, and the decode must tolerate that.
+    @Test func decodesNativeSongRecordWithMissingParticipantsAndTags() throws {
+        let json = #"{"id": "xyz789", "title": "Ordinary Track"}"#
+        let record = try JSONDecoder().decode(NativeSongRecord.self, from: Data(json.utf8))
+        #expect(record.id == "xyz789")
+        #expect(record.participants == nil)
+        #expect(record.tags == nil)
+    }
 }

@@ -93,26 +93,6 @@ actor NavidromeClient {
         cachedTokenCredentials = nil
     }
 
-    // MARK: - Composer roster
-
-    /// The full composer roster (`/api/artist?role=composer`), sorted by
-    /// localized standard name order. The server-side sort keeps page boundaries
-    /// stable; the final sort normalizes differences in database collation.
-    /// Includes Navidrome's synthetic joint-credit rows as-is — see `Composer`'s
-    /// doc comment. See #23, epic #11.
-    func composers() async throws(NavidromeError) -> [Composer] {
-        let composers = try await paginatedGet(
-            path: "artist",
-            sort: "name",
-            order: "ASC",
-            extraQuery: [URLQueryItem(name: "role", value: "composer")],
-            as: Composer.self
-        )
-        return composers.sorted {
-            $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
-    }
-
     // MARK: - Pagination
 
     /// The parts of a `paginatedGet` call that stay constant across every
@@ -142,7 +122,16 @@ actor NavidromeClient {
         as type: T.Type
     ) async throws(NavidromeError) -> [T] {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
-        let query = PageQuery(path: path, sort: sort, order: order, extraQuery: extraQuery, credentials: creds)
+        let query = PageQuery(
+            path: path, sort: sort, order: order,
+            extraQuery: extraQuery, credentials: creds
+        )
+        return try await paginatedGet(query, pageSize: pageSize, as: type)
+    }
+
+    private func paginatedGet<T: Decodable & Sendable>(
+        _ query: PageQuery, pageSize: Int, as type: T.Type
+    ) async throws(NavidromeError) -> [T] {
         let first = try await fetchPage(query, start: 0, end: pageSize, as: type)
         guard first.totalCount > pageSize else { return first.items }
 
@@ -236,6 +225,96 @@ actor NavidromeClient {
         response.value(forHTTPHeaderField: "X-Total-Count").flatMap(Int.init)
     }
 
+    // MARK: - Song index
+
+    /// In-memory cache of `songIndex()`'s result, kept for the app session
+    /// only — no disk persistence (M2 dropped the SwiftData cache; see
+    /// docs/PROGRESS.md). Cleared by `invalidateSongIndex()`.
+    private var cachedSongIndex: [NativeSongRecord]?
+    /// The credentials `cachedSongIndex` was built against — same reasoning
+    /// as `cachedTokenCredentials`: a cache built for one server/account
+    /// must not be served to a different one after Settings changes the
+    /// connection. See PR #31 review.
+    private var cachedSongIndexCredentials: ServerCredentials?
+    /// Bumped whenever a build starts and by `invalidateSongIndex()`. Actor
+    /// isolation is reentrant across an `await`, so this identity lets a
+    /// superseded build recognize it's stale and skip repopulating the cache
+    /// or clearing a newer build's in-flight state. See PR #31 re-review.
+    private var songIndexGeneration = 0
+    /// The in-flight full-library build, if any, plus the credentials it
+    /// was started under — coalesces overlapping `songIndex()` callers onto
+    /// one paginated walk instead of each starting their own, but only when
+    /// the caller's current credentials match (otherwise a caller under new
+    /// credentials could be handed a build's result fetched under the old
+    /// ones). See PR #31 review.
+    private var inFlightSongIndexBuild: Task<[NativeSongRecord], Error>?
+    private var inFlightSongIndexCredentials: ServerCredentials?
+
+    /// Every song in the library, with per-role `participants` credits and
+    /// raw `tags` — the data a later sub-issue needs to answer "songs by
+    /// composer X" and "work/movement for song Y" without further network
+    /// calls. Paginates `/api/song` concurrently via `paginatedGet` and
+    /// caches the result; repeat calls within the same session return the
+    /// cached copy without refetching, unless credentials changed or
+    /// `invalidateSongIndex()` was called. See #24, epic #11.
+    func songIndex() async throws(NavidromeError) -> [NativeSongRecord] {
+        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        if let cachedSongIndex, cachedSongIndexCredentials == creds {
+            return cachedSongIndex
+        }
+        if let inFlightSongIndexBuild, inFlightSongIndexCredentials == creds {
+            do {
+                return try await inFlightSongIndexBuild.value
+            } catch {
+                throw error as? NavidromeError ?? .transport("\(error)")
+            }
+        }
+
+        songIndexGeneration += 1
+        let generation = songIndexGeneration
+        let build = Task<[NativeSongRecord], Error> {
+            let query = PageQuery(
+                path: "song", sort: "id", order: "ASC",
+                extraQuery: [], credentials: creds
+            )
+            return try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
+        }
+        inFlightSongIndexBuild = build
+        inFlightSongIndexCredentials = creds
+        do {
+            let index = try await build.value
+            // Only the still-current build may finish the job: invalidation
+            // or a credential-scoped replacement may have retired this task,
+            // and its stale result must not overwrite the newer cache/state.
+            if generation == songIndexGeneration {
+                cachedSongIndex = index
+                cachedSongIndexCredentials = creds
+                inFlightSongIndexBuild = nil
+                inFlightSongIndexCredentials = nil
+            }
+            return index
+        } catch {
+            if generation == songIndexGeneration {
+                inFlightSongIndexBuild = nil
+                inFlightSongIndexCredentials = nil
+            }
+            throw error as? NavidromeError ?? .transport("\(error)")
+        }
+    }
+
+    /// Clears the cached song index and retires any in-flight build (so it
+    /// can't repopulate the cache once it completes), so the next
+    /// `songIndex()` call rebuilds from scratch (e.g. after a library scan —
+    /// the rebuild trigger itself is a later sub-issue's concern, not this
+    /// one's).
+    func invalidateSongIndex() {
+        cachedSongIndex = nil
+        cachedSongIndexCredentials = nil
+        songIndexGeneration += 1
+        inFlightSongIndexBuild = nil
+        inFlightSongIndexCredentials = nil
+    }
+
     // MARK: - URL / request construction
 
     /// Exposed (not `private`) so request-building can be unit-tested without
@@ -283,5 +362,25 @@ actor NavidromeClient {
     static func apiPath(basePath: String, resource: String) -> String {
         let base = basePath.hasSuffix("/") ? String(basePath.dropLast()) : basePath
         return base + "/api/" + resource
+    }
+}
+
+extension NavidromeClient {
+    /// The full composer roster (`/api/artist?role=composer`), sorted by
+    /// localized standard name order. The server-side sort keeps page boundaries
+    /// stable; the final sort normalizes differences in database collation.
+    /// Includes Navidrome's synthetic joint-credit rows as-is — see `Composer`'s
+    /// doc comment. See #23, epic #11.
+    func composers() async throws(NavidromeError) -> [Composer] {
+        let composers = try await paginatedGet(
+            path: "artist",
+            sort: "name",
+            order: "ASC",
+            extraQuery: [URLQueryItem(name: "role", value: "composer")],
+            as: Composer.self
+        )
+        return composers.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
 }
