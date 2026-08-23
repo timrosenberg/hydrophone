@@ -17,7 +17,11 @@ capability-based auto-selection was not needed):
    - Generate a random `salt` per request (or per session) and
      `t = md5(password + salt)` using `Insecure.MD5` (CryptoKit).
    - Send `u` (username), `t` (token), `s` (salt). **Never** send the raw
-     password; never persist the token — persist only the password in Keychain.
+     password over this endpoint; never persist the token — persist only the
+     password in Keychain. (Exception: `NavidromeClient`'s *separate* native
+     `/auth/login` call does send the raw password — that's how Navidrome's
+     own native API works, not a Subsonic endpoint. See the Navidrome native
+     API section below.)
 
 2. **OpenSubsonic API-key auth** (where supported)
    - Send the pre-issued API key per the OpenSubsonic auth extension instead of
@@ -189,3 +193,37 @@ picker (`mp3`/`opus`/`aac`) and a max bitrate. `PlaybackService` asks
 `SubsonicClient` for the stream URL with the appropriate params. Document that
 transcoding shifts CPU to the server and can affect gapless (re-encoded
 boundaries) — note for the `03` spike.
+
+## Navidrome native API (metadata-only) 🔬
+
+A **separate, undocumented** API Navidrome itself is built on
+(`<host>/api/...`, distinct from Subsonic's `<host>/rest/...`), used by
+`NavidromeClient` (actor, `Services/NavidromeClient.swift`) for classical-
+metadata features Subsonic has no endpoints for: composer enumeration, a full
+song index, work/movement tags. Never used for streaming/playback — those stay
+on `SubsonicClient`; `NavidromeClient` only resolves song ids that the
+existing playback pipeline then handles. Full design rationale and the
+confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
+(#8); summary:
+
+- **Auth:** `POST /auth/login` with `{"username", "password"}` (real password,
+  see the exception noted above) → a JWT (`token`) plus, in the same response,
+  the Subsonic `salt`/`token` (unused by `NavidromeClient`, but means one
+  login could seed both clients). Every subsequent request carries
+  `X-Nd-Authorization: Bearer <token>`. Only available for `.tokenSalt`-auth
+  credentials — API-key auth has no raw password to log in with, so
+  `NavidromeClient` fails cleanly (`NavidromeError.apiKeyAuthUnsupported`)
+  rather than attempting it.
+- **Pagination:** react-admin conventions — `_start`/`_end`/`_sort`/`_order`
+  query params, total via the **`X-Total-Count` response header** (not the
+  JSON body). `NavidromeClient.paginatedGet<T>` walks a resource fully,
+  fetching pages concurrently after the first (bounded by the same
+  `AsyncLimiter(limit: 6)` `ArtworkCache` uses).
+- **No server-side "songs by composer" filter exists** — confirmed by testing
+  every plausible query param combination live; they're silently ignored.
+  Composer/work-movement lookups are client-side filters over one fully
+  paginated `/api/song` walk (`participants.composer[].id` per song), not
+  per-selection server round-trips.
+- **Every field is tolerant-decoded** (all optional) — this API is internal
+  and can change between Navidrome releases without notice. A failed login or
+  unexpected response degrades to Subsonic-only; nothing else breaks.

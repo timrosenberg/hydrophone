@@ -52,6 +52,149 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient: address PR #27 re-review findings (2026-08-23)
+Re-review of #27 found the first credential-binding fix (previous entry) was
+incomplete, plus a leftover stale count.
+
+**[P2] Credential snapshot wasn't held for the whole `paginatedGet` walk.**
+The previous fix made one `fetchPage()` call internally consistent, but each
+page — including the concurrent pages after page zero, and a 401 retry —
+still called `credentials.load()` independently. A Settings change between
+page zero completing and the remaining pages firing could still mix pages
+from two different servers/accounts into one result; the existing
+credential-change test couldn't catch this because its mock always returned
+a single-page `X-Total-Count: 1`. Fixed: `PageQuery` (already "the parts that
+stay constant across every page") now also carries the `ServerCredentials`
+snapshot, loaded once at the top of `paginatedGet()` and threaded through
+every page — including the 401-retry recursion, which reuses the same
+`query`. New `credentialChangeMidMultiPageWalkDoesNotMixServers` test: a
+2-page walk (`X-Total-Count: 1000`, pageSize 500) whose mock handler saves
+new credentials to the store on the *first* `/api/artist` request (simulating
+Settings changing mid-walk); asserts every page still targeted the original
+host.
+
+**[P2] Stale test count survived in a second location.** `docs/08-testing.md`
+was corrected to 154 in the previous round, but the older canonical
+`## Verification status` block further down this file still said 67 —
+two contradictory counts in one file. Fixed in place; that section is a
+dated historical snapshot (2026-06-22) otherwise left as-is, not rewritten.
+
+Re-verified against the real server after this fix: login + a full 14,794-song
+`/api/song` paginated walk succeeded end to end (the multi-page path this fix
+specifically targets). Build/test/swiftlint clean.
+
+## NavidromeClient: address PR #27 review findings (2026-08-23)
+Codex's review of #27 (PR for #22) found two real bugs and two contract-sync
+gaps, all fixed on the same branch.
+
+**[P1] Cached JWT wasn't bound to the credentials it was minted for.**
+`ensureValidToken()` reused `cachedToken` on expiry alone; `apiRequest()`
+separately reloaded the current credentials for the URL. After Settings
+changes server/account mid-session, the next native request could attach the
+old server's/account's bearer token while pointed at the new host. Fixed:
+`cachedTokenCredentials: ServerCredentials?` (already `Equatable`) is stored
+alongside the token; a cache hit now requires an exact match, not just
+non-expiry. `login()`/`ensureValidToken()`/`apiRequest()` all take one
+`ServerCredentials` snapshot loaded once per `fetchPage` call, rather than
+loading the store independently at two points that could observe different
+values mid-flight.
+
+**[P2] Missing/malformed `X-Total-Count` silently truncated the walk.**
+`total = totalCount(from: http) ?? (start + decoded.count)` treated an
+unparseable header as "this page is the whole library" — exactly backwards
+for a helper whose entire contract is walking a resource *fully*. Now a
+missing/invalid header throws `NavidromeError.decoding` instead of returning
+a falsely-complete result.
+
+**[P2] No hermetic coverage of cache reuse / expiry / retry.** New
+`NavidromeClientNetworkTests.swift`: a stubbed `URLProtocol`
+(`NavidromeMockProtocol`) on a per-test `URLSessionConfiguration.ephemeral`
+proves — without any network — that a valid cached token is reused across
+calls (one login for two operations), an expired one triggers a fresh login
+per call, a credential change invalidates the cache **and** the next request
+targets the new host (the P1 fix, end to end), a 401 triggers exactly one
+retry-and-relogin before failing, and a missing total-count header fails
+loudly. The suite is `@Suite(.serialized)` — its tests share one static mock
+state by design (standing in for one real server across a session) and would
+race each other under Swift Testing's default parallel execution; that
+exact race was hit and diagnosed while writing these tests (five failures,
+login counts of 5–8 instead of 1–2) before adding the trait.
+
+**[P2] Docs weren't synced.** `docs/01-architecture.md` now lists
+`NavidromeClient`/`NavidromeModels` in the layer diagram, service
+responsibilities, and module structure. `docs/02-opensubsonic-api.md` notes
+the native `/auth/login` raw-password exception inline where the
+never-send-the-password rule is stated, plus a new "Navidrome native API"
+section summarizing auth/pagination/the no-server-filter finding for anyone
+landing on this doc without the epic's history. `docs/08-testing.md`'s suite
+list and count were stale (67 tests, predating a lot of unlisted work) —
+corrected to the actual current 154, with the new suites added and the
+`xcodebuild test` env-var-forwarding gap (discovered in the original #22
+verification pass) documented as affecting `LiveDecodeTests` too, not just
+`NavidromeLiveTests`.
+
+Re-verified end to end against the real server after all fixes (same
+`swiftc`-standalone method as the original pass, since the env-var gap above
+still applies): login, a full paginated `/api/artist` walk, and a second walk
+proving cache reuse (sub-second, no re-login) all succeeded.
+
+Build/test/swiftlint clean.
+
+## NavidromeClient foundation: auth, JWT lifecycle, pagination helper (2026-08-23)
+Issue #22 (E3, epic #11; blocks #23/#24/#25/#26). New `Services/NavidromeClient.swift`
+(`actor NavidromeClient`) and `Networking/NavidromeModels.swift`, standing up the
+native react-admin API (`/api/...`, separate from Subsonic's `/rest/`) alongside
+`SubsonicClient` — metadata only, no playback, per the E3 spike (#8).
+
+`login()` calls `POST /auth/login`, caches the returned JWT in-actor, and decodes
+its `exp` claim (no signature check — expiry-checking only, the server is the real
+authority) rather than guessing a TTL; `ensureValidToken()` reuses an unexpired
+cached token or re-logs-in, with a 30s leeway so a request built just before
+expiry doesn't land as a 401 mid-flight. `apiKeyAuthUnsupported` is a new
+`NavidromeError` case: the stored credentials can be OpenSubsonic API-key auth
+(no raw password to log in with), which the original issue spec hadn't accounted
+for — `login()` now fails cleanly instead of sending garbage as a password.
+
+`paginatedGet<T>()` walks react-admin list resources (`_start`/`_end`/`_sort`/`_order`,
+total via the `X-Total-Count` response header) fully, fetching pages concurrently
+after the first through the existing `AsyncLimiter(limit: 6)` (`Services/AsyncLimiter.swift`)
+— the same limiter and limit `ArtworkCache` already uses, and the concurrency level
+measured against a real library in #8/#22 (14.2s sequential vs 5.3s at 6-way for
+14,794 songs). A 401 triggers one re-login-and-retry per page; a second 401 is a
+real `authenticationFailed`. `fetchPage` bundles the per-call-constant parts
+(path/sort/order/extraQuery) into a private `PageQuery` to stay under SwiftLint's
+parameter-count limit.
+
+Hermetic tests (`NavidromeClientTests.swift`): JWT `exp` decoding against a real
+captured token shape, expiry/leeway boundary cases, login/API request construction
+(paths, headers, auth-method gating), and login-response decoding. Live tests
+(`NavidromeLiveTests.swift`, gated on `HYDROPHONE_HOST`/`USER`/`PASS` like
+`LiveDecodeTests`) exercise `login()` and `paginatedGet()` against a real server.
+
+**Live verification, and a discovered tooling gap:** `xcodebuild test` on this
+machine does **not** forward the invoking shell's environment into the XCTest
+runner process — confirmed via a temporary diagnostic assertion (`ProcessInfo`
+inside the test process saw 45 env vars, none of them `HYDROPHONE_*`, none
+matching what the invoking shell had; `IDETestRunnerAdditionalEnvironmentVariables`
+didn't change this). This is **not new to this issue** — `LiveDecodeTests` has the
+identical silent-skip problem today (confirmed by comparing durations: both old
+and new "live" tests complete in the same near-zero time whether or not the env
+vars are set). Actual live verification was done by compiling the real
+`NavidromeClient.swift`/`NavidromeModels.swift`/`CredentialStore.swift`/
+`AsyncLimiter.swift` sources standalone with `swiftc` (inheriting the shell
+environment directly, bypassing `xcodebuild`) and running them against Tim's real
+server: `login()` succeeded (JWT decoded correctly, valid ~48h out); `paginatedGet`
+against `/api/artist` returned 2,766 composers+artists; against `/api/song` returned
+14,794 songs in ~5.2s, matching the #8 benchmark. The scratch harness was deleted
+after verification, nothing added to the repo. **Follow-up worth filing:** the
+`HydrophoneTests` scheme needs its Test action's environment variables wired
+(scheme-level, not committed with real values) for `xcodebuild test` to actually
+exercise any live test locally — affects `LiveDecodeTests` too, pre-existing.
+
+Build clean (zero warnings introduced; three pre-existing `ScrollMemory.swift`
+Sendable-capture warnings confirmed present on `main` before this branch).
+Full suite green. SwiftLint clean.
+
 ## Composer column shown in Album, Songs, Favorites, Search (2026-08-22)
 Issue #4 (part of #1, blocked by #3). Adds `.composer` to the `columns:`
 array in `AlbumDetailView`, `SongsView`'s flat-table branch, `FavoritesView`,
@@ -1415,9 +1558,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 67 tests,
-  0 failures), and CI repeats the run on every push
-  (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 155 tests,
+  0 failures — count current as of the E3/NavidromeClient foundation work,
+  2026-08-23; see that entry above for the added suites), and CI repeats the
+  run on every push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
