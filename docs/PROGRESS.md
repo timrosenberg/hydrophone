@@ -52,6 +52,25 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## PR #32: refresh native-feature-detection branch from `main` (2026-08-23)
+Merged `origin/main` at `7bcff5e24866e312d0c21f196360e97c36cc7e52`
+into `issue-26-navidrome-feature-detection` after PR #33 landed issue #25.
+The production and test code combined automatically; the only conflicts were
+the expected additive documentation overlaps in `docs/08-testing.md` and this
+file. Resolution keeps both same-day progress entries newest-first and updates
+the combined suite totals to 180 tests across 90 Swift files. No rebase or
+history rewrite.
+
+**Post-merge verification:** build succeeded; all 180 tests passed with 0
+failures or skips; SwiftLint reported 0 violations across 90 files. Re-ran the
+actual Debug app with `HYDROPHONE_SCREENSHOT_FRESH=1` against
+`demo.navidrome.org` 0.63.2: **Use Demo Server** connected and showed **Native
+Navidrome features available**; **Scan Library** surfaced the demo account's
+expected authorization error without a crash; after disconnecting, a
+deliberately wrong password produced server error 40 and no native-feature
+status line. The isolated app was then quit; the real Keychain item was never
+touched.
+
 ## #26: Navidrome native-feature detection + song-index invalidation hook (2026-08-23)
 `ConnectionModel` gains `nativeFeaturesState` (`.unknown`/`.checking`/
 `.available`/`.unavailable`) — the on/off switch later E4/E5 classical-metadata
@@ -129,6 +148,47 @@ touches the real Keychain item) and drove Settings → Connection by hand:
   availability). Zero regressions, zero crashes.
 - Quit the app afterward; no server state or Keychain item touched (fresh
   in-memory credentials only).
+
+## Issue #25: NavidromeClient `songs(byComposerId:)` and `workMetadata(songId:)` (2026-08-23)
+Two read-only lookups over #24's `songIndex()` cache, added as a `NavidromeClient`
+extension alongside `composers()` in `Services/NavidromeClient.swift` — no new
+network calls, since each cached `NativeSongRecord` already carries
+`participants` and `tags`:
+- `songs(byComposerId:)` filters the cached index by `participants.composer[].id`,
+  including joint-credit songs that list several composer ids (there's no
+  server-side "songs by composer" filter — confirmed by #24's testing — so this
+  is the only correct approach).
+- `workMetadata(songId:)` reads a new `WorkInfo` struct (`Networking/NavidromeModels.swift`)
+  from a song's `tags["work"/"movementname"/"movement"/"movementtotal"]`,
+  parsing `movement`/`movementtotal` as **separate** `Int`s (Navidrome tags
+  them as independent plain-number strings, not a combined "n/total"), each of
+  the four fields optional on its own. Returns `nil` for an unknown song id or
+  one with none of the four fields.
+
+Hermetic coverage lives in `HydrophoneTests/NavidromeComposerSongLookupTests.swift`,
+an extension of `NavidromeClientNetworkTests` (same pattern
+`NavidromeComposerNetworkTests.swift` already used for #23) — this keeps the
+new tests inside the existing `.serialized` suite sharing `NavidromeMockProtocol`
+safely, without adding a second stubbed `URLProtocol` that would race it (Swift
+Testing runs distinct suites concurrently by default; `.serialized` only
+serializes within one suite). Covers joint-credit filtering, a non-matching
+composer id, no extra network call beyond `songIndex()`'s own, the confirmed
+real-library Schubert movement fixture from the issue body, a work with no
+numbered movement, and the nil cases.
+
+**Verification:** build succeeds with zero compiler warnings; full suite green
+(**TEST SUCCEEDED**, 173 tests, 0 failures — up from 167 by these 6; ran three
+times back-to-back with no flakes to rule out a suite-ordering race); SwiftLint
+reports 0 violations across 89 files. Live-verified 2026-08-23 against Tim's
+real Navidrome server: compiled `NavidromeClient`/`NavidromeModels`/
+`CredentialStore`/`AsyncLimiter` standalone with `swiftc` (the same workaround
+#24/PR #31 used, since `xcodebuild test` doesn't forward `HYDROPHONE_*` into the
+XCTest runner process) and ran a scratch harness — `composers()` returned 1,694
+rows in 0.54s; picking Aaron Copland (reported `songCount: 12`),
+`songs(byComposerId:)` returned exactly 12 songs; `workMetadata(songId:)` on a
+song from the index decoded `work: "Variations on a Melancholy Theme"`,
+`movementName: "Cadenza"`, `movementNumber: 13`, `movementTotal: 14` — matching
+the parse-as-separate-ints contract. The scratch harness was deleted after.
 
 ## PR #31: refresh song-index branch from `main` (2026-08-23)
 Merged `origin/main` at `40283cb7ddb3f0e94df30543f20518a8fa991630`
@@ -1855,8 +1915,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 174 tests,
-  0 failures — count current after #26's `ConnectionModelNativeFeaturesTests`,
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 180 tests,
+  0 failures — count current after combining #25's composer-song-lookup and
+  #26's `ConnectionModelNativeFeaturesTests` coverage,
   2026-08-23; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 

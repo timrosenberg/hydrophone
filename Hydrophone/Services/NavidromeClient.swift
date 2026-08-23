@@ -383,4 +383,32 @@ extension NavidromeClient {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
     }
+
+    /// Every song crediting `composerId` as a composer (including joint
+    /// credits, where one song lists several composer ids). Derived entirely
+    /// from `songIndex()`'s cache — no network call beyond whatever building
+    /// or reusing that cache already costs; there is no server-side "songs
+    /// by composer" filter to call instead (see #24's doc comment). See #25,
+    /// epic #11.
+    func songs(byComposerId composerId: String) async throws(NavidromeError) -> [NativeSongRecord] {
+        try await songIndex().filter { $0.participants?.composer?.contains { $0.id == composerId } ?? false }
+    }
+
+    /// The work/movement metadata for one song, read from `songIndex()`'s
+    /// cached `tags` — no per-song network round trip. `nil` when the song
+    /// id isn't in the index, or is but carries none of the four fields.
+    /// See #25, epic #11.
+    func workMetadata(songId: String) async throws(NavidromeError) -> WorkInfo? {
+        guard let song = try await songIndex().first(where: { $0.id == songId }) else { return nil }
+        let tags = song.tags ?? [:]
+        let info = WorkInfo(
+            work: tags["work"]?.first,
+            movementName: tags["movementname"]?.first,
+            movementNumber: tags["movement"]?.first.flatMap(Int.init),
+            movementTotal: tags["movementtotal"]?.first.flatMap(Int.init)
+        )
+        let isEmpty = info.work == nil && info.movementName == nil
+            && info.movementNumber == nil && info.movementTotal == nil
+        return isEmpty ? nil : info
+    }
 }
