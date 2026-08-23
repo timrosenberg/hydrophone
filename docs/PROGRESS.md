@@ -52,6 +52,61 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient foundation: auth, JWT lifecycle, pagination helper (2026-08-23)
+Issue #22 (E3, epic #11; blocks #23/#24/#25/#26). New `Services/NavidromeClient.swift`
+(`actor NavidromeClient`) and `Networking/NavidromeModels.swift`, standing up the
+native react-admin API (`/api/...`, separate from Subsonic's `/rest/`) alongside
+`SubsonicClient` — metadata only, no playback, per the E3 spike (#8).
+
+`login()` calls `POST /auth/login`, caches the returned JWT in-actor, and decodes
+its `exp` claim (no signature check — expiry-checking only, the server is the real
+authority) rather than guessing a TTL; `ensureValidToken()` reuses an unexpired
+cached token or re-logs-in, with a 30s leeway so a request built just before
+expiry doesn't land as a 401 mid-flight. `apiKeyAuthUnsupported` is a new
+`NavidromeError` case: the stored credentials can be OpenSubsonic API-key auth
+(no raw password to log in with), which the original issue spec hadn't accounted
+for — `login()` now fails cleanly instead of sending garbage as a password.
+
+`paginatedGet<T>()` walks react-admin list resources (`_start`/`_end`/`_sort`/`_order`,
+total via the `X-Total-Count` response header) fully, fetching pages concurrently
+after the first through the existing `AsyncLimiter(limit: 6)` (`Services/AsyncLimiter.swift`)
+— the same limiter and limit `ArtworkCache` already uses, and the concurrency level
+measured against a real library in #8/#22 (14.2s sequential vs 5.3s at 6-way for
+14,794 songs). A 401 triggers one re-login-and-retry per page; a second 401 is a
+real `authenticationFailed`. `fetchPage` bundles the per-call-constant parts
+(path/sort/order/extraQuery) into a private `PageQuery` to stay under SwiftLint's
+parameter-count limit.
+
+Hermetic tests (`NavidromeClientTests.swift`): JWT `exp` decoding against a real
+captured token shape, expiry/leeway boundary cases, login/API request construction
+(paths, headers, auth-method gating), and login-response decoding. Live tests
+(`NavidromeLiveTests.swift`, gated on `HYDROPHONE_HOST`/`USER`/`PASS` like
+`LiveDecodeTests`) exercise `login()` and `paginatedGet()` against a real server.
+
+**Live verification, and a discovered tooling gap:** `xcodebuild test` on this
+machine does **not** forward the invoking shell's environment into the XCTest
+runner process — confirmed via a temporary diagnostic assertion (`ProcessInfo`
+inside the test process saw 45 env vars, none of them `HYDROPHONE_*`, none
+matching what the invoking shell had; `IDETestRunnerAdditionalEnvironmentVariables`
+didn't change this). This is **not new to this issue** — `LiveDecodeTests` has the
+identical silent-skip problem today (confirmed by comparing durations: both old
+and new "live" tests complete in the same near-zero time whether or not the env
+vars are set). Actual live verification was done by compiling the real
+`NavidromeClient.swift`/`NavidromeModels.swift`/`CredentialStore.swift`/
+`AsyncLimiter.swift` sources standalone with `swiftc` (inheriting the shell
+environment directly, bypassing `xcodebuild`) and running them against Tim's real
+server: `login()` succeeded (JWT decoded correctly, valid ~48h out); `paginatedGet`
+against `/api/artist` returned 2,766 composers+artists; against `/api/song` returned
+14,794 songs in ~5.2s, matching the #8 benchmark. The scratch harness was deleted
+after verification, nothing added to the repo. **Follow-up worth filing:** the
+`HydrophoneTests` scheme needs its Test action's environment variables wired
+(scheme-level, not committed with real values) for `xcodebuild test` to actually
+exercise any live test locally — affects `LiveDecodeTests` too, pre-existing.
+
+Build clean (zero warnings introduced; three pre-existing `ScrollMemory.swift`
+Sendable-capture warnings confirmed present on `main` before this branch).
+Full suite green. SwiftLint clean.
+
 ## Composer column shown in Album, Songs, Favorites, Search (2026-08-22)
 Issue #4 (part of #1, blocked by #3). Adds `.composer` to the `columns:`
 array in `AlbumDetailView`, `SongsView`'s flat-table branch, `FavoritesView`,
