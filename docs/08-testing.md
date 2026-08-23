@@ -80,12 +80,13 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 182 tests)
+## Current suite (Swift Testing, 183 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
-`QualityLabelTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
+`QualityLabelTests` · `ExpandedTrackColumnsTests` · `ArtworkCacheTests` ·
+`NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
 `FlacStreamingTests` · `AlbumFilterEndpointTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
@@ -98,6 +99,10 @@ but with its own mock-protocol type (`ConnectionProbeMockProtocol`) so the two
 suites' shared static state can't race each other — this suite has to stub
 both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s native ones
 in the same test, since `ConnectionModel` drives both.
+
+`ExpandedTrackColumnsTests` drives the real AppKit table-sort delegate path
+and verifies missing Date Added, Last Played, Plays, and Sample Rate values
+remain last in both ascending and descending order.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 

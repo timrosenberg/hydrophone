@@ -145,6 +145,11 @@ struct MusicTrackTable: NSViewRepresentable {
                 (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "") == .orderedAscending
             }
             return parent.tracks.sorted { lhs, rhs in
+                if let result = expandedColumnOrderedBefore(
+                    id: key, lhs: lhs, rhs: rhs, ascending: asc
+                ) {
+                    return result
+                }
                 let result: Bool
                 switch key {
                 case "number":  // disc-aware track order
@@ -156,7 +161,7 @@ struct MusicTrackTable: NSViewRepresentable {
                 case "genre": result = text(lhs.displayGenre, rhs.displayGenre)
                 case "quality": result = lhs.qualityRank < rhs.qualityRank
                 case "time": result = (lhs.duration ?? 0) < (rhs.duration ?? 0)
-                default: result = expandedColumnAscending(id: key, lhs: lhs, rhs: rhs) ?? text(lhs.title, rhs.title)
+                default: result = text(lhs.title, rhs.title)
                 }
                 return asc ? result : !result
             }

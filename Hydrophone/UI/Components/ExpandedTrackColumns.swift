@@ -45,24 +45,31 @@ extension MusicTrackTable.Coordinator {
         }
     }
 
-    /// Ascending-order comparison for one of the 8 expanded columns, or nil
-    /// if `id` isn't one of them. Missing dates/counts coalesce to the
-    /// lowest sentinel — the same "absent sorts first ascending" convention
-    /// as `.quality`'s `qualityRank` and the text columns' empty-string
-    /// coalesce.
-    func expandedColumnAscending(id: String, lhs: Song, rhs: Song) -> Bool? {
+    /// Sort comparison for one of the 8 expanded columns, or nil if `id`
+    /// isn't one of them. Missing dates/counts always sort last; real values
+    /// follow the selected direction.
+    func expandedColumnOrderedBefore(id: String, lhs: Song, rhs: Song, ascending: Bool) -> Bool? {
         func text(_ lhs: String?, _ rhs: String?) -> Bool {
-            (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "") == .orderedAscending
+            let comparison = (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "")
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+        func value<Value: Comparable>(_ lhs: Value?, _ rhs: Value?) -> Bool {
+            switch (lhs, rhs) {
+            case (nil, nil): false
+            case (nil, _): false
+            case (_, nil): true
+            case let (lhs?, rhs?): ascending ? lhs < rhs : lhs > rhs
+            }
         }
         switch id {
         case "albumArtist": return text(lhs.displayAlbumArtist, rhs.displayAlbumArtist)
         case "comments": return text(lhs.comment, rhs.comment)
         case "grouping":
             return text(lhs.groupings?.joined(separator: ", "), rhs.groupings?.joined(separator: ", "))
-        case "dateAdded": return (lhs.created ?? .distantPast) < (rhs.created ?? .distantPast)
-        case "lastPlayed": return (lhs.played ?? .distantPast) < (rhs.played ?? .distantPast)
-        case "plays": return (lhs.playCount ?? 0) < (rhs.playCount ?? 0)
-        case "sampleRate": return (lhs.samplingRate ?? 0) < (rhs.samplingRate ?? 0)
+        case "dateAdded": return value(lhs.created, rhs.created)
+        case "lastPlayed": return value(lhs.played, rhs.played)
+        case "plays": return value(lhs.playCount, rhs.playCount)
+        case "sampleRate": return value(lhs.samplingRate, rhs.samplingRate)
         case "sortTitle": return text(lhs.sortName, rhs.sortName)
         default: return nil
         }
