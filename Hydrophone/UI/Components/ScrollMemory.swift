@@ -26,11 +26,12 @@ extension Binding where Value == String? {
     ///   reused across content (the artist page): another scope's memory
     ///   reads as nil, so switching content starts at the top and only Back
     ///   restores.
-    static func scrollMemory(read: @escaping () -> String,
-                             write: @escaping (String) -> Void,
+    @MainActor
+    static func scrollMemory(read: @escaping @MainActor () -> String,
+                             write: @escaping @MainActor (String) -> Void,
                              consumed: Binding<Bool>,
                              scope: String? = nil,
-                             topIDs: @escaping () -> Set<String> = { [] }) -> Binding<String?> {
+                             topIDs: @escaping @MainActor () -> Set<String> = { [] }) -> Binding<String?> {
         Binding<String?>(
             get: {
                 guard !consumed.wrappedValue else { return nil }
