@@ -52,6 +52,37 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient: address PR #27 re-review findings (2026-08-23)
+Re-review of #27 found the first credential-binding fix (previous entry) was
+incomplete, plus a leftover stale count.
+
+**[P2] Credential snapshot wasn't held for the whole `paginatedGet` walk.**
+The previous fix made one `fetchPage()` call internally consistent, but each
+page — including the concurrent pages after page zero, and a 401 retry —
+still called `credentials.load()` independently. A Settings change between
+page zero completing and the remaining pages firing could still mix pages
+from two different servers/accounts into one result; the existing
+credential-change test couldn't catch this because its mock always returned
+a single-page `X-Total-Count: 1`. Fixed: `PageQuery` (already "the parts that
+stay constant across every page") now also carries the `ServerCredentials`
+snapshot, loaded once at the top of `paginatedGet()` and threaded through
+every page — including the 401-retry recursion, which reuses the same
+`query`. New `credentialChangeMidMultiPageWalkDoesNotMixServers` test: a
+2-page walk (`X-Total-Count: 1000`, pageSize 500) whose mock handler saves
+new credentials to the store on the *first* `/api/artist` request (simulating
+Settings changing mid-walk); asserts every page still targeted the original
+host.
+
+**[P2] Stale test count survived in a second location.** `docs/08-testing.md`
+was corrected to 154 in the previous round, but the older canonical
+`## Verification status` block further down this file still said 67 —
+two contradictory counts in one file. Fixed in place; that section is a
+dated historical snapshot (2026-06-22) otherwise left as-is, not rewritten.
+
+Re-verified against the real server after this fix: login + a full 14,794-song
+`/api/song` paginated walk succeeded end to end (the multi-page path this fix
+specifically targets). Build/test/swiftlint clean.
+
 ## NavidromeClient: address PR #27 review findings (2026-08-23)
 Codex's review of #27 (PR for #22) found two real bugs and two contract-sync
 gaps, all fixed on the same branch.
@@ -1527,9 +1558,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 67 tests,
-  0 failures), and CI repeats the run on every push
-  (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 154 tests,
+  0 failures — count current as of the E3/NavidromeClient foundation work,
+  2026-08-23; see that entry above for the added suites), and CI repeats the
+  run on every push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
