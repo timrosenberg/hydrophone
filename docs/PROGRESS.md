@@ -103,13 +103,32 @@ above `## Environment`):
   repeat, then `invalidateSongIndex()` (the literal call
   `startLibraryScan()` makes) forced a full ~4.4s re-walk on the next call —
   confirms the cache is actually cleared, not just marked stale.
-- Not captured: a UI click-through of the Settings status line itself — this
-  session's browser/GUI automation lacks the Accessibility permission needed
-  to drive the running app, so the visual result wasn't screenshotted. The
-  status line is a direct SwiftUI `switch` over the now-verified
-  `nativeFeaturesState`, and the harness above proves the state machine it
-  reads produces the right value end-to-end against a real server.
 - The harness was deleted after verification (kept out of the repo).
+
+**Actual-app UI verification (2026-08-23), same server, via screen automation**
+(Tim granted the terminal Accessibility access mid-session so this could be
+driven for real, not just through the harness above). Launched the Debug
+build with `HYDROPHONE_SCREENSHOT_FRESH=1` (in-memory credentials, never
+touches the real Keychain item) and drove Settings → Connection by hand:
+- Filled in `demo.navidrome.org` / `demo` / `demo` and clicked **Save &
+  Connect** → `Connected to navidrome 0.63.2 (be10f89c)`, and immediately
+  below it, in the scan-trigger section: **✅ "Native Navidrome features
+  available"** — the read-only status line, live, in green, exactly as
+  designed.
+- Clicked **Scan Library** on that same (unprivileged) demo account →
+  `Server error 50: User is not authorized for the given operation`, surfaced
+  cleanly in `scanMessage` with no crash; the native-features line stayed
+  `available`, unaffected. (Confirms `startLibraryScan()`'s failure path is
+  inert — `invalidateSongIndex()` only fires from the success branch, which
+  the demo account can't reach; that success path is the one the harness and
+  `ConnectionModelNativeFeaturesTests` already prove directly.)
+- Disconnected, then retried **Save & Connect** with a deliberately wrong
+  password → `Server error 40: Wrong username or password`, connection stays
+  `Not Connected`, and no native-features line appears at all (state never
+  reaches `.connected`, so the probe never runs — the flag never claims
+  availability). Zero regressions, zero crashes.
+- Quit the app afterward; no server state or Keychain item touched (fresh
+  in-memory credentials only).
 
 ## PR #31: refresh song-index branch from `main` (2026-08-23)
 Merged `origin/main` at `40283cb7ddb3f0e94df30543f20518a8fa991630`
