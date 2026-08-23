@@ -97,6 +97,9 @@ struct MusicTrackTable: NSViewRepresentable {
         // selector-based observer is auto-unregistered on dealloc.
         var scrollRestored = false
         var pendingScrollSave: DispatchWorkItem?
+        // Column-resize persistence (see TrackColumnPicker.swift), debounced
+        // the same way.
+        var pendingColumnWidthSave: DispatchWorkItem?
 
         private(set) var rows: [TrackTableRow] = []
 

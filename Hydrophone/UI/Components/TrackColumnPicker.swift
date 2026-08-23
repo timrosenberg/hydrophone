@@ -37,6 +37,10 @@ extension MusicTrackTable.Coordinator {
             table.removeTableColumn(existing)
         } else if let column = TrackColumn(id: id) {
             let newColumn = column.makeTableColumn(sortable: parent.sortable)
+            if let viewKind = columnViewKind,
+               let width = TrackColumnPreferences.persistedWidth(for: column.id, in: viewKind) {
+                newColumn.width = width
+            }
             table.addTableColumn(newColumn)
             // New columns land just before the trailing favorite column,
             // matching addColumns(to:)'s construction order.
@@ -70,11 +74,22 @@ extension MusicTrackTable.Coordinator {
                                                name: NSTableView.columnDidMoveNotification, object: table)
     }
 
+    /// Debounced the same way scroll-offset persistence is (see
+    /// `TrackTablePersistence.scrollBoundsChanged(_:)`): a border drag fires
+    /// this repeatedly, and only the width once the drag settles is worth a
+    /// write.
     @objc private func columnDidResize(_ note: Notification) {
         guard let viewKind = columnViewKind,
               let column = note.userInfo?["NSTableColumn"] as? NSTableColumn,
               TrackColumn(id: column.identifier.rawValue) != nil else { return }
-        TrackColumnPreferences.persistWidth(column.width, for: column.identifier.rawValue, in: viewKind)
+        let columnID = column.identifier.rawValue
+        let width = column.width
+        pendingColumnWidthSave?.cancel()
+        let work = DispatchWorkItem {
+            TrackColumnPreferences.persistWidth(width, for: columnID, in: viewKind)
+        }
+        pendingColumnWidthSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     @objc private func columnDidMove(_ note: Notification) {

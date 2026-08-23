@@ -59,7 +59,12 @@ extension MusicTrackTable {
 
         if columnsCustomizable {
             let header = InnerTableHeaderView()
-            header.menuProvider = { context.coordinator.columnPickerMenu(for: table) }
+            // Weak: table retains header (headerView), so a strong capture of
+            // `table` here would close the loop table → header → closure → table.
+            header.menuProvider = { [weak table] in
+                guard let table else { return nil }
+                return context.coordinator.columnPickerMenu(for: table)
+            }
             table.headerView = header
             context.coordinator.observeColumnChanges(of: table)
         }

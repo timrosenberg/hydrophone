@@ -52,6 +52,40 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #37: address review findings (2026-08-23)
+Review of PR #42 at `3c26dfd` found four issues, all fixed on the same
+branch:
+
+- **[P1] Table-header retain cycle.** `makeNSView`'s `header.menuProvider`
+  closure captured `table` strongly; `table.headerView = header` already
+  retains `header`, so the pair closed `table → header → closure → table`.
+  Fixed with `[weak table]` in the closure, guarding on `nil` — the
+  coordinator's own `table` reference was already weak, so this was the
+  only strong leg of the cycle.
+- **[P2] Re-adding a hidden column lost its resized width.** `toggleColumn`'s
+  add path always used `TrackColumn.widths.initial`, unlike `addColumns(to:)`,
+  which already checks `TrackColumnPreferences.persistedWidth`. Now checks
+  it too. Live-verified: resized Genre to 222pt (set directly via the
+  Accessibility API, since the table's rendered content was wider than the
+  window and made a real mouse-drag land off-screen), hid it, showed it
+  again — restored at exactly 222pt, not the 100pt default.
+- **[P2] Resize persistence wasn't debounced.** `columnDidResize` wrote to
+  `UserDefaults` on every notification during a drag, not just once it
+  settles — #37 explicitly asked for the same debounce scroll-offset
+  persistence already uses. Added a `pendingColumnWidthSave: DispatchWorkItem?`
+  on `Coordinator` (parallel to `pendingScrollSave`) and mirrored
+  `scrollBoundsChanged(_:)`'s cancel-and-reschedule pattern exactly.
+- **[P2] `docs/04-ui-ux.md` didn't mention the picker.** Only `PROGRESS.md`
+  described it; the state-restoration list still said sort/scroll only, and
+  the Track Table section still described a fixed column set. Both updated:
+  the restoration list now notes column visibility/order/width persistence
+  on `columnsCustomizable` views, and a new bullet describes the picker,
+  its `.number` exclusion, and that it's opt-in per call site.
+
+Build clean, zero warnings; full suite green (190 tests, unchanged — no new
+hermetic coverage, matching the original entry's reasoning); SwiftLint
+clean across 95 files.
+
 ## Issue #37: header context-menu column picker (2026-08-23)
 E2 (#10), sub-issue 4 of 5; blocked by #35 and #36. Right-click a column
 header → checkable list of every togglable column; reorder/resize (already

@@ -24,7 +24,11 @@ workflow.)
   app-wide, so they restore regardless of the system's window-restoration
   setting). Scroll position persists too for the stable library views
   (Songs/Favorites/browser; content-specific views like album detail
-  deliberately don't). See `06`.
+  deliberately don't). On views that opt into `columnsCustomizable`
+  (Songs today; the rest of `TrackTableView`'s call sites are still on the
+  fixed default per #38), column **visibility, order, and width** persist
+  the same way (`TrackColumnPreferences`, `trackColumns.*`/
+  `trackColumnWidth.*`) — see the Track table section below. See `06`.
 
 ## Layout ✅
 
@@ -91,7 +95,16 @@ rendered visibly washed out.
 - AppKit-backed **`MusicTrackTable`** (via the `TrackTableView` wrapper — see
   the M5 notes in `PROGRESS.md`) with click-to-sort columns: Title, Artist,
   Album, Genre, Quality, Time, plus the now-playing speaker and ★ columns.
-  Per-view column sets.
+  Per-view column sets, expandable to 8 more (Album Artist, Comments,
+  Grouping, Date Added, Last Played, Plays, Sample Rate, Sort Title — E2).
+- **Column picker**: right-click a column header for a checkable list of
+  every column the view could show (all of `TrackColumn` except `.number`,
+  which doubles as the now-playing indicator and stays a per-call-site
+  choice). Toggling shows/hides live; reordering (drag) and resizing (drag
+  the border) already work natively. All three — visible set, order, and
+  width — persist per view kind via `TrackColumnPreferences`. Opt-in per
+  call site (`MusicTrackTable.columnsCustomizable`), not automatic just from
+  using the shared table — see `TrackColumnPicker.swift`.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
