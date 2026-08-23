@@ -80,7 +80,7 @@ real-library Schubert movement fixture from the issue body, a work with no
 numbered movement, and the nil cases.
 
 **Verification:** build succeeds with zero compiler warnings; full suite green
-(**TEST SUCCEEDED**, 172 tests, 0 failures — up from 167 by these 6; ran three
+(**TEST SUCCEEDED**, 173 tests, 0 failures — up from 167 by these 6; ran three
 times back-to-back with no flakes to rule out a suite-ordering race); SwiftLint
 reports 0 violations across 89 files. Live-verified 2026-08-23 against Tim's
 real Navidrome server: compiled `NavidromeClient`/`NavidromeModels`/
@@ -1818,7 +1818,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 172 tests,
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 173 tests,
   0 failures — count current after #25's composer-song-lookup coverage,
   2026-08-23; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
