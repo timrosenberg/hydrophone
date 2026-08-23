@@ -186,3 +186,18 @@ func formatTime(_ seconds: Int?) -> String {
 func formatTime(_ seconds: TimeInterval) -> String {
     formatTime(Int(seconds.rounded()))
 }
+
+/// Short localized date for the Date Added / Last Played columns.
+func formatShortDate(_ date: Date?) -> String {
+    guard let date else { return "—" }
+    return date.formatted(date: .abbreviated, time: .omitted)
+}
+
+/// "44 kHz"-style label for the Sample Rate column; one decimal only when
+/// the rate isn't a whole number of kHz (e.g. 44.1 kHz).
+func formatSampleRate(_ hertz: Int?) -> String {
+    guard let hertz, hertz > 0 else { return "—" }
+    let khz = Double(hertz) / 1000
+    guard khz.truncatingRemainder(dividingBy: 1) != 0 else { return "\(Int(khz)) kHz" }
+    return String(format: "%.1f kHz", khz)
+}

@@ -145,6 +145,11 @@ struct MusicTrackTable: NSViewRepresentable {
                 (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "") == .orderedAscending
             }
             return parent.tracks.sorted { lhs, rhs in
+                if let result = expandedColumnOrderedBefore(
+                    id: key, lhs: lhs, rhs: rhs, ascending: asc
+                ) {
+                    return result
+                }
                 let result: Bool
                 switch key {
                 case "number":  // disc-aware track order
@@ -280,7 +285,7 @@ struct MusicTrackTable: NSViewRepresentable {
             case "album": text = song.album ?? "—"
             case "genre": text = song.displayGenre ?? "—"
             case "time": text = formatTime(song.duration)
-            default: text = ""
+            default: text = expandedColumnText(id: id, song: song) ?? ""
             }
             let label = NSTextField(labelWithString: text)
             label.lineBreakMode = .byTruncatingTail
@@ -290,14 +295,8 @@ struct MusicTrackTable: NSViewRepresentable {
             let cell: NSTableCellView = (id == "title") ? NSTableCellView() : SecondaryTextCell()
             if id != "title" { label.textColor = .secondaryLabelColor }
             cell.textField = label
-            if id == "time" || id == "number" {
-                // Numbers center under the # header (sharing the column with
-                // the centered now-playing speaker); times stay right-aligned.
-                label.alignment = (id == "number") ? .center : .right
-                label.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-            }
             cell.addSubview(label)
-            let trailing = (id == "time") ? -6.0 : -4.0
+            let trailing = styleAlignment(of: label, id: id)
             NSLayoutConstraint.activate([
                 label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
                 label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: trailing),
