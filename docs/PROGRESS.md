@@ -52,6 +52,32 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## PR #31: refresh song-index branch from `main` (2026-08-23)
+Merged `origin/main` at `40283cb7ddb3f0e94df30543f20518a8fa991630`
+into `issue-24-navidrome-song-index` after GitHub reported PR #31 as
+`DIRTY`/`CONFLICTING`; no rebase or history rewrite. The five conflicts were
+additive overlaps from #30's composer-roster work and #31's song-index work:
+`NavidromeModels.swift`, two Navidrome network/live test files,
+`docs/08-testing.md`, and `docs/PROGRESS.md`. Resolution keeps both model and
+client APIs, both test families, and both progress histories. The combined
+suite count is 167 (the 164-test #31 head plus #30's three composer tests).
+
+Combining both feature lines crossed two SwiftLint size thresholds. The
+`composers()` method now lives in a same-file `NavidromeClient` extension, and
+its network regression lives in `NavidromeComposerNetworkTests.swift` as an
+extension of the existing serialized suite. This preserves the suite's shared
+mock ordering without lint suppressions; no runtime behavior changed.
+
+**Verification:** full build succeeded with no compiler diagnostics; the
+Xcode result reports 167 passed, 0 failed, and 0 skipped; SwiftLint reports 0
+violations across 88 files. Xcode also emitted its existing tool-level notices
+for the ambiguous universal-Mac destination and skipped App Intents metadata
+extraction. Live verification against the public demo server on 2026-08-23
+returned 18 localized-name-sorted composer rows in 0.513s and 501 songs in
+0.517s; the cached song-index call took 0.000048s, and two concurrent calls
+after invalidation both returned all 501 songs in 0.319s total. The standalone
+scratch harness was deleted after verification.
+
 ## NavidromeClient: close PR #31 re-review findings (2026-08-23)
 Re-review of #31 at `fb08e4eb796287c4760260ffa1574825ba55da8f`
 found that the first generation-counter fix did not retire an in-flight
@@ -188,6 +214,39 @@ returned instantly (0.0000s); after `invalidateSongIndex()`, two concurrent
 `songIndex()` calls both returned all 501 songs in 0.37s total — one walk's
 worth of time, confirming the coalescing fix holds against a real server, not
 just the mock. Build/test/swiftlint clean.
+## NavidromeClient: composer roster — `composers()` (2026-08-23)
+Closes #23 (E3, epic #11), built on #22's `paginatedGet` helper.
+
+- Added `Composer` (`Networking/NavidromeModels.swift`): `id`, `name`, plus
+  optional `songCount`/`albumCount` read tolerantly from the nested
+  `stats.composer` object via a custom `init(from:)` — every field but
+  `id`/`name` is optional since this is an internal/undocumented API.
+- Added `NavidromeClient.composers()`: walks `/api/artist` via `paginatedGet`
+  with `role=composer`, `sort=name`, `order=ASC`, then applies a final
+  `localizedStandardCompare` sort after pagination. Live verification exposed
+  a Navidrome database-collation mismatch (`André Caplet` before
+  `Andre Caplet`); the final client sort now guarantees macOS-localized order.
+- Roster rows are surfaced exactly as Navidrome presents them, including its
+  synthetic joint-credit entities (e.g. one row named "A, B, and C" for a
+  jointly-credited track, with its own id, distinct from A/B/C's individual
+  rows) — matching the existing `displayComposer` show-the-server's-string
+  convention. No dedup attempted; that's explicitly out of scope.
+- Hermetic fixture decode test (`NavidromeClientTests.decodesComposerRoster`)
+  covers a regular row, a joint-credit row, and a row missing `stats`
+  entirely (tolerant decode must not throw).
+- Hermetic network regression test
+  (`NavidromeClientNetworkTests.composersSortsServerRosterWithLocalizedStandardOrder`)
+  covers the accented/unaccented collation mismatch independently of server
+  database behavior.
+- Live-verified against Tim's real library (`music.tail9575a5.ts.net`,
+  14,794 tracks): `composers()` returned all 1,696 composer rows,
+  localized-name-sorted after the client fix, matching a direct `curl`
+  cross-check of the same endpoint's complete roster
+  (`X-Total-Count: 1696`); covered by a new opt-in
+  `NavidromeLiveTests.composersReturnsNonEmptyNameSortedRoster`.
+- No UI — `Composer` is a data-layer method only; E4 (#12) consumes it later.
+
+---
 
 ## NavidromeClient: address PR #27 re-review findings (2026-08-23)
 Re-review of #27 found the first credential-binding fix (previous entry) was
@@ -331,6 +390,29 @@ exercise any live test locally — affects `LiveDecodeTests` too, pre-existing.
 Build clean (zero warnings introduced; three pre-existing `ScrollMemory.swift`
 Sendable-capture warnings confirmed present on `main` before this branch).
 Full suite green. SwiftLint clean.
+
+## Fix: ScrollMemory Sendable-capture warnings (2026-08-23)
+Unticketed. `Binding.scrollMemory(read:write:consumed:scope:topIDs:)`
+(`UI/Components/ScrollMemory.swift`) triggered three Swift 6 strict-concurrency
+warnings: `read`/`write`/`topIDs` (plain, non-`Sendable` closures) were captured
+inside `Binding`'s `get`/`set`, which this SDK types as `@Sendable`. Marking the
+three parameters `@Sendable` only relocated the problem — it surfaced that the
+callers' closures (`ArtistsView`, `AlbumsView`, `HomeView`) capture
+`@AppStorage`-backed, main-actor-isolated view state, which genuinely can't be
+Sendable. The correct fix: mark `read`/`write`/`topIDs` **and** the
+`scrollMemory` function itself `@MainActor` instead — the true isolation this
+code always ran under (SwiftUI view bodies/modifiers), not `@Sendable`. A
+main-actor-isolated closure is itself `Sendable` per Swift's actor-isolation
+rules, so this satisfies `Binding`'s requirement without misrepresenting where
+the code actually runs. Pure annotation fix — no logic changed.
+
+Build/test/swiftlint clean (zero warnings, down from three pre-existing).
+**Live verification partial:** the built app launches and connects to a real
+Navidrome server without crashing (rules out a MainActor deadlock/trap from the
+isolation change), but this sandbox has no Accessibility permission granted, so
+scripted UI clicks (`cliclick`/`osascript`) silently no-op — couldn't
+interactively confirm scroll-restore still works in Albums/Home/Artists.
+Flagged for Tim to spot-check before merging.
 
 ## Composer column shown in Album, Songs, Favorites, Search (2026-08-22)
 Issue #4 (part of #1, blocked by #3). Adds `.composer` to the `columns:`
@@ -1695,9 +1777,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 164 tests,
-  0 failures — count current as of the #24/`songIndex()` work and its PR #31
-  review fixes, 2026-08-23; see those entries above for the added coverage),
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 167 tests,
+  0 failures — count current after merging #23's composer-roster coverage
+  into #24/PR #31's song-index branch, 2026-08-23; see those entries above),
   and CI repeats the run on every push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)

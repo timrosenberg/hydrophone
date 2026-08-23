@@ -95,3 +95,41 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
         let name: String
     }
 }
+
+/// Mirrors the `stats` object on an `/api/artist` row, of which only
+/// `composer` is read here (siblings `artist`/`albumartist`/`maincredit`
+/// exist but aren't needed for the roster).
+private struct ComposerRosterStats: Decodable {
+    var composer: ComposerCounts?
+}
+
+private struct ComposerCounts: Decodable {
+    var songCount: Int?
+    var albumCount: Int?
+}
+
+/// One row from `/api/artist?role=composer` — the composer roster.
+/// Some rows are synthetic joint-credit entities (e.g. a track crediting
+/// three composers jointly produces one row named "A, B, and C" with its own
+/// id, distinct from A/B/C's individual rows). That's Navidrome's own
+/// behavior, not deduplicated here — surfaced as the server presents it, the
+/// same convention `displayComposer` already follows. See #23, epic #11.
+struct Composer: Identifiable, Sendable, Decodable {
+    let id: String
+    let name: String
+    var songCount: Int?
+    var albumCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, stats
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        let stats = try container.decodeIfPresent(ComposerRosterStats.self, forKey: .stats)
+        songCount = stats?.composer?.songCount
+        albumCount = stats?.composer?.albumCount
+    }
+}
