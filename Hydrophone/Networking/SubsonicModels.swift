@@ -35,6 +35,22 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// OpenSubsonic loudness tags, carried through by Navidrome when the
     /// files are tagged. Drives volume normalization (see ReplayGainMode).
     var replayGain: ReplayGainInfo?
+    /// OpenSubsonic display-ready album-artist string (server-joined, same
+    /// convention as `displayComposer`).
+    var displayAlbumArtist: String?
+    var comment: String?
+    /// OpenSubsonic song groupings, represented as a string array. Navidrome
+    /// sources these from Grouping/GRP1 tags; the array shape was confirmed
+    /// live 2026-08-23 against demo.navidrome.org.
+    var groupings: [String]?
+    /// When this file was added to the library.
+    var created: Date?
+    /// When this file was last played; absent if never played.
+    var played: Date?
+    var playCount: Int?
+    var samplingRate: Int?
+    /// Sort-key title (e.g. strips a leading "The"), distinct from `title`.
+    var sortName: String?
 
     var isStarred: Bool { starred != nil }
     /// Genre for display, preferring the legacy field, then the OpenSubsonic array.
@@ -79,6 +95,7 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         case track, discNumber, year, genre, genres, bitRate, suffix, contentType, size, starred
         case displayComposer
         case replayGain
+        case displayAlbumArtist, comment, groupings, created, played, playCount, samplingRate, sortName
     }
 }
 

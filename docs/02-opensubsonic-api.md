@@ -153,7 +153,9 @@ otherwise; see `SubsonicClient.formPostRequest`).
 to the wire, then map to UI value types where the wire shape is awkward. Notable
 fields: `id`, `title`/`name`, `artist`/`artistId`, `album`/`albumId`,
 `coverArt`, `duration`, `track`, `discNumber`, `year`, `genre`, `bitRate`,
-`suffix`, `contentType`, `starred` (date → `isStarred`).
+`suffix`, `contentType`, `starred` (date → `isStarred`), plus the expanded
+track-column metadata: `displayAlbumArtist`, `comment`, `groupings` (`[String]`),
+`created`/`played` (dates), `playCount`, `samplingRate`, and `sortName`.
 
 Decoding notes: Subsonic returns single-vs-array inconsistencies and
 string-encoded numbers in places; write tolerant decoders + fixtures (see `08`).
