@@ -80,16 +80,24 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 167 tests)
+## Current suite (Swift Testing, 174 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
-`PlaylistEndpointTests` · `PlaybackConfigTests` · `PlayerQueueTests` ·
-`QueueEditingTests` · `QualityLabelTests` · `ArtworkCacheTests` ·
-`NowPlayingCenterTests` · `DecodeContinuityTests` · `DiscHeaderTests` ·
-`EndpointGoldenTests` · `FlacStreamingTests` · `AlbumFilterEndpointTests` ·
-`ReplayGainTests` · `StarringTests` · `NavidromeClientTests` ·
-`NavidromeClientNetworkTests` · `LiveDecodeTests` (opt-in) ·
-`NavidromeLiveTests` (opt-in).
+`ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
+`PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
+`QualityLabelTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
+`DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
+`FlacStreamingTests` · `AlbumFilterEndpointTests` · `ReplayGainTests` ·
+`StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
+`LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
+
+`ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
+probe and its scan → song-index-invalidation hook. Same seam as
+`NavidromeClientNetworkTests` (a stubbed `URLProtocol`, `@Suite(.serialized)`)
+but with its own mock-protocol type (`ConnectionProbeMockProtocol`) so the two
+suites' shared static state can't race each other — this suite has to stub
+both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s native ones
+in the same test, since `ConnectionModel` drives both.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 
