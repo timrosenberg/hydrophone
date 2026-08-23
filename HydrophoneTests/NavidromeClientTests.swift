@@ -53,6 +53,35 @@ struct NavidromeClientTests {
         #expect(decoded.token == sampleJWT)
     }
 
+    // MARK: - Composer decoding
+
+    /// A representative `/api/artist?role=composer` page: a regular composer
+    /// row, a synthetic joint-credit row (own id, comma-joined name), and a
+    /// row missing `stats` entirely (tolerant decode must not throw).
+    @Test func decodesComposerRoster() throws {
+        let json = """
+        [
+          {"id":"ar1","name":"Johannes Brahms","stats":{
+            "artist":{"songCount":40,"albumCount":6,"size":123456},
+            "composer":{"songCount":38,"albumCount":6,"size":120000}}},
+          {"id":"ar2","name":"Brahms, Clara Schumann, and Robert Schumann","stats":{
+            "composer":{"songCount":3,"albumCount":1,"size":9000}}},
+          {"id":"ar3","name":"No Stats Composer"}
+        ]
+        """
+        let decoded = try JSONDecoder().decode([Composer].self, from: Data(json.utf8))
+        #expect(decoded.count == 3)
+        #expect(decoded[0].id == "ar1")
+        #expect(decoded[0].name == "Johannes Brahms")
+        #expect(decoded[0].songCount == 38)
+        #expect(decoded[0].albumCount == 6)
+        #expect(decoded[1].name == "Brahms, Clara Schumann, and Robert Schumann")
+        #expect(decoded[1].songCount == 3)
+        #expect(decoded[2].name == "No Stats Composer")
+        #expect(decoded[2].songCount == nil)
+        #expect(decoded[2].albumCount == nil)
+    }
+
     // MARK: - Request construction
 
     private func client(authMethod: ServerCredentials.AuthMethod = .tokenSalt) -> NavidromeClient {

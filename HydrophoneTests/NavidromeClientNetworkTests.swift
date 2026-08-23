@@ -135,6 +135,30 @@ struct NavidromeClientNetworkTests {
         }
     }
 
+    /// Navidrome's database collation can put an accented spelling before
+    /// its otherwise-identical unaccented spelling. `composers()` promises
+    /// the macOS-localized order consumed by the UI, independent of that
+    /// server-side collation.
+    @Test func composersSortsServerRosterWithLocalizedStandardOrder() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/auth/login") {
+                let jwt = Self.makeJWT(exp: Date().addingTimeInterval(3600).timeIntervalSince1970)
+                let body = #"{"token":"\#(jwt)","subsonicSalt":"s","subsonicToken":"t","username":"tim"}"#
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            let body = #"[{"id":"accented","name":"André Caplet"},{"id":"plain","name":"Andre Caplet"}]"#
+            let headers = ["Content-Type": "application/json", "X-Total-Count": "2"]
+            return .init(status: 200, headers: headers, body: Data(body.utf8))
+        }
+        let client = NavidromeClient(credentials: InMemoryCredentialStore(creds()), session: makeSession())
+
+        let names = try await client.composers().map(\.name)
+
+        #expect(names == ["Andre Caplet", "André Caplet"])
+    }
+
     // MARK: - Handler
 
     /// Builds a request handler serving `/auth/login` and any `/api/<resource>`
