@@ -14,6 +14,12 @@ actor NavidromeClient {
     private let encoder = JSONEncoder()
 
     private var cachedToken: NavidromeToken?
+    /// The credentials `cachedToken` was actually derived from. A token is
+    /// only reused when the store's *current* credentials still match this
+    /// snapshot — otherwise a token minted for one server/account could be
+    /// replayed against a different one after Settings changes the
+    /// connection (host swap, account swap, or a rotated password).
+    private var cachedTokenCredentials: ServerCredentials?
 
     /// Bounds concurrent page fetches during `paginatedGet`. Same limit as
     /// `ArtworkCache`'s fetch limiter (`Services/AsyncLimiter.swift`) — 6-way
@@ -29,13 +35,17 @@ actor NavidromeClient {
 
     // MARK: - Auth
 
-    /// Logs in and caches the resulting token. Call directly to force a fresh
-    /// login (e.g. a feature-detection probe); ordinary requests should go
-    /// through `ensureValidToken()` instead so an unexpired cached token is
-    /// reused.
+    /// Logs in and caches the resulting token against the credentials used.
+    /// Call directly to force a fresh login (e.g. a feature-detection probe);
+    /// ordinary requests should go through `ensureValidToken()` instead so an
+    /// unexpired, still-current-credentials token is reused.
     @discardableResult
     func login() async throws(NavidromeError) -> NavidromeToken {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        return try await login(using: creds)
+    }
+
+    private func login(using creds: ServerCredentials) async throws(NavidromeError) -> NavidromeToken {
         guard creds.authMethod == .tokenSalt else { throw NavidromeError.apiKeyAuthUnsupported }
         let request = try loginRequest(using: creds)
 
@@ -62,13 +72,25 @@ actor NavidromeClient {
         }
         let token = NavidromeToken(raw: decoded.token, expiresAt: NavidromeToken.decodeExpiry(fromJWT: decoded.token))
         cachedToken = token
+        cachedTokenCredentials = creds
         return token
     }
 
-    /// Returns the cached token if it isn't (near) expired, else logs in again.
-    private func ensureValidToken() async throws(NavidromeError) -> NavidromeToken {
-        if let cachedToken, !cachedToken.isExpired() { return cachedToken }
-        return try await login()
+    /// Returns the cached token if it isn't (near) expired **and** the store's
+    /// current credentials still match the ones it was minted for; otherwise
+    /// logs in again against `creds`. `creds` is threaded in by the caller
+    /// (rather than reloaded here) so one `fetchPage` call uses a single
+    /// consistent credential snapshot for both auth and URL construction.
+    private func ensureValidToken(using creds: ServerCredentials) async throws(NavidromeError) -> NavidromeToken {
+        if let cachedToken, cachedTokenCredentials == creds, !cachedToken.isExpired() {
+            return cachedToken
+        }
+        return try await login(using: creds)
+    }
+
+    private func invalidateCachedToken() {
+        cachedToken = nil
+        cachedTokenCredentials = nil
     }
 
     // MARK: - Pagination
@@ -135,7 +157,8 @@ actor NavidromeClient {
     private func fetchPage<T: Decodable & Sendable>(
         _ query: PageQuery, start: Int, end: Int, as type: T.Type, isRetry: Bool = false
     ) async throws(NavidromeError) -> Page<T> {
-        let token = try await ensureValidToken()
+        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        let token = try await ensureValidToken(using: creds)
         var items = [
             URLQueryItem(name: "_start", value: String(start)),
             URLQueryItem(name: "_end", value: String(end)),
@@ -143,7 +166,7 @@ actor NavidromeClient {
             URLQueryItem(name: "_order", value: query.order)
         ]
         items.append(contentsOf: query.extraQuery)
-        let request = try apiRequest(path: query.path, query: items, token: token)
+        let request = try apiRequest(path: query.path, query: items, token: token, using: creds)
 
         let data: Data
         let response: URLResponse
@@ -156,7 +179,7 @@ actor NavidromeClient {
             throw NavidromeError.transport("no HTTP response")
         }
         if http.statusCode == 401, !isRetry {
-            cachedToken = nil
+            invalidateCachedToken()
             return try await fetchPage(query, start: start, end: end, as: type, isRetry: true)
         }
         guard (200...299).contains(http.statusCode) else {
@@ -170,7 +193,13 @@ actor NavidromeClient {
         } catch {
             throw NavidromeError.decoding(error.localizedDescription)
         }
-        let total = Self.totalCount(from: http) ?? (start + decoded.count)
+        // `paginatedGet` promises to walk the resource *fully*; a missing or
+        // unparseable total silently downgraded to `start + decoded.count`
+        // would make a short/malformed first page look like the whole
+        // library. Fail loudly instead — see PR #27 review.
+        guard let total = Self.totalCount(from: http) else {
+            throw NavidromeError.decoding("missing or invalid X-Total-Count header")
+        }
         return Page(items: decoded, totalCount: total)
     }
 
@@ -201,8 +230,9 @@ actor NavidromeClient {
         return request
     }
 
-    func apiRequest(path: String, query: [URLQueryItem], token: NavidromeToken) throws(NavidromeError) -> URLRequest {
-        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+    func apiRequest(
+        path: String, query: [URLQueryItem], token: NavidromeToken, using creds: ServerCredentials
+    ) throws(NavidromeError) -> URLRequest {
         guard var components = URLComponents(url: creds.baseURL, resolvingAgainstBaseURL: false) else {
             throw NavidromeError.invalidURL
         }

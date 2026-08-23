@@ -82,9 +82,11 @@ struct NavidromeClientTests {
     }
 
     @Test func apiRequestAttachesBearerTokenAndQueryItems() async throws {
+        let creds = ServerCredentials(baseURL: URL(string: "https://music.example.com")!,
+                                      username: "tim", secret: "sesame", authMethod: .tokenSalt)
         let token = NavidromeToken(raw: "abc123", expiresAt: nil)
         let query = [URLQueryItem(name: "_start", value: "0"), URLQueryItem(name: "role", value: "composer")]
-        let request = try await client().apiRequest(path: "artist", query: query, token: token)
+        let request = try await client().apiRequest(path: "artist", query: query, token: token, using: creds)
         #expect(request.url?.path == "/api/artist")
         #expect(request.httpMethod == "GET")
         #expect(request.value(forHTTPHeaderField: "X-Nd-Authorization") == "Bearer abc123")
