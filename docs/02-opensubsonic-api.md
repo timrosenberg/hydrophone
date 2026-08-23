@@ -227,3 +227,12 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
 - **Every field is tolerant-decoded** (all optional) — this API is internal
   and can change between Navidrome releases without notice. A failed login or
   unexpected response degrades to Subsonic-only; nothing else breaks.
+- **Song index (#24):** `NavidromeClient.songIndex()` walks `/api/song` fully
+  via `paginatedGet` and caches the result (`[NativeSongRecord]`) in-actor for
+  the app session — no disk persistence, matching the M2 decision to drop the
+  SwiftData cache. `invalidateSongIndex()` clears the cache for a future
+  rebuild (e.g. after a library scan; the trigger itself isn't wired up yet).
+  `NativeSongRecord` carries `id`/`title`, `participants`
+  (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw `tags`
+  (`[String: [String]]`) — kept separate from `Song` (`SubsonicModels.swift`),
+  the playback pipeline's model.
