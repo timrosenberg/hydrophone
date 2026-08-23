@@ -131,6 +131,9 @@ final class AppModel {
     init() {
         let credentials = Self.makeCredentialStore()
         let client = SubsonicClient(credentials: credentials)
+        // Native Navidrome feature detection (#26): `ConnectionModel` owns
+        // the only reference for now — no E4/E5 UI consumes it yet.
+        let navidrome = NavidromeClient(credentials: credentials)
         let playback = PlaybackService(client: client)
         let nowPlaying = NowPlayingCenter()
 
@@ -138,7 +141,7 @@ final class AppModel {
         self.client = client
         self.playback = playback
         self.nowPlaying = nowPlaying
-        self.connection = ConnectionModel(client: client, credentials: credentials)
+        self.connection = ConnectionModel(client: client, navidrome: navidrome, credentials: credentials)
         self.library = LibraryModel(client: client)
         self.player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in

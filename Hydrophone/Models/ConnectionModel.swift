@@ -20,6 +20,23 @@ final class ConnectionModel {
         return false
     }
 
+    /// Whether Navidrome's native react-admin API (`NavidromeClient`) is
+    /// reachable on the current server — the on/off switch E4/E5's classical-
+    /// metadata UI checks before using it. Detected automatically, never a
+    /// user-facing toggle: `.unknown` until the first successful Subsonic
+    /// connect this session probes it via a real `login()` call; any failure
+    /// (network, 401, non-Navidrome server, API-key auth with no password to
+    /// log in with) settles on `.unavailable` and the rest of the app is
+    /// unaffected. See #26, docs/02-opensubsonic-api.md.
+    enum NativeFeaturesState: Equatable {
+        case unknown
+        case checking
+        case available
+        case unavailable
+    }
+
+    private(set) var nativeFeaturesState: NativeFeaturesState = .unknown
+
     // Editable form fields (bound by the Settings UI).
     var serverAddress: String = ""
     var username: String = ""
@@ -32,10 +49,12 @@ final class ConnectionModel {
     var transcodeMaxBitRate: Int
 
     private let client: SubsonicClient
+    private let navidrome: NavidromeClient
     private let credentials: CredentialStore
 
-    init(client: SubsonicClient, credentials: CredentialStore) {
+    init(client: SubsonicClient, navidrome: NavidromeClient, credentials: CredentialStore) {
         self.client = client
+        self.navidrome = navidrome
         self.credentials = credentials
 
         let defaults = UserDefaults.standard
@@ -97,6 +116,7 @@ final class ConnectionModel {
             // Re-scope the artwork cache to the (possibly new) server.
             ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
             state = .connected(info)
+            await probeNativeFeatures()
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -125,8 +145,25 @@ final class ConnectionModel {
         do {
             let info = try await client.ping()
             state = .connected(info)
+            await probeNativeFeatures()
         } catch {
             state = .failed(error.userMessage)
+        }
+    }
+
+    /// The on/off switch for `nativeFeaturesState`: attempts a real
+    /// `NavidromeClient.login()` against the just-verified server and
+    /// records whether it succeeded. Called once per successful connect
+    /// (`saveAndConnect`/`refresh`), not from `testConnection` — that call
+    /// verifies unsaved form credentials, while `login()` always reads the
+    /// persisted store, so probing there would check the wrong server.
+    private func probeNativeFeatures() async {
+        nativeFeaturesState = .checking
+        do {
+            _ = try await navidrome.login()
+            nativeFeaturesState = .available
+        } catch {
+            nativeFeaturesState = .unavailable
         }
     }
 
@@ -134,19 +171,24 @@ final class ConnectionModel {
         try? credentials.clear()
         ArtworkCache.shared.setServer(baseURL: nil)
         state = .unconfigured
+        nativeFeaturesState = .unknown
     }
 
     /// Feedback from the last library-scan trigger (shown in Settings).
     private(set) var scanMessage: String?
 
     /// Ask the server to rescan its music folders. The scan itself runs
-    /// server-side and asynchronously; this only kicks it off.
+    /// server-side and asynchronously; this only kicks it off. On success,
+    /// also invalidates the cached native song index (#24) — a rescan can
+    /// add, remove, or retag songs, so the next Composers-view open should
+    /// rebuild from scratch rather than serve a now-stale in-memory snapshot.
     func startLibraryScan() async {
         scanMessage = "Requesting scan…"
         do {
             let status = try await client.object(.startScan, as: ScanStatus.self)
             let count = status.count.map { " — \($0) items" } ?? ""
             scanMessage = (status.scanning ? "Scanning" : "Scan finished") + count
+            await navidrome.invalidateSongIndex()
         } catch {
             scanMessage = error.userMessage
         }

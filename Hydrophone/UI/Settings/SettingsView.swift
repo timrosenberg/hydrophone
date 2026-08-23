@@ -68,6 +68,7 @@ private struct ConnectionSettingsView: View {
                             Task { await connection.startLibraryScan() }
                         }
                     }
+                    nativeFeaturesRow
                 }
             }
 
@@ -109,6 +110,29 @@ private struct ConnectionSettingsView: View {
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
+        }
+    }
+
+    /// Read-only — detection is automatic (#26), there is no manual toggle.
+    /// Shown once a connect has been attempted this session; hidden before
+    /// that (`.unknown`, matching `statusRow`'s `.unconfigured` treatment).
+    @ViewBuilder
+    private var nativeFeaturesRow: some View {
+        switch connection.nativeFeaturesState {
+        case .unknown:
+            EmptyView()
+        case .checking:
+            HStack {
+                ProgressView().controlSize(.small)
+                Text("Checking for native Navidrome features…")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        case .available:
+            Label("Native Navidrome features available", systemImage: "checkmark.circle.fill")
+                .font(.callout).foregroundStyle(.green)
+        case .unavailable:
+            Label("Native Navidrome features unavailable — using Subsonic only", systemImage: "info.circle")
+                .font(.callout).foregroundStyle(.secondary)
         }
     }
 }

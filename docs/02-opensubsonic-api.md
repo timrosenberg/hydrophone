@@ -237,6 +237,23 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
 - **Every field is tolerant-decoded** (all optional) — this API is internal
   and can change between Navidrome releases without notice. A failed login or
   unexpected response degrades to Subsonic-only; nothing else breaks.
+- **Feature detection:** whether native features are usable at all is exposed
+  as `ConnectionModel.nativeFeaturesState` (`.unknown`/`.checking`/`.available`/
+  `.unavailable`) — auto-detected, never a user toggle. `ConnectionModel`
+  probes it once per successful Subsonic connect (`saveAndConnect`/`refresh`)
+  by attempting a real `NavidromeClient.login()`; any failure (network, 401,
+  non-Navidrome server, API-key auth) settles on `.unavailable`, and
+  `disconnect()` resets it to `.unknown`. `testConnection()` (the Settings
+  "Test Connection" button) deliberately never probes — it verifies unsaved
+  form credentials, while `login()` always reads the persisted credential
+  store, so probing there would check the wrong server. Settings → Connection
+  shows the result as a read-only status line. See #26.
+- **Song-index invalidation on scan:** `ConnectionModel.startLibraryScan()`
+  calls `NavidromeClient.invalidateSongIndex()` (#24) after a successful scan
+  request, so a rescan's adds/removes/retags aren't served stale by the
+  in-memory song-index cache — the next consumer rebuilds it from scratch.
+  No UI yet reads the index (E4/E5), so this is presently unobservable outside
+  a log line or breakpoint. See #26.
 - **Song index (#24):** `NavidromeClient.songIndex()` walks `/api/song` fully
   via `paginatedGet` and caches the result (`[NativeSongRecord]`) in-actor for
   the app session — no disk persistence, matching the M2 decision to drop the
