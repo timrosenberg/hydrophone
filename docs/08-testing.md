@@ -80,13 +80,13 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 183 tests)
+## Current suite (Swift Testing, 190 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
-`QualityLabelTests` · `ExpandedTrackColumnsTests` · `ArtworkCacheTests` ·
-`NowPlayingCenterTests` ·
+`QualityLabelTests` · `ExpandedTrackColumnsTests` ·
+`TrackColumnPreferencesTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
 `FlacStreamingTests` · `AlbumFilterEndpointTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
