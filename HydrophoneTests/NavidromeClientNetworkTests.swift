@@ -135,6 +135,34 @@ struct NavidromeClientNetworkTests {
         }
     }
 
+    // MARK: - songIndex()
+
+    @Test func songIndexCachesAndDoesNotRefetchOnRepeatCalls() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(Self.makeHandler(jwtExpiresIn: 3600))
+        let client = NavidromeClient(credentials: InMemoryCredentialStore(creds()), session: makeSession())
+
+        let first = try await client.songIndex()
+        let second = try await client.songIndex()
+
+        #expect(first.map(\.id) == second.map(\.id))
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 1) // second call served from cache, no refetch
+    }
+
+    @Test func invalidateSongIndexForcesRefetchOnNextCall() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(Self.makeHandler(jwtExpiresIn: 3600))
+        let client = NavidromeClient(credentials: InMemoryCredentialStore(creds()), session: makeSession())
+
+        _ = try await client.songIndex()
+        await client.invalidateSongIndex()
+        _ = try await client.songIndex()
+
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 2)
+    }
+
     // MARK: - Handler
 
     /// Builds a request handler serving `/auth/login` and any `/api/<resource>`

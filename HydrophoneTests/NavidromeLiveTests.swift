@@ -53,4 +53,26 @@ struct NavidromeLiveTests {
         )
         #expect(!artists.isEmpty)
     }
+
+    /// Full library pull via `songIndex()` — proves the concurrent walk,
+    /// tolerant decode of `participants`/`tags`, and in-session cache all
+    /// work end to end against a real library. Elapsed time is printed, not
+    /// asserted on (server-dependent; ~5-15s measured against a real
+    /// 14,794-track library — see #24).
+    @Test func songIndexReturnsFullLibraryAndCachesOnSecondCall() async throws {
+        guard let env = liveEnv() else { return }
+        let sharedClient = client(env)
+
+        let start = Date()
+        let index = try await sharedClient.songIndex()
+        let elapsed = Date().timeIntervalSince(start)
+        print("songIndex(): \(index.count) songs in \(String(format: "%.1f", elapsed))s")
+        #expect(!index.isEmpty)
+
+        let cachedStart = Date()
+        let cached = try await sharedClient.songIndex()
+        let cachedElapsed = Date().timeIntervalSince(cachedStart)
+        print("songIndex() cached: \(cached.count) songs in \(String(format: "%.3f", cachedElapsed))s")
+        #expect(cached.count == index.count)
+    }
 }
