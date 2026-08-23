@@ -3,7 +3,7 @@ import SwiftUI
 /// A selectable data column in the track list. The now-playing indicator and
 /// favorite-star columns are always present (fixed-width affordances); these are
 /// the content columns each call site opts into explicitly.
-enum TrackColumn {
+enum TrackColumn: Equatable, CaseIterable {
     case number, title, artist, composer, album, genre, quality, time
     case albumArtist, comments, grouping, dateAdded, lastPlayed, plays, sampleRate, sortTitle
 
@@ -32,6 +32,15 @@ enum TrackColumn {
         case .sampleRate: "sampleRate"
         case .sortTitle: "sortTitle"
         }
+    }
+
+    /// Resolves a persisted `id` string back to its case — the inverse of
+    /// `id`. Fails for anything that isn't a current case (a removed/renamed
+    /// column from an older persisted preference), which callers treat as
+    /// "drop this one" rather than an error.
+    init?(id: String) {
+        guard let match = Self.allCases.first(where: { $0.id == id }) else { return nil }
+        self = match
     }
     var header: String {
         switch self {
