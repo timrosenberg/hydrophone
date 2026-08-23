@@ -52,6 +52,29 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Fix: ScrollMemory Sendable-capture warnings (2026-08-23)
+Unticketed. `Binding.scrollMemory(read:write:consumed:scope:topIDs:)`
+(`UI/Components/ScrollMemory.swift`) triggered three Swift 6 strict-concurrency
+warnings: `read`/`write`/`topIDs` (plain, non-`Sendable` closures) were captured
+inside `Binding`'s `get`/`set`, which this SDK types as `@Sendable`. Marking the
+three parameters `@Sendable` only relocated the problem — it surfaced that the
+callers' closures (`ArtistsView`, `AlbumsView`, `HomeView`) capture
+`@AppStorage`-backed, main-actor-isolated view state, which genuinely can't be
+Sendable. The correct fix: mark `read`/`write`/`topIDs` **and** the
+`scrollMemory` function itself `@MainActor` instead — the true isolation this
+code always ran under (SwiftUI view bodies/modifiers), not `@Sendable`. A
+main-actor-isolated closure is itself `Sendable` per Swift's actor-isolation
+rules, so this satisfies `Binding`'s requirement without misrepresenting where
+the code actually runs. Pure annotation fix — no logic changed.
+
+Build/test/swiftlint clean (zero warnings, down from three pre-existing).
+**Live verification partial:** the built app launches and connects to a real
+Navidrome server without crashing (rules out a MainActor deadlock/trap from the
+isolation change), but this sandbox has no Accessibility permission granted, so
+scripted UI clicks (`cliclick`/`osascript`) silently no-op — couldn't
+interactively confirm scroll-restore still works in Albums/Home/Artists.
+Flagged for Tim to spot-check before merging.
+
 ## Composer column shown in Album, Songs, Favorites, Search (2026-08-22)
 Issue #4 (part of #1, blocked by #3). Adds `.composer` to the `columns:`
 array in `AlbumDetailView`, `SongsView`'s flat-table branch, `FavoritesView`,
