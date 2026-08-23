@@ -242,7 +242,7 @@ struct DecodingTests {
         {"subsonic-response":{"status":"ok","version":"1.16.1","randomSongs":{"song":[
         {"id":"s1","title":"Track","artist":"A","duration":200,
         "displayAlbumArtist":"Various Artists","comment":"Live take",
-        "groupings":"Movement II","created":"2024-03-01T10:00:00.000Z",
+        "groupings":["Movement II"],"created":"2024-03-01T10:00:00.000Z",
         "played":"2024-06-15T20:30:00.000Z","playCount":42,"samplingRate":44100,
         "sortName":"Track, The"}]}}}
         """
@@ -251,7 +251,7 @@ struct DecodingTests {
         let song = try #require(wrapper.response.body?.items.first)
         #expect(song.displayAlbumArtist == "Various Artists")
         #expect(song.comment == "Live take")
-        #expect(song.groupings == "Movement II")
+        #expect(song.groupings == ["Movement II"])
         #expect(song.created != nil)
         #expect(song.played != nil)
         #expect(song.playCount == 42)
