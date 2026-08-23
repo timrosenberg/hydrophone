@@ -39,10 +39,9 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// convention as `displayComposer`).
     var displayAlbumArtist: String?
     var comment: String?
-    /// Navidrome's Grouping/GRP1 tag, added to the OpenSubsonic `Child`
-    /// response as a string array (confirmed live 2026-08-23 against
-    /// demo.navidrome.org — not the single string the OpenSubsonic docs
-    /// implied).
+    /// OpenSubsonic song groupings, represented as a string array. Navidrome
+    /// sources these from Grouping/GRP1 tags; the array shape was confirmed
+    /// live 2026-08-23 against demo.navidrome.org.
     var groupings: [String]?
     /// When this file was added to the library.
     var created: Date?
