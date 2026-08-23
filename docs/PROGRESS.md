@@ -52,6 +52,44 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient: close PR #31 re-review findings (2026-08-23)
+Re-review of #31 at `fb08e4eb796287c4760260ffa1574825ba55da8f`
+found that the first generation-counter fix did not retire an in-flight
+song-index build when a credential change started a replacement build. If
+the new-server build completed first and the old-server build completed
+later, the old completion could overwrite the new cache and clear the newer
+in-flight state. The build task also called the public `paginatedGet()`
+entry point, which reloaded credentials instead of using the snapshot that
+had been captured to label the build.
+
+Fixed by assigning a new generation to every song-index build (not just to
+explicit invalidation) and by routing both callers through a private
+`paginatedGet(PageQuery, ...)` core so the full walk uses the build's captured
+`ServerCredentials`. The public helper still loads credentials once, creates
+its query snapshot, and delegates to that core. A
+deterministic regression test starts old- and new-server builds, releases the
+new one first, then the old one, and proves the final call is served from the
+new cache without a third request. In its RED run, the request hosts were
+`old, new, new`; after the fix, the full `NavidromeClientNetworkTests` suite
+passed all 12 tests with only `old, new`.
+
+The exact reviewed head contained 163 Swift Testing tests, not the 162 stated
+in the docs (or the 159 still stated in the PR body). The new race regression
+brings the current suite to 164; the testing guide and verification block are
+now synchronized to that count.
+
+**Live verification:** the same standalone-`swiftc` method used for the
+earlier #31 review fixes exercised the changed path against the public demo
+server on 2026-08-23. `login()` succeeded in 0.351s; the first `songIndex()`
+returned 501 songs in 0.461s; a cached call returned all 501 in 0.000021s;
+after invalidation, two concurrent calls both returned all 501 songs in
+0.331s total. The scratch harness was deleted after verification.
+
+Final gate: build succeeded with no compiler diagnostics; the full suite
+passed 164/164 with 0 failures and 0 skips; SwiftLint found 0 violations.
+Xcode also emitted its existing tool-level notices for the ambiguous
+universal-Mac destination and skipped App Intents metadata extraction.
+
 ## NavidromeClient: full song index — songIndex() (2026-08-23)
 Issue #24 (E3, epic #11; blocked by #22, blocks #25). Adds `NativeSongRecord`
 (`Networking/NavidromeModels.swift`) — a lightweight, native-only decode of
@@ -92,8 +130,8 @@ March for a Bullet" → composer "Diablo Swing Orchestra"); a second
 third call after `invalidateSongIndex()` took 0.44s (confirmed refetch). The
 scratch harness was deleted after verification, nothing added to the repo.
 
-Build clean, zero warnings. Full suite green (162 tests — see the review-fix
-entry below, which adds three more on top of this entry's original five).
+Build clean, zero warnings. Full suite green (164 tests — see the two
+review-fix entries, which add four more on top of this entry's original five).
 SwiftLint clean.
 
 ## NavidromeClient: address PR #31 review findings (2026-08-23)
@@ -138,8 +176,10 @@ sync to an async closure (source-compatible with every existing sync handler
 via Swift's normal sync-to-async function conversion).
 
 **[P2] Stale test count.** This entry and the `## Verification status` block
-said 159; `docs/08-testing.md` said 155. Both corrected to the actual current
-count, 162 (159 plus the three tests this fix adds).
+said 159; `docs/08-testing.md` said 155. This review round changed them to
+162, but re-review established that exact head actually contained 163 tests;
+the follow-up regression brings the current suite to 164 (see the entry
+above).
 
 Re-verified against the real server after these fixes (same `swiftc`-
 standalone method noted above, against the public demo server): `login()`
@@ -1655,7 +1695,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 162 tests,
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 164 tests,
   0 failures — count current as of the #24/`songIndex()` work and its PR #31
   review fixes, 2026-08-23; see those entries above for the added coverage),
   and CI repeats the run on every push (`.github/workflows/tests.yml`).

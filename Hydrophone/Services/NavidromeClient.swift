@@ -122,7 +122,16 @@ actor NavidromeClient {
         as type: T.Type
     ) async throws(NavidromeError) -> [T] {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
-        let query = PageQuery(path: path, sort: sort, order: order, extraQuery: extraQuery, credentials: creds)
+        let query = PageQuery(
+            path: path, sort: sort, order: order,
+            extraQuery: extraQuery, credentials: creds
+        )
+        return try await paginatedGet(query, pageSize: pageSize, as: type)
+    }
+
+    private func paginatedGet<T: Decodable & Sendable>(
+        _ query: PageQuery, pageSize: Int, as type: T.Type
+    ) async throws(NavidromeError) -> [T] {
         let first = try await fetchPage(query, start: 0, end: pageSize, as: type)
         guard first.totalCount > pageSize else { return first.items }
 
@@ -227,10 +236,10 @@ actor NavidromeClient {
     /// must not be served to a different one after Settings changes the
     /// connection. See PR #31 review.
     private var cachedSongIndexCredentials: ServerCredentials?
-    /// Bumped by `invalidateSongIndex()`. Actor isolation is reentrant
-    /// across an `await`, so a build already in flight when invalidation
-    /// happens doesn't block it — this lets the completing build recognize
-    /// it's now stale and skip repopulating the cache. See PR #31 review.
+    /// Bumped whenever a build starts and by `invalidateSongIndex()`. Actor
+    /// isolation is reentrant across an `await`, so this identity lets a
+    /// superseded build recognize it's stale and skip repopulating the cache
+    /// or clearing a newer build's in-flight state. See PR #31 re-review.
     private var songIndexGeneration = 0
     /// The in-flight full-library build, if any, plus the credentials it
     /// was started under — coalesces overlapping `songIndex()` callers onto
@@ -261,18 +270,22 @@ actor NavidromeClient {
             }
         }
 
+        songIndexGeneration += 1
         let generation = songIndexGeneration
         let build = Task<[NativeSongRecord], Error> {
-            try await self.paginatedGet(path: "song", sort: "id", as: NativeSongRecord.self)
+            let query = PageQuery(
+                path: "song", sort: "id", order: "ASC",
+                extraQuery: [], credentials: creds
+            )
+            return try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
         }
         inFlightSongIndexBuild = build
         inFlightSongIndexCredentials = creds
         do {
             let index = try await build.value
-            // Only the still-current generation may finish the job: if
-            // `invalidateSongIndex()` ran while this build was in flight,
-            // it already retired `inFlightSongIndexBuild` (possibly to a
-            // newer build) and this stale result must not overwrite it.
+            // Only the still-current build may finish the job: invalidation
+            // or a credential-scoped replacement may have retired this task,
+            // and its stale result must not overwrite the newer cache/state.
             if generation == songIndexGeneration {
                 cachedSongIndex = index
                 cachedSongIndexCredentials = creds

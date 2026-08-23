@@ -230,8 +230,13 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
 - **Song index (#24):** `NavidromeClient.songIndex()` walks `/api/song` fully
   via `paginatedGet` and caches the result (`[NativeSongRecord]`) in-actor for
   the app session — no disk persistence, matching the M2 decision to drop the
-  SwiftData cache. `invalidateSongIndex()` clears the cache for a future
-  rebuild (e.g. after a library scan; the trigger itself isn't wired up yet).
+  SwiftData cache. Cache hits and coalesced in-flight builds are scoped to an
+  exact `ServerCredentials` snapshot; each build uses that snapshot for its
+  entire paginated walk, and a replacement build gets a new identity so an
+  older completion cannot overwrite or clear newer state.
+  `invalidateSongIndex()` clears the cache and retires any in-flight build for
+  a future rebuild (e.g. after a library scan; the trigger itself isn't wired
+  up yet).
   `NativeSongRecord` carries `id`/`title`, `participants`
   (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw `tags`
   (`[String: [String]]`) — kept separate from `Song` (`SubsonicModels.swift`),

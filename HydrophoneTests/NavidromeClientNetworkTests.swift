@@ -182,6 +182,49 @@ struct NavidromeClientNetworkTests {
         #expect(hosts == ["old-server.example.com", "new-server.example.com"])
     }
 
+    /// PR #31 re-review, P1: replacing an in-flight build after a credential
+    /// change must retire the old build. If the new-server build completes
+    /// first, the old-server build's later completion must not overwrite the
+    /// new cache or clear the new build's state.
+    @Test func credentialChangeDuringBuildCannotLetOldCompletionOverwriteNewCache() async throws {
+        await NavidromeMockProtocol.reset()
+        let oldGate = Gate()
+        let newGate = Gate()
+        await NavidromeMockProtocol.setHandler { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/auth/login") {
+                let jwt = Self.makeJWT(exp: Date().addingTimeInterval(3600).timeIntervalSince1970)
+                let body = #"{"token":"\#(jwt)","subsonicSalt":"s","subsonicToken":"t","username":"tim"}"#
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            let host = request.url?.host ?? ""
+            if host == "old-server.example.com" { await oldGate.wait() }
+            if host == "new-server.example.com" { await newGate.wait() }
+            let headers = ["Content-Type": "application/json", "X-Total-Count": "1"]
+            let songID = host == "old-server.example.com" ? "old-song" : "new-song"
+            return .init(status: 200, headers: headers, body: Data("[{\"id\":\"\(songID)\"}]".utf8))
+        }
+        let store = InMemoryCredentialStore(creds(host: "https://old-server.example.com"))
+        let client = NavidromeClient(credentials: store, session: makeSession())
+
+        async let oldBuild = client.songIndex()
+        await Self.waitUntilRequestSeen(pathSuffix: "/api/song", host: "old-server.example.com")
+
+        try store.save(creds(host: "https://new-server.example.com", secret: "different-password"))
+        async let newBuild = client.songIndex()
+        await Self.waitUntilRequestSeen(pathSuffix: "/api/song", host: "new-server.example.com")
+
+        await newGate.open()
+        #expect(try await newBuild.map(\.id) == ["new-song"])
+        await oldGate.open()
+        #expect(try await oldBuild.map(\.id) == ["old-song"])
+
+        let cached = try await client.songIndex()
+        #expect(cached.map(\.id) == ["new-song"])
+        let hosts = await NavidromeMockProtocol.requestedHosts(pathSuffix: "/api/song")
+        #expect(hosts == ["old-server.example.com", "new-server.example.com"])
+    }
+
     /// PR #31 review, P2: overlapping callers arriving while a build is in
     /// flight must coalesce onto it rather than each starting their own
     /// full paginated walk.
@@ -232,6 +275,12 @@ struct NavidromeClientNetworkTests {
     /// observes "the request has started" without a fixed sleep.
     private static func waitUntilRequestSeen(pathSuffix: String) async {
         while await NavidromeMockProtocol.count(pathSuffix: pathSuffix) == 0 {
+            await Task.yield()
+        }
+    }
+
+    private static func waitUntilRequestSeen(pathSuffix: String, host: String) async {
+        while !(await NavidromeMockProtocol.requestedHosts(pathSuffix: pathSuffix).contains(host)) {
             await Task.yield()
         }
     }
