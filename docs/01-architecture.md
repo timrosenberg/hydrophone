@@ -30,9 +30,10 @@
                 │ async calls
 ┌───────────────┴─────────────────────────────────────────────┐
 │  Services  (actors / isolated)                               │
-│  SubsonicClient (actor) · PlaybackService (actor) ·          │
-│  ArtworkCache · CredentialStore (Keychain) ·                 │
-│  NowPlayingCenter · AudioOutputDevices (Core Audio)          │
+│  SubsonicClient (actor) · NavidromeClient (actor) ·          │
+│  PlaybackService (actor) · ArtworkCache ·                    │
+│  CredentialStore (Keychain) · NowPlayingCenter ·             │
+│  AudioOutputDevices (Core Audio)                             │
 └───────────────▲─────────────────────────────────────────────┘
                 │
 ┌───────────────┴─────────────────────────────────────────────┐
@@ -70,6 +71,13 @@ metadata can never disagree with the UI.
 
 - **`SubsonicClient` (actor)** — all OpenSubsonic HTTP. Builds authed
   requests, decodes `Codable` models, maps errors. See `02`.
+- **`NavidromeClient` (actor)** — Navidrome's native react-admin API
+  (`/api/...`, separate from Subsonic's `/rest/`), metadata-only: composer
+  enumeration, a full song index, work/movement tags. Never streams or plays
+  audio — that stays on `SubsonicClient`; `NavidromeClient` resolves song ids
+  that `SubsonicClient`/`Song` then handle. Undocumented API, so every decode
+  is tolerant and every failure degrades to Subsonic-only. See `02`, the E3
+  epic (#11) and spike (#8).
 - **`PlaybackService` (actor)** — owns `AVAudioEngine` and a single player
   node, the streaming decode pipeline, gapless scheduling, output-device
   routing/recovery, and a throttled position publisher. Exposes async intent
@@ -131,12 +139,13 @@ Hydrophone/
   Models/         PlayerModel (+RemoteCommands, +Scrobbling extensions),
                   LibraryModel, ConnectionModel, PlaybackTypes
   Networking/     Endpoint map, DTOs (SubsonicModels), envelope
-                  (SubsonicResponse), SubsonicError
+                  (SubsonicResponse), SubsonicError, NavidromeModels
+                  (NavidromeError/Token/DTOs)
   Playback/       PlaybackService, ProgressiveAudioSource, DataStreamLoader,
                   AudioStreamSource (protocol), AudioOutputDevices,
                   PlaybackEvent
-  Services/       SubsonicClient, CredentialStore, ArtworkCache,
-                  NowPlayingCenter
+  Services/       SubsonicClient, NavidromeClient, CredentialStore,
+                  ArtworkCache, NowPlayingCenter
   UI/
     Components/  Library/  MenuBar/  NowPlaying/  Search/  Settings/  Sidebar/
     (+ RootView, Navigator at the top level)

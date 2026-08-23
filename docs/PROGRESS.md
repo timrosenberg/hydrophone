@@ -52,6 +52,63 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## NavidromeClient: address PR #27 review findings (2026-08-23)
+Codex's review of #27 (PR for #22) found two real bugs and two contract-sync
+gaps, all fixed on the same branch.
+
+**[P1] Cached JWT wasn't bound to the credentials it was minted for.**
+`ensureValidToken()` reused `cachedToken` on expiry alone; `apiRequest()`
+separately reloaded the current credentials for the URL. After Settings
+changes server/account mid-session, the next native request could attach the
+old server's/account's bearer token while pointed at the new host. Fixed:
+`cachedTokenCredentials: ServerCredentials?` (already `Equatable`) is stored
+alongside the token; a cache hit now requires an exact match, not just
+non-expiry. `login()`/`ensureValidToken()`/`apiRequest()` all take one
+`ServerCredentials` snapshot loaded once per `fetchPage` call, rather than
+loading the store independently at two points that could observe different
+values mid-flight.
+
+**[P2] Missing/malformed `X-Total-Count` silently truncated the walk.**
+`total = totalCount(from: http) ?? (start + decoded.count)` treated an
+unparseable header as "this page is the whole library" — exactly backwards
+for a helper whose entire contract is walking a resource *fully*. Now a
+missing/invalid header throws `NavidromeError.decoding` instead of returning
+a falsely-complete result.
+
+**[P2] No hermetic coverage of cache reuse / expiry / retry.** New
+`NavidromeClientNetworkTests.swift`: a stubbed `URLProtocol`
+(`NavidromeMockProtocol`) on a per-test `URLSessionConfiguration.ephemeral`
+proves — without any network — that a valid cached token is reused across
+calls (one login for two operations), an expired one triggers a fresh login
+per call, a credential change invalidates the cache **and** the next request
+targets the new host (the P1 fix, end to end), a 401 triggers exactly one
+retry-and-relogin before failing, and a missing total-count header fails
+loudly. The suite is `@Suite(.serialized)` — its tests share one static mock
+state by design (standing in for one real server across a session) and would
+race each other under Swift Testing's default parallel execution; that
+exact race was hit and diagnosed while writing these tests (five failures,
+login counts of 5–8 instead of 1–2) before adding the trait.
+
+**[P2] Docs weren't synced.** `docs/01-architecture.md` now lists
+`NavidromeClient`/`NavidromeModels` in the layer diagram, service
+responsibilities, and module structure. `docs/02-opensubsonic-api.md` notes
+the native `/auth/login` raw-password exception inline where the
+never-send-the-password rule is stated, plus a new "Navidrome native API"
+section summarizing auth/pagination/the no-server-filter finding for anyone
+landing on this doc without the epic's history. `docs/08-testing.md`'s suite
+list and count were stale (67 tests, predating a lot of unlisted work) —
+corrected to the actual current 154, with the new suites added and the
+`xcodebuild test` env-var-forwarding gap (discovered in the original #22
+verification pass) documented as affecting `LiveDecodeTests` too, not just
+`NavidromeLiveTests`.
+
+Re-verified end to end against the real server after all fixes (same
+`swiftc`-standalone method as the original pass, since the env-var gap above
+still applies): login, a full paginated `/api/artist` walk, and a second walk
+proving cache reuse (sub-second, no re-login) all succeeded.
+
+Build/test/swiftlint clean.
+
 ## NavidromeClient foundation: auth, JWT lifecycle, pagination helper (2026-08-23)
 Issue #22 (E3, epic #11; blocks #23/#24/#25/#26). New `Services/NavidromeClient.swift`
 (`actor NavidromeClient`) and `Networking/NavidromeModels.swift`, standing up the

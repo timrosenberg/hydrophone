@@ -54,17 +54,42 @@ audio hardware.
   - `AudioStreamSource` is the decode seam; `DecodeContinuityTests` runs the
     *real* `ProgressiveAudioSource` against synthesized audio instead of
     mocking it.
-- **Opt-in live tests** (`LiveDecodeTests`): run against a real OpenSubsonic
-  server only when `HYDROPHONE_HOST`/`HYDROPHONE_USER`/`HYDROPHONE_PASS` are set;
-  skipped otherwise, so no credentials are committed and CI stays hermetic.
+- **Opt-in live tests** (`LiveDecodeTests`, `NavidromeLiveTests`): run against a
+  real server only when `HYDROPHONE_HOST`/`HYDROPHONE_USER`/`HYDROPHONE_PASS`
+  are set; skipped otherwise, so no credentials are committed and CI stays
+  hermetic. **Known local-verification gap:** `xcodebuild test` does not
+  forward the invoking shell's environment into the XCTest runner process on
+  at least one dev machine — confirmed via a diagnostic assertion (the test
+  process saw a handful of system-injected env vars, none of the
+  `HYDROPHONE_*` ones the shell had). Both opt-in suites silently no-op in
+  that case rather than fail, so a green `xcodebuild test` locally does **not**
+  by itself prove the live paths ran — check the per-test duration (a
+  near-zero duration means it skipped) or verify by compiling the client
+  source standalone with `swiftc` (inherits the shell environment directly)
+  as was done for #22. Wiring the `HydrophoneTests` scheme's Test-action
+  environment variables would fix this properly; tracked as a follow-up, not
+  yet done.
+- **Network-behavior seam** (`NavidromeClientNetworkTests`): a stubbed
+  `URLProtocol` (`NavidromeMockProtocol`) registered on a per-test
+  `URLSessionConfiguration.ephemeral`, so it never touches the network or
+  other tests. Used where request-building assertions alone can't reach the
+  behavior — token-cache reuse across calls, expiry-triggered refresh,
+  credential-change invalidation, and one-retry-only 401 handling all need a
+  full request/response cycle with a controllable server. The suite is
+  `@Suite(.serialized)`: its tests share one static mock-protocol state (by
+  design — it stands in for one real server across a session), so they'd race
+  each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 67 tests)
+## Current suite (Swift Testing, 154 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `PlaylistEndpointTests` · `PlaybackConfigTests` · `PlayerQueueTests` ·
 `QueueEditingTests` · `QualityLabelTests` · `ArtworkCacheTests` ·
-`NowPlayingCenterTests` · `DecodeContinuityTests` · `LiveDecodeTests`
-(opt-in).
+`NowPlayingCenterTests` · `DecodeContinuityTests` · `DiscHeaderTests` ·
+`EndpointGoldenTests` · `FlacStreamingTests` · `AlbumFilterEndpointTests` ·
+`ReplayGainTests` · `StarringTests` · `NavidromeClientTests` ·
+`NavidromeClientNetworkTests` · `LiveDecodeTests` (opt-in) ·
+`NavidromeLiveTests` (opt-in).
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 
