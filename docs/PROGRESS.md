@@ -92,7 +92,62 @@ March for a Bullet" → composer "Diablo Swing Orchestra"); a second
 third call after `invalidateSongIndex()` took 0.44s (confirmed refetch). The
 scratch harness was deleted after verification, nothing added to the repo.
 
-Build clean, zero warnings. Full suite green (159 tests). SwiftLint clean.
+Build clean, zero warnings. Full suite green (162 tests — see the review-fix
+entry below, which adds three more on top of this entry's original five).
+SwiftLint clean.
+
+## NavidromeClient: address PR #31 review findings (2026-08-23)
+Review of #31 (PR for #24) found a credential-binding bug matching the
+`cachedTokenCredentials` pattern already fixed for the token cache in #27,
+plus an actor-reentrancy race in the new `songIndex()` caching, plus a stale
+test count.
+
+**[P1] Song cache wasn't bound to the credentials it was built for.**
+`songIndex()` returned `cachedSongIndex` on presence alone, without checking
+`CredentialStore` first — after Settings changes server/account, the same
+long-lived `NavidromeClient` would keep serving the previous server's songs.
+Fixed the same way as the token cache: `cachedSongIndexCredentials:
+ServerCredentials?` stored alongside the cache; a hit now requires an exact
+match. New `songIndexIsInvalidatedByCredentialChange` test (mirrors
+`credentialChangeInvalidatesCachedTokenAndTargetsNewHost`): saves new
+credentials between two `songIndex()` calls, asserts the second call
+refetches against the new host.
+
+**[P2] Overlapping callers could each start a full paginated walk, and an
+in-flight build could resurrect a cache `invalidateSongIndex()` just
+cleared.** Actor isolation is reentrant across an `await`, so two concurrent
+`songIndex()` calls could both observe a nil cache and each kick off their
+own `/api/song` walk; separately, `invalidateSongIndex()` running while a
+build was mid-flight didn't stop that build from writing its (now-stale)
+result into the cache once it finally completed. Fixed with an in-flight
+build (`Task<[NativeSongRecord], Error>`) that overlapping callers coalesce
+onto — gated by credentials too, so a caller under new credentials can't be
+handed a build's result fetched under the old ones — plus a generation
+counter `invalidateSongIndex()` bumps: a build only writes the cache (and
+clears the in-flight slot) if the generation is still the one it started
+under, and invalidation itself clears the in-flight slot so a post-
+invalidation caller starts a genuinely fresh build rather than coalescing
+onto the retired one. New tests: `concurrentSongIndexCallsCoalesceIntoOneWalk`
+(two concurrent calls, one `/api/song` request) and
+`invalidationDuringInFlightBuildIsNotClobberedByItsCompletion` (invalidate
+while a build awaits its response; the next call must refetch). Both use a
+new `Gate` actor in the test file — a continuation-based hold on the mock's
+response — to make "in flight" deterministic instead of racing real async
+timing; this required widening `NavidromeMockProtocol`'s handler type from a
+sync to an async closure (source-compatible with every existing sync handler
+via Swift's normal sync-to-async function conversion).
+
+**[P2] Stale test count.** This entry and the `## Verification status` block
+said 159; `docs/08-testing.md` said 155. Both corrected to the actual current
+count, 162 (159 plus the three tests this fix adds).
+
+Re-verified against the real server after these fixes (same `swiftc`-
+standalone method noted above, against the public demo server): `login()`
+succeeded; `songIndex()` returned 501 songs in 0.45s; a cached second call
+returned instantly (0.0000s); after `invalidateSongIndex()`, two concurrent
+`songIndex()` calls both returned all 501 songs in 0.37s total — one walk's
+worth of time, confirming the coalescing fix holds against a real server, not
+just the mock. Build/test/swiftlint clean.
 
 ## NavidromeClient: address PR #27 re-review findings (2026-08-23)
 Re-review of #27 found the first credential-binding fix (previous entry) was
@@ -1600,10 +1655,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 159 tests,
-  0 failures — count current as of the #24/`songIndex()` work, 2026-08-23;
-  see that entry above for the added coverage), and CI repeats the run on
-  every push (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 162 tests,
+  0 failures — count current as of the #24/`songIndex()` work and its PR #31
+  review fixes, 2026-08-23; see those entries above for the added coverage),
+  and CI repeats the run on every push (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

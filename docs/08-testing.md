@@ -80,7 +80,7 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 155 tests)
+## Current suite (Swift Testing, 162 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `PlaylistEndpointTests` · `PlaybackConfigTests` · `PlayerQueueTests` ·
