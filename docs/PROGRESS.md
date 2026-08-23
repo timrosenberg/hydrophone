@@ -1558,7 +1558,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 154 tests,
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 155 tests,
   0 failures — count current as of the E3/NavidromeClient foundation work,
   2026-08-23; see that entry above for the added suites), and CI repeats the
   run on every push (`.github/workflows/tests.yml`).
