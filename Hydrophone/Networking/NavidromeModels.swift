@@ -71,3 +71,27 @@ struct NavidromeLoginRequest: Codable, Sendable {
 struct NavidromeLoginResponse: Decodable, Sendable {
     let token: String
 }
+
+/// One `/api/song` entry: the native, undocumented shape carrying per-role
+/// `participants` credits and raw `tags` (work/movement among others) that
+/// Subsonic's `Song` model has no room for. Deliberately separate from
+/// `Song` (`Networking/SubsonicModels.swift`), which is the playback
+/// pipeline's model — see #24, epic #11. Every field beyond `id` is decoded
+/// tolerantly: a missing key here is normal, not an error.
+struct NativeSongRecord: Identifiable, Sendable, Decodable {
+    let id: String
+    var title: String?
+    var participants: Participants?
+    var tags: [String: [String]]?
+
+    struct Participants: Sendable, Decodable {
+        var composer: [Credit]?
+        var artist: [Credit]?
+        var albumartist: [Credit]?
+    }
+
+    struct Credit: Sendable, Decodable {
+        let id: String
+        let name: String
+    }
+}

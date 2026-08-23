@@ -216,6 +216,33 @@ actor NavidromeClient {
         response.value(forHTTPHeaderField: "X-Total-Count").flatMap(Int.init)
     }
 
+    // MARK: - Song index
+
+    /// In-memory cache of `songIndex()`'s result, kept for the app session
+    /// only — no disk persistence (M2 dropped the SwiftData cache; see
+    /// docs/PROGRESS.md). Cleared by `invalidateSongIndex()`.
+    private var cachedSongIndex: [NativeSongRecord]?
+
+    /// Every song in the library, with per-role `participants` credits and
+    /// raw `tags` — the data a later sub-issue needs to answer "songs by
+    /// composer X" and "work/movement for song Y" without further network
+    /// calls. Paginates `/api/song` concurrently via `paginatedGet` and
+    /// caches the result; repeat calls within the same session return the
+    /// cached copy without refetching. See #24, epic #11.
+    func songIndex() async throws(NavidromeError) -> [NativeSongRecord] {
+        if let cachedSongIndex { return cachedSongIndex }
+        let index = try await paginatedGet(path: "song", sort: "id", as: NativeSongRecord.self)
+        cachedSongIndex = index
+        return index
+    }
+
+    /// Clears the cached song index so the next `songIndex()` call rebuilds
+    /// it from scratch (e.g. after a library scan — the rebuild trigger
+    /// itself is a later sub-issue's concern, not this one's).
+    func invalidateSongIndex() {
+        cachedSongIndex = nil
+    }
+
     // MARK: - URL / request construction
 
     /// Exposed (not `private`) so request-building can be unit-tested without
