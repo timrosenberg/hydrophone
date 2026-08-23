@@ -93,6 +93,21 @@ actor NavidromeClient {
         cachedTokenCredentials = nil
     }
 
+    // MARK: - Composer roster
+
+    /// The full composer roster (`/api/artist?role=composer`), sorted by
+    /// name. Includes Navidrome's synthetic joint-credit rows as-is — see
+    /// `Composer`'s doc comment. See #23, epic #11.
+    func composers() async throws(NavidromeError) -> [Composer] {
+        try await paginatedGet(
+            path: "artist",
+            sort: "name",
+            order: "ASC",
+            extraQuery: [URLQueryItem(name: "role", value: "composer")],
+            as: Composer.self
+        )
+    }
+
     // MARK: - Pagination
 
     /// The parts of a `paginatedGet` call that stay constant across every
