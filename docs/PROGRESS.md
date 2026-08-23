@@ -52,6 +52,49 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #36: per-view column-visibility/order/width persistence (2026-08-23)
+E2 (#10), sub-issue 3 of 5; blocked by #35. Storage only — no picker UI, no
+`MusicTrackTable` wiring (both land in #37).
+
+New `UI/Components/TrackColumnPreferences.swift`: `persistedColumns(for
+viewKind:)`/`persistColumns(_:for:)` and `persistedWidth(for:in:)`/
+`persistWidth(_:for:in:)`, keyed by `viewKind` — reuses `MusicTrackTable`'s
+existing `sortAutosaveKey` string rather than inventing a second per-view
+identifier. Same lightweight pipe-delimited-string persistence
+`TrackTablePersistence.swift` already uses for sort (`"col1|col2|col3"`),
+not JSON/Codable — one less thing for a future column rename to break.
+Every function takes an injectable `defaults: UserDefaults = .standard` so
+tests exercise a real `UserDefaults` round-trip without touching the app's
+actual prefs.
+
+Also added `TrackColumn.init?(id:)`, the inverse of the existing `id`
+property, needed to resolve stored ids back to cases. Implemented via
+`Self.allCases.first(where: { $0.id == id })` (new `CaseIterable`
+conformance) rather than a 16-case switch — a hand-written switch here
+tripped SwiftLint's cyclomatic-complexity limit (`init` bodies are checked,
+unlike the existing `id`/`header`/`widths` computed-property switches,
+which the complexity rule doesn't apply to) and would have duplicated the
+same 16 id strings already spelled out in `id`.
+
+Hermetic coverage in the new `HydrophoneTests/TrackColumnPreferencesTests.swift`
+(7 tests): columns round-trip in order; nil when nothing stored; an unknown
+id embedded in otherwise-valid stored data is dropped, not crashed; nil when
+*every* stored id has become unrecognized; width round-trips; nil when a
+width was never set; widths for different columns/view-kinds don't collide.
+Each test uses its own `viewKind` string against a shared isolated
+`UserDefaults(suiteName:)` — simpler than a teardown step, and the suite
+never touches `.standard`.
+
+No live verification to do or write down: this issue has no UI surface and
+no networking — `persistedColumns`/`persistWidth` aren't called from
+anywhere yet (that wiring is #37), so there's no behavior change a running
+app could show. Same situation as #34's pure data-layer issue.
+
+Build clean, zero warnings; full suite green (190 tests, up from 183 by
+these 7); SwiftLint clean across 94 files.
+
+---
+
 ## Issue #35: TrackColumn cases + cell/sort for expanded columns (2026-08-23)
 E2 (#10), sub-issue 2 of 5; blocked by #34. Adds 8 `TrackColumn` cases
 (`.albumArtist, .comments, .grouping, .dateAdded, .lastPlayed, .plays,
@@ -1996,10 +2039,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 183 tests,
-  0 failures — count current after #35's expanded-column nil-last sorting
-  regression, 2026-08-23; see that entry above), and CI repeats the run on
-  every push (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 190 tests,
+  0 failures — count current after #36's `TrackColumnPreferences` tests,
+  2026-08-23; see that entry above), and CI repeats the run on every push
+  (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
