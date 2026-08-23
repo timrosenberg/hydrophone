@@ -222,25 +222,84 @@ actor NavidromeClient {
     /// only — no disk persistence (M2 dropped the SwiftData cache; see
     /// docs/PROGRESS.md). Cleared by `invalidateSongIndex()`.
     private var cachedSongIndex: [NativeSongRecord]?
+    /// The credentials `cachedSongIndex` was built against — same reasoning
+    /// as `cachedTokenCredentials`: a cache built for one server/account
+    /// must not be served to a different one after Settings changes the
+    /// connection. See PR #31 review.
+    private var cachedSongIndexCredentials: ServerCredentials?
+    /// Bumped by `invalidateSongIndex()`. Actor isolation is reentrant
+    /// across an `await`, so a build already in flight when invalidation
+    /// happens doesn't block it — this lets the completing build recognize
+    /// it's now stale and skip repopulating the cache. See PR #31 review.
+    private var songIndexGeneration = 0
+    /// The in-flight full-library build, if any, plus the credentials it
+    /// was started under — coalesces overlapping `songIndex()` callers onto
+    /// one paginated walk instead of each starting their own, but only when
+    /// the caller's current credentials match (otherwise a caller under new
+    /// credentials could be handed a build's result fetched under the old
+    /// ones). See PR #31 review.
+    private var inFlightSongIndexBuild: Task<[NativeSongRecord], Error>?
+    private var inFlightSongIndexCredentials: ServerCredentials?
 
     /// Every song in the library, with per-role `participants` credits and
     /// raw `tags` — the data a later sub-issue needs to answer "songs by
     /// composer X" and "work/movement for song Y" without further network
     /// calls. Paginates `/api/song` concurrently via `paginatedGet` and
     /// caches the result; repeat calls within the same session return the
-    /// cached copy without refetching. See #24, epic #11.
+    /// cached copy without refetching, unless credentials changed or
+    /// `invalidateSongIndex()` was called. See #24, epic #11.
     func songIndex() async throws(NavidromeError) -> [NativeSongRecord] {
-        if let cachedSongIndex { return cachedSongIndex }
-        let index = try await paginatedGet(path: "song", sort: "id", as: NativeSongRecord.self)
-        cachedSongIndex = index
-        return index
+        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        if let cachedSongIndex, cachedSongIndexCredentials == creds {
+            return cachedSongIndex
+        }
+        if let inFlightSongIndexBuild, inFlightSongIndexCredentials == creds {
+            do {
+                return try await inFlightSongIndexBuild.value
+            } catch {
+                throw error as? NavidromeError ?? .transport("\(error)")
+            }
+        }
+
+        let generation = songIndexGeneration
+        let build = Task<[NativeSongRecord], Error> {
+            try await self.paginatedGet(path: "song", sort: "id", as: NativeSongRecord.self)
+        }
+        inFlightSongIndexBuild = build
+        inFlightSongIndexCredentials = creds
+        do {
+            let index = try await build.value
+            // Only the still-current generation may finish the job: if
+            // `invalidateSongIndex()` ran while this build was in flight,
+            // it already retired `inFlightSongIndexBuild` (possibly to a
+            // newer build) and this stale result must not overwrite it.
+            if generation == songIndexGeneration {
+                cachedSongIndex = index
+                cachedSongIndexCredentials = creds
+                inFlightSongIndexBuild = nil
+                inFlightSongIndexCredentials = nil
+            }
+            return index
+        } catch {
+            if generation == songIndexGeneration {
+                inFlightSongIndexBuild = nil
+                inFlightSongIndexCredentials = nil
+            }
+            throw error as? NavidromeError ?? .transport("\(error)")
+        }
     }
 
-    /// Clears the cached song index so the next `songIndex()` call rebuilds
-    /// it from scratch (e.g. after a library scan — the rebuild trigger
-    /// itself is a later sub-issue's concern, not this one's).
+    /// Clears the cached song index and retires any in-flight build (so it
+    /// can't repopulate the cache once it completes), so the next
+    /// `songIndex()` call rebuilds from scratch (e.g. after a library scan —
+    /// the rebuild trigger itself is a later sub-issue's concern, not this
+    /// one's).
     func invalidateSongIndex() {
         cachedSongIndex = nil
+        cachedSongIndexCredentials = nil
+        songIndexGeneration += 1
+        inFlightSongIndexBuild = nil
+        inFlightSongIndexCredentials = nil
     }
 
     // MARK: - URL / request construction
