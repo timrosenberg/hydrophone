@@ -95,19 +95,24 @@ actor NavidromeClient {
 
     // MARK: - Pagination
 
-    /// The parts of a `paginatedGet` call that stay constant across every page,
-    /// bundled to keep `fetchPage`'s parameter count reasonable.
+    /// The parts of a `paginatedGet` call that stay constant across every
+    /// page — including the credentials snapshot, so a Settings change
+    /// mid-walk can't mix pages from two different servers/accounts into one
+    /// result (a 401 retry reuses the same snapshot too). Bundled to keep
+    /// `fetchPage`'s parameter count reasonable.
     private struct PageQuery: Sendable {
         let path: String
         let sort: String
         let order: String
         let extraQuery: [URLQueryItem]
+        let credentials: ServerCredentials
     }
 
     /// Walks a react-admin list resource (`_start`/`_end`/`_sort`/`_order`,
     /// total via the `X-Total-Count` response header) fully, fetching pages
     /// concurrently after the first. `path` is the resource name under
-    /// `/api/`, e.g. `"artist"` or `"song"`.
+    /// `/api/`, e.g. `"artist"` or `"song"`. Credentials are loaded once here
+    /// and reused for every page of this walk, deliberately — see `PageQuery`.
     func paginatedGet<T: Decodable & Sendable>(
         path: String,
         sort: String,
@@ -116,7 +121,8 @@ actor NavidromeClient {
         pageSize: Int = 500,
         as type: T.Type
     ) async throws(NavidromeError) -> [T] {
-        let query = PageQuery(path: path, sort: sort, order: order, extraQuery: extraQuery)
+        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        let query = PageQuery(path: path, sort: sort, order: order, extraQuery: extraQuery, credentials: creds)
         let first = try await fetchPage(query, start: 0, end: pageSize, as: type)
         guard first.totalCount > pageSize else { return first.items }
 
@@ -157,7 +163,10 @@ actor NavidromeClient {
     private func fetchPage<T: Decodable & Sendable>(
         _ query: PageQuery, start: Int, end: Int, as type: T.Type, isRetry: Bool = false
     ) async throws(NavidromeError) -> Page<T> {
-        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        // Deliberately `query.credentials`, not a fresh `credentials.load()`:
+        // every page (and the 401 retry below) must use the one snapshot
+        // `paginatedGet` loaded at the start of this walk.
+        let creds = query.credentials
         let token = try await ensureValidToken(using: creds)
         var items = [
             URLQueryItem(name: "_start", value: String(start)),

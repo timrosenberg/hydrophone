@@ -71,6 +71,45 @@ struct NavidromeClientNetworkTests {
         #expect(hosts == ["old-server.example.com", "new-server.example.com"]) // never cross-contaminated
     }
 
+    /// The single-page test above can't catch this: a multi-page walk must
+    /// use *one* credentials snapshot for every page, even if Settings saves
+    /// a different server/account while the walk is in flight (between page
+    /// zero completing and the remaining pages firing). Otherwise the
+    /// combined result could silently mix page zero from server A with later
+    /// pages from server B. See PR #27 re-review.
+    @Test func credentialChangeMidMultiPageWalkDoesNotMixServers() async throws {
+        await NavidromeMockProtocol.reset()
+        let store = InMemoryCredentialStore(creds(host: "https://old-server.example.com"))
+        let sawFirstArtistPage = FlagBox()
+
+        await NavidromeMockProtocol.setHandler { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/auth/login") {
+                let jwt = Self.makeJWT(exp: Date().addingTimeInterval(3600).timeIntervalSince1970)
+                let body = #"{"token":"\#(jwt)","subsonicSalt":"s","subsonicToken":"t","username":"tim"}"#
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            // Simulate Settings saving a new server while page zero's
+            // request is in flight — only the *first* /api/artist call
+            // triggers it, so it lands strictly between page zero and the
+            // concurrent remaining-page fetches paginatedGet spawns after it.
+            if sawFirstArtistPage.setTrueIfFirst() {
+                try? store.save(self.creds(host: "https://new-server.example.com"))
+            }
+            // 1000 total / pageSize 500 → page zero + one more page.
+            let headers = ["Content-Type": "application/json", "X-Total-Count": "1000"]
+            return .init(status: 200, headers: headers, body: Data(#"[{"id":"a1"}]"#.utf8))
+        }
+
+        let client = NavidromeClient(credentials: store, session: makeSession())
+        _ = try await client.paginatedGet(path: "artist", sort: "name", pageSize: 500, as: MinimalArtist.self)
+
+        let hosts = await NavidromeMockProtocol.requestedHosts(pathSuffix: "/api/artist")
+        #expect(hosts.count == 2)
+        // Every page pinned to the snapshot from before the walk started.
+        #expect(Set(hosts) == ["old-server.example.com"])
+    }
+
     @Test func unauthorizedResponseRetriesExactlyOnceThenFails() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(Self.makeHandler(jwtExpiresIn: 3600, alwaysUnauthorized: true))
@@ -140,6 +179,24 @@ struct NavidromeClientNetworkTests {
 /// caller-supplied handler. All mutable state is actor-protected so it's safe
 /// to touch from `URLProtocol`'s arbitrary-thread callbacks and from test
 /// assertions alike.
+/// A one-shot, thread-safe latch: `setTrueIfFirst()` returns `true` exactly
+/// once (for whichever call reaches it first), `false` for every call after.
+/// Used to trigger a side effect (a mid-walk credential change) on exactly
+/// the first matching request in a mock handler, regardless of which thread
+/// the `URLProtocol` machinery runs it on.
+private final class FlagBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    func setTrueIfFirst() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !value else { return false }
+        value = true
+        return true
+    }
+}
+
 final class NavidromeMockProtocol: URLProtocol, @unchecked Sendable {
     struct Response: Sendable {
         let status: Int
