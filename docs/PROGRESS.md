@@ -52,6 +52,47 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #25: NavidromeClient `songs(byComposerId:)` and `workMetadata(songId:)` (2026-08-23)
+Two read-only lookups over #24's `songIndex()` cache, added as a `NavidromeClient`
+extension alongside `composers()` in `Services/NavidromeClient.swift` — no new
+network calls, since each cached `NativeSongRecord` already carries
+`participants` and `tags`:
+- `songs(byComposerId:)` filters the cached index by `participants.composer[].id`,
+  including joint-credit songs that list several composer ids (there's no
+  server-side "songs by composer" filter — confirmed by #24's testing — so this
+  is the only correct approach).
+- `workMetadata(songId:)` reads a new `WorkInfo` struct (`Networking/NavidromeModels.swift`)
+  from a song's `tags["work"/"movementname"/"movement"/"movementtotal"]`,
+  parsing `movement`/`movementtotal` as **separate** `Int`s (Navidrome tags
+  them as independent plain-number strings, not a combined "n/total"), each of
+  the four fields optional on its own. Returns `nil` for an unknown song id or
+  one with none of the four fields.
+
+Hermetic coverage lives in `HydrophoneTests/NavidromeComposerSongLookupTests.swift`,
+an extension of `NavidromeClientNetworkTests` (same pattern
+`NavidromeComposerNetworkTests.swift` already used for #23) — this keeps the
+new tests inside the existing `.serialized` suite sharing `NavidromeMockProtocol`
+safely, without adding a second stubbed `URLProtocol` that would race it (Swift
+Testing runs distinct suites concurrently by default; `.serialized` only
+serializes within one suite). Covers joint-credit filtering, a non-matching
+composer id, no extra network call beyond `songIndex()`'s own, the confirmed
+real-library Schubert movement fixture from the issue body, a work with no
+numbered movement, and the nil cases.
+
+**Verification:** build succeeds with zero compiler warnings; full suite green
+(**TEST SUCCEEDED**, 172 tests, 0 failures — up from 167 by these 6; ran three
+times back-to-back with no flakes to rule out a suite-ordering race); SwiftLint
+reports 0 violations across 89 files. Live-verified 2026-08-23 against Tim's
+real Navidrome server: compiled `NavidromeClient`/`NavidromeModels`/
+`CredentialStore`/`AsyncLimiter` standalone with `swiftc` (the same workaround
+#24/PR #31 used, since `xcodebuild test` doesn't forward `HYDROPHONE_*` into the
+XCTest runner process) and ran a scratch harness — `composers()` returned 1,694
+rows in 0.54s; picking Aaron Copland (reported `songCount: 12`),
+`songs(byComposerId:)` returned exactly 12 songs; `workMetadata(songId:)` on a
+song from the index decoded `work: "Variations on a Melancholy Theme"`,
+`movementName: "Cadenza"`, `movementNumber: 13`, `movementTotal: 14` — matching
+the parse-as-separate-ints contract. The scratch harness was deleted after.
+
 ## PR #31: refresh song-index branch from `main` (2026-08-23)
 Merged `origin/main` at `40283cb7ddb3f0e94df30543f20518a8fa991630`
 into `issue-24-navidrome-song-index` after GitHub reported PR #31 as
@@ -1777,10 +1818,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 167 tests,
-  0 failures — count current after merging #23's composer-roster coverage
-  into #24/PR #31's song-index branch, 2026-08-23; see those entries above),
-  and CI repeats the run on every push (`.github/workflows/tests.yml`).
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 172 tests,
+  0 failures — count current after #25's composer-song-lookup coverage,
+  2026-08-23; see that entry above), and CI repeats the run on every push
+  (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
