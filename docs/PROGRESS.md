@@ -52,6 +52,52 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #35: TrackColumn cases + cell/sort for expanded columns (2026-08-23)
+E2 (#10), sub-issue 2 of 5; blocked by #34. Adds 8 `TrackColumn` cases
+(`.albumArtist, .comments, .grouping, .dateAdded, .lastPlayed, .plays,
+.sampleRate, .sortTitle`) with header/width/alignment, plus matching
+`textCell`/`sortedTracks` branches in `MusicTrackTable`. Purely a data-
+layer-to-cell wiring issue — no column picker, no persistence, not wired
+into any real view yet (those are #37/#38).
+
+Cell text + sort logic for the 8 new columns lives in a new
+`UI/Components/ExpandedTrackColumns.swift` extension on
+`MusicTrackTable.Coordinator`, rather than inline in `MusicTrackTable.swift`
+— folding 16 more switch branches directly into `textCell`/`sortedTracks`
+pushed both past SwiftLint's cyclomatic-complexity limit and pushed the
+struct past its type-body-length limit. Same split `TrackTablePersistence.swift`
+already uses for sort/scroll persistence. The right-alignment/font styling
+also moved out to `styleAlignment(of:id:)` in the same new file, which
+brought `textCell` back under the complexity limit on its own.
+
+`Song.groupings` (from #34) is `[String]?`; the Grouping column joins it
+with `", "` for display, `"—"` when empty. Missing dates/counts sort first
+ascending by coalescing to the lowest sentinel (`.distantPast` / `0`) — the
+same convention `.quality`'s `qualityRank` and the text columns' empty-
+string coalesce already use.
+
+**Live verification (2026-08-23), driving the app against Tim's real
+Navidrome library** (`music.tail9575a5.ts.net`, 14,794 tracks): temporarily
+wired all 8 new columns into `SongsView`'s flat-table `columns:` array
+(reverted before commit — not part of this PR), launched the Debug build,
+and drove it via macOS Accessibility API scripting + `screencapture`
+screenshots (no live GUI automation tool was available for a native app
+this session, so this replaced the usual click-through). Confirmed: every
+column renders real data with the `"—"` fallback where absent (Comments,
+Grouping); Sample Rate formats both whole (`96 kHz`) and fractional
+(`44.1 kHz`, `88.2 kHz`) values correctly; clicking the Sample Rate and
+Grouping headers sorts both ascending and descending correctly, including
+missing values sorting first ascending. One misplaced click briefly starred
+a real track ("Intro") — caught immediately from the screenshot and
+unstarred before moving on; no lasting change to Tim's library.
+
+Build clean, zero warnings; full suite green (182 tests, unchanged —
+`MusicTrackTable`/`TrackColumn` are AppKit view code with no hermetic
+coverage per `docs/08-testing.md`, so this issue adds none); SwiftLint
+clean across 91 files.
+
+---
+
 ## Issue #34: decode expanded track-column Song fields (2026-08-23)
 E2 (#10), sub-issue 1 of 5; spec #7. Adds 8 new optional `Song` fields —
 `displayAlbumArtist`, `comment`, `groupings`, `created`, `played`,
