@@ -96,6 +96,19 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
     }
 }
 
+/// A song's work/movement metadata, read from `NativeSongRecord.tags`.
+/// `movementNumber`/`movementTotal` are Navidrome's separate plain-number
+/// tag strings (e.g. `"13"`/`"14"`), not a combined "n/total" string — each
+/// parses independently, and each of the four fields is optional on its own
+/// (a single-movement work can carry `work`/`movementName` with no numbered
+/// movement at all). See #25, epic #11.
+struct WorkInfo: Sendable, Equatable {
+    var work: String?
+    var movementName: String?
+    var movementNumber: Int?
+    var movementTotal: Int?
+}
+
 /// Mirrors the `stats` object on an `/api/artist` row, of which only
 /// `composer` is read here (siblings `artist`/`albumartist`/`maincredit`
 /// exist but aren't needed for the roster).
