@@ -52,6 +52,50 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #45: join native WorkInfo onto Song (2026-08-24)
+E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
+(columns, work-grouping headers, "Play Work") builds on.
+
+- `Song` gained four client-side-only fields — `work`, `movementName`,
+  `movementNumber`, `movementTotal` — deliberately absent from `CodingKeys`
+  (Subsonic never sends them) and relying on `Optional`'s own implicit `nil`
+  default for synthesized `Codable` to keep compiling.
+- `NavidromeClient` gained `workInfo(forSongIds:)`, a batch join built on a
+  dictionary over the existing cached `songIndex()` — an album's dozen tracks
+  now cost one dictionary build, not one O(n) scan per track like
+  `workMetadata(songId:)` (#25) still does for its single-song callers. Both
+  now share one internal `workInfo(from:)` helper; `workMetadata(songId:)`'s
+  behavior and test coverage are unchanged.
+- `LibraryModel` gained a `navidrome` reference and a `nativeFeaturesAvailable`
+  closure (mirroring `PlayerModel`'s `scrobbler`/`queueStore` closure pattern —
+  `AppModel` is the only place peer models actually wire together), plus a
+  `joinWorkInfo(into:)` helper (`LibraryModel+WorkInfo.swift`, split out for
+  the type-body-length lint) wired into the four `[Song]`-returning fetches
+  that feed a track table today: album detail, genre, the Songs sample, and
+  Favorites. The join is a no-op — no network call at all — when
+  `ConnectionModel.nativeFeaturesState != .available`.
+- **Deliberately out of scope:** playlist songs (`Playlist.entry`) and search
+  results (`SearchResults.songs`) don't get the join yet — different data
+  shapes; keeping this branch reviewable mattered more than covering every
+  call site in one pass. Candidate follow-up if #46/#47/#48 need them.
+
+**Live verification (2026-08-24), Tim's real Navidrome server** (14,794
+songs, 2,946 with `movementname`): a temporary opt-in test (reverted before
+this PR, same convention as `LiveDecodeTests`) exercised the real path
+end-to-end — `NavidromeClient.login()`, a real `songIndex()` walk, confirmed
+real songs carrying `work`/`movementname`/`movement`/`movementtotal` tags,
+`workInfo(forSongIds:)` correctly joining one, and — the actual point of this
+issue — `LibraryModel.songs(forAlbum:)` returning that song with `.work`
+populated end-to-end. All assertions passed (~11s per run, consistent with
+#8's measured full-index-walk cost).
+
+Build clean, zero compiler warnings; full suite green (197 tests, +7 new
+hermetic tests: batch-join coverage in `NavidromeComposerSongLookupTests`,
+a `Song`-decode default-nil test, and three `LibraryModel` join tests);
+SwiftLint clean across 98 files.
+
+---
+
 ## Issue #38: column picker on every track view (2026-08-23)
 E2 (#10), sub-issue 5 of 5. The header picker proven in Songs by #37 now
 works on all six `TrackTableView` call sites.
@@ -2199,9 +2243,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 190 tests,
-  0 failures — count current after #38's six-view picker rollout, which added
-  no new hermetic tests, 2026-08-23; see that entry above), and CI repeats the run on every push
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 197 tests,
+  0 failures — count current after #45's work/movement join (+7 hermetic
+  tests), 2026-08-24; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)

@@ -254,8 +254,10 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   calls `NavidromeClient.invalidateSongIndex()` (#24) after a successful scan
   request, so a rescan's adds/removes/retags aren't served stale by the
   in-memory song-index cache — the next consumer rebuilds it from scratch.
-  No UI yet reads the index (E4/E5), so this is presently unobservable outside
-  a log line or breakpoint. See #26.
+  `LibraryModel`'s work/movement join (#45) reads through this cache, so a
+  rescan's retagged work/movement data is picked up on the next fetch too. No
+  UI yet *displays* work/movement data (E5's remaining sub-issues), so this is
+  presently unobservable outside a log line or breakpoint. See #26.
 - **Song index (#24):** `NavidromeClient.songIndex()` walks `/api/song` fully
   via `paginatedGet` and caches the result (`[NativeSongRecord]`) in-actor for
   the app session — no disk persistence, matching the M2 decision to drop the
@@ -270,3 +272,14 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw `tags`
   (`[String: [String]]`) — kept separate from `Song` (`SubsonicModels.swift`),
   the playback pipeline's model.
+- **Work/movement join onto `Song` (#45, epic #13):** `NavidromeClient`
+  exposes `workMetadata(songId:)` (#25, one song, O(n) scan of the cached
+  index) and `workInfo(forSongIds:)` (#45, many songs at once against a
+  dictionary built from the same cache — an album's dozen tracks cost one
+  dictionary build, not one scan per track). `LibraryModel.joinWorkInfo(into:)`
+  calls the batch form and copies `work`/`movementName`/`movementNumber`/
+  `movementTotal` onto the matching `Song` values, gated on
+  `ConnectionModel.nativeFeaturesState == .available` — a no-op, with no
+  native network call at all, otherwise. Wired into the album, genre, Songs
+  sample, and Favorites fetches in `LibraryModel`; playlist and search results
+  don't get the join yet (different data shapes — deliberately deferred).
