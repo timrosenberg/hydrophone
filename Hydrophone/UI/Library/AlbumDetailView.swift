@@ -21,7 +21,8 @@ struct AlbumDetailView: View {
             Divider()
             TrackTableView(tracks: tracks, columns: [.number, .title, .artist, .composer, .genre, .quality, .time],
                            sortAutosaveKey: "album",
-                           discHeaders: discSubtitles)
+                           discHeaders: discSubtitles,
+                           columnsCustomizable: true)
         }
         .task(id: album.id) {
             // One getAlbum fetch supplies both the tracks and the disc

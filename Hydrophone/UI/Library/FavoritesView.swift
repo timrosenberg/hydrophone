@@ -23,7 +23,8 @@ struct FavoritesView: View {
                         TrackTableView(tracks: library.starredSongs,
                                        columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
                                        sortAutosaveKey: "favorites",
-                                       scrollAutosaveKey: "favorites")
+                                       scrollAutosaveKey: "favorites",
+                                       columnsCustomizable: true)
                     } else {
                         Spacer()
                     }
