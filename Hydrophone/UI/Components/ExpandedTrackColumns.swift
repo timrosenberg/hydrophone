@@ -14,7 +14,9 @@ extension MusicTrackTable.Coordinator {
     /// (`TrackColumn.alignment`). Returns the label's trailing constraint
     /// constant (tighter for the monospaced right-aligned columns).
     @MainActor func styleAlignment(of label: NSTextField, id: String) -> CGFloat {
-        let rightAlignedIDs: Set<String> = ["time", "dateAdded", "lastPlayed", "plays", "sampleRate"]
+        let rightAlignedIDs: Set<String> = [
+            "time", "movement", "dateAdded", "lastPlayed", "plays", "sampleRate"
+        ]
         if id == "number" {
             label.alignment = .center
             label.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)

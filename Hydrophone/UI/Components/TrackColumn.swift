@@ -4,7 +4,7 @@ import SwiftUI
 /// favorite-star columns are always present (fixed-width affordances); these are
 /// the content columns each call site opts into explicitly.
 enum TrackColumn: Equatable, CaseIterable {
-    case number, title, artist, composer, album, genre, quality, time
+    case number, title, artist, composer, album, work, movementName, movement, genre, quality, time
     case albumArtist, comments, grouping, dateAdded, lastPlayed, plays, sampleRate, sortTitle
 
     struct Widths {
@@ -20,6 +20,9 @@ enum TrackColumn: Equatable, CaseIterable {
         case .artist: "artist"
         case .composer: "composer"
         case .album: "album"
+        case .work: "work"
+        case .movementName: "movementName"
+        case .movement: "movement"
         case .genre: "genre"
         case .quality: "quality"
         case .time: "time"
@@ -41,6 +44,22 @@ enum TrackColumn: Equatable, CaseIterable {
     init?(id: String) {
         guard let match = Self.allCases.first(where: { $0.id == id }) else { return nil }
         self = match
+    }
+
+    /// The canonical header-picker choices for the current server. Native
+    /// work/movement metadata is absent on plain Subsonic servers, so those
+    /// choices are omitted rather than shown disabled.
+    static func pickerColumns(nativeFeaturesAvailable: Bool) -> [Self] {
+        allCases.filter { column in
+            column != .number && (nativeFeaturesAvailable || !column.isNativeOnly)
+        }
+    }
+
+    private var isNativeOnly: Bool {
+        switch self {
+        case .work, .movementName, .movement: true
+        default: false
+        }
     }
 
     /// Builds a live `NSTableColumn` for this case from its own
@@ -66,6 +85,9 @@ enum TrackColumn: Equatable, CaseIterable {
         case .artist: "Artist"
         case .composer: "Composer"
         case .album: "Album"
+        case .work: "Work"
+        case .movementName: "Movement Name"
+        case .movement: "Movement"
         case .genre: "Genre"
         case .quality: "Quality"
         case .time: "Time"
@@ -86,6 +108,9 @@ enum TrackColumn: Equatable, CaseIterable {
         case .artist: Widths(initial: 170, min: 80, max: 10_000)
         case .composer: Widths(initial: 170, min: 80, max: 10_000)
         case .album: Widths(initial: 170, min: 80, max: 10_000)
+        case .work: Widths(initial: 170, min: 80, max: 10_000)
+        case .movementName: Widths(initial: 170, min: 80, max: 10_000)
+        case .movement: Widths(initial: 70, min: 64, max: 80)
         case .genre: Widths(initial: 100, min: 60, max: 400)
         case .quality: Widths(initial: 78, min: 64, max: 110)
         case .time: Widths(initial: 54, min: 54, max: 80)
@@ -106,7 +131,7 @@ enum TrackColumn: Equatable, CaseIterable {
     var alignment: NSTextAlignment {
         switch self {
         case .number: .center
-        case .time, .dateAdded, .lastPlayed, .plays, .sampleRate: .right
+        case .time, .movement, .dateAdded, .lastPlayed, .plays, .sampleRate: .right
         default: .left
         }
     }

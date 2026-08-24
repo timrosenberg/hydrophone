@@ -27,6 +27,7 @@ struct TrackTableView: View {
     var columnsCustomizable: Bool = false
 
     @Environment(AppModel.self) private var app
+    @Environment(ConnectionModel.self) private var connection
     @Environment(LibraryModel.self) private var library
     @Environment(PlayerModel.self) private var player
     @Environment(Navigator.self) private var navigator
@@ -48,6 +49,7 @@ struct TrackTableView: View {
             scrollAutosaveKey: isPlaylist ? nil : scrollAutosaveKey,
             columns: columns,
             columnsCustomizable: columnsCustomizable,
+            nativeFeaturesAvailable: connection.nativeFeaturesState == .available,
             discHeaders: discHeaders,
             nowPlayingID: player.currentTrack?.id,
             starSignature: library.starSignature,

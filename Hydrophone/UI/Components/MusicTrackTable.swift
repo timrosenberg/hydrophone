@@ -55,6 +55,9 @@ struct MusicTrackTable: NSViewRepresentable {
     /// (`SongsView` first; the rest in #38) rather than globally at once,
     /// since every `TrackTableView` caller shares this same implementation.
     var columnsCustomizable: Bool = false
+    /// Whether the connected server supports Navidrome-only metadata. The
+    /// picker uses this to omit native-only columns on plain Subsonic servers.
+    var nativeFeaturesAvailable: Bool = false
     /// Disc → subtitle; non-nil opts into disc group headers on multi-disc
     /// content (album page). Headers appear only in disc order — the natural
     /// order or an ascending # sort — since other sorts interleave discs.
@@ -156,7 +159,7 @@ struct MusicTrackTable: NSViewRepresentable {
                 (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "") == .orderedAscending
             }
             return parent.tracks.sorted { lhs, rhs in
-                if let result = expandedColumnOrderedBefore(
+                if let result = pickerOnlyColumnOrderedBefore(
                     id: key, lhs: lhs, rhs: rhs, ascending: asc
                 ) {
                     return result
@@ -296,7 +299,7 @@ struct MusicTrackTable: NSViewRepresentable {
             case "album": text = song.album ?? "—"
             case "genre": text = song.displayGenre ?? "—"
             case "time": text = formatTime(song.duration)
-            default: text = expandedColumnText(id: id, song: song) ?? ""
+            default: text = pickerOnlyColumnText(id: id, song: song) ?? ""
             }
             let label = NSTextField(labelWithString: text)
             label.lineBreakMode = .byTruncatingTail

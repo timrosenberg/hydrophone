@@ -19,7 +19,9 @@ extension MusicTrackTable.Coordinator {
     func columnPickerMenu(for table: NSTableView) -> NSMenu {
         let menu = NSMenu()
         let visibleIDs = Set(table.tableColumns.map(\.identifier.rawValue))
-        for column in TrackColumn.allCases where column != .number {
+        for column in TrackColumn.pickerColumns(
+            nativeFeaturesAvailable: parent.nativeFeaturesAvailable
+        ) {
             let item = NSMenuItem(title: column.header, action: #selector(toggleColumn(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = column.id
