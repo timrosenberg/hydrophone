@@ -136,6 +136,14 @@ struct TrackTableView: View {
         menu.addItem(ClosureMenuItem(title: "Start Radio", enabled: !app.isPreparingMix) {
             app.startRadio(from: song)
         })
+        if let workItem = makeWorkMenuItem(
+            for: song,
+            among: tracks,
+            onPlay: { player.play(tracks: $0, startAt: $1) },
+            onEnqueue: { player.enqueue($0) }
+        ) {
+            menu.addItem(workItem)
+        }
         menu.addItem(ClosureMenuItem(title: "Get Info") { infoSong = song })
         if let albumId = song.albumId {
             menu.addItem(ClosureMenuItem(title: "Go to Album") {
@@ -179,6 +187,39 @@ struct TrackTableView: View {
     private func toggleStar(_ songIds: [String], star: Bool) {
         Task { await library.setStarred(star, songIds: songIds) }
     }
+}
+
+/// Builds the single-selection work submenu from the table's underlying tracks,
+/// so a display sort can never change classical movement order.
+@MainActor
+func makeWorkMenuItem(
+    for song: Song,
+    among tracks: [Song],
+    onPlay: @escaping ([Song], Int) -> Void,
+    onEnqueue: @escaping ([Song]) -> Void
+) -> NSMenuItem? {
+    guard let work = song.work else { return nil }
+    let workTracks = tracks.enumerated()
+        .filter { $0.element.work == work }
+        .sorted { lhs, rhs in
+            let lhsOrder = lhs.element.movementNumber ?? lhs.element.track ?? .max
+            let rhsOrder = rhs.element.movementNumber ?? rhs.element.track ?? .max
+            return lhsOrder == rhsOrder ? lhs.offset < rhs.offset : lhsOrder < rhsOrder
+        }
+        .map(\.element)
+
+    let submenu = NSMenu()
+    submenu.autoenablesItems = false
+    submenu.addItem(ClosureMenuItem(title: "Play Work") {
+        onPlay(workTracks, 0)
+    })
+    submenu.addItem(ClosureMenuItem(title: "Add Work to Up Next") {
+        onEnqueue(workTracks)
+    })
+
+    let item = NSMenuItem(title: work, action: nil, keyEquivalent: "")
+    item.submenu = submenu
+    return item
 }
 
 func formatTime(_ seconds: Int?) -> String {

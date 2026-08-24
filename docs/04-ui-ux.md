@@ -118,13 +118,24 @@ rendered visibly washed out.
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
   same badge appears under the album line on the Now Playing hero card.
+- **Album work grouping**: when an album contains more than one distinct
+  tagged Work, flat, unselectable headers mark each consecutive run. Work
+  grouping takes priority over disc grouping; a multi-disc album folds the
+  disc into each label (`Disc 2 · Work Name`). Headers appear only in natural
+  track order or ascending `#`, and withdraw under every other sort. Albums
+  with zero or one Work retain the existing disc-header behavior unchanged.
 - Dense row height; right-aligned monospaced-digit time; edge-to-edge stripes.
 - Double-click (or ⏎) plays the row and sets the queue from the current view;
   **⌥-double-click queues it next**.
 - Context menu: Play, Play Next, Add to Up Next, Add to Playlist ▸ (incl. New
   Playlist…), Add/Remove Favorites, Get Info (read-only sheet — tag editing is
   post-v1), Go to Album / Go to Artist (single selection); playlist mode adds
-  Move to Top/Up/Down/Bottom + Remove from Playlist.
+  Move to Top/Up/Down/Bottom + Remove from Playlist. A single selected track
+  with native Work metadata also gets a submenu titled with the Work: **Play
+  Work** starts at movement 1 and **Add Work to Up Next** queues the complete
+  Work. Both actions use the view's underlying tracks ordered by movement
+  number (falling back to track number), never the table's current display
+  sort; the submenu is absent for multi-selection and tracks without Work.
 - Multi-select; drag selected rows to a playlist in the sidebar, or into the
   Up Next queue (position-aware insert; the payload carries the full song).
 
