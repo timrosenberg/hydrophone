@@ -5,7 +5,6 @@ import SwiftUI
 /// and the tracks below. See docs/04-ui-ux.md.
 struct ColumnBrowserView: View {
     @Environment(LibraryModel.self) private var library
-    @Environment(PlayerModel.self) private var player
 
     @State private var songs: [Song] = []          // songs for the selected genre
     @State private var isLoading = false
@@ -161,7 +160,7 @@ struct ColumnBrowserView: View {
                 }
             }
             .listStyle(.plain)
-            .playPauseOnSpace { player.togglePlayPause() }
+            .playPauseOnSpace()
         }
         .frame(maxWidth: .infinity)
     }

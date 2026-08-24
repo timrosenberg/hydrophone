@@ -7,7 +7,6 @@ struct ArtistsView: View {
     @Environment(AppModel.self) private var app
     @Environment(LibraryModel.self) private var library
     @Environment(Navigator.self) private var navigator
-    @Environment(PlayerModel.self) private var player
     /// Persisted, not @State: opening an album replaces this whole view in
     /// the detail column (RootView), so view state dies while browsing an
     /// album — Back must land on the same artist. Doubles as cross-launch
@@ -46,7 +45,7 @@ struct ArtistsView: View {
                 }
             }
             .listStyle(.plain)
-            .playPauseOnSpace { player.togglePlayPause() }
+            .playPauseOnSpace()
             .background(ListSelectionHighlightDisabler())
             .frame(width: 240)
 

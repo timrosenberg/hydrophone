@@ -117,7 +117,7 @@ struct NowPlayingPanel: View {
                     }
                 }
                 .listStyle(.plain)
-                .playPauseOnSpace { player.togglePlayPause() }
+                .playPauseOnSpace()
                 .scrollContentBackground(.hidden)
             }
         }

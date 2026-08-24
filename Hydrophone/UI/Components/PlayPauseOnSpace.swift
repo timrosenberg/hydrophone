@@ -9,4 +9,18 @@ extension View {
             return .handled
         }
     }
+
+    /// Convenience for the common case: toggles `PlayerModel` directly, so
+    /// call sites don't each need their own `@Environment(PlayerModel.self)`.
+    func playPauseOnSpace() -> some View {
+        modifier(PlayPauseOnSpaceModifier())
+    }
+}
+
+private struct PlayPauseOnSpaceModifier: ViewModifier {
+    @Environment(PlayerModel.self) private var player
+
+    func body(content: Content) -> some View {
+        content.playPauseOnSpace { player.togglePlayPause() }
+    }
 }

@@ -82,6 +82,33 @@ Build clean with zero compiler warnings; the full suite passed **221 executed
 cases, 0 failures, 0 skipped** (220 declarations, with one parameterized case
 run twice); SwiftLint clean (**0 violations across 104 files**).
 
+**PR #57 review cleanup (2026-08-24):** `/code-review medium` flagged two
+findings, posted as inline PR comments.
+
+- **Duplication (fixed):** `.playPauseOnSpace { player.togglePlayPause() }`
+  plus a fresh `@Environment(PlayerModel.self)` was repeated at all three call
+  sites. Added a no-argument `playPauseOnSpace()` convenience overload
+  (`PlayPauseOnSpace.swift`) that reads `PlayerModel` from the environment
+  internally; `ArtistsView` and `ColumnBrowserView` dropped their now-unused
+  `player` properties (each had no other use of it). The closure-taking
+  overload stays, since `TrackTableKeyboardTests` depends on the generic form
+  to count invocations without a real `PlayerModel`.
+- **Full Keyboard Access precedence (investigated, not fixed):** the concern
+  is that a List's `.playPauseOnSpace` could swallow Space before a
+  Tab-focused row button (e.g. Up Next's Play/Remove) gets to activate it.
+  Attempted a hermetic regression test analogous to the existing
+  `swiftUIListRoutesSpaceToPlayback` — host a `List { Button(...) }`
+  offscreen, `makeFirstResponder` the button, send Space, assert the button
+  fires and playback doesn't. Dumping the actual view hierarchy showed why
+  this can't work: a plain SwiftUI `Button` inside a `List` row doesn't back
+  onto a real `NSButton`; the only AppKit object present is a private
+  `_FocusRingView` inside `CellHostingView`, which isn't reachable or
+  drivable from public API. That's the same wall Tim's live verification hit
+  — the machine's keyboard-navigation setting didn't make buttons
+  Tab-focusable, so this path has never actually been exercised in either
+  direction. Left the behavior unchanged rather than guess at a fix with no
+  way to verify it; needs a real Full Keyboard Access pass on a live machine.
+
 ---
 
 ## Issue #47: PR #51 review cleanup (2026-08-24)
