@@ -54,6 +54,39 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #53: blank row between the end of a work and the next ungrouped track (2026-08-24)
+Follow-up to #47's work-grouping headers: a run of grouped tracks flowing
+straight into an ungrouped track had no visual separation, since headers only
+mark the *start* of a group.
+
+- New `TrackTableRow.spacer` case (`MusicTrackTable.swift`). `groupedRows`
+  emits it when the grouping key transitions from non-nil to nil — i.e.
+  leaving a grouped run into ungrouped tracks — never at the top of the list,
+  between two grouped runs (already separated by a header), or on albums with
+  no grouping at all.
+- No other plumbing changed: `trackIndex(atRow:)` already returns nil for any
+  non-`.track` row, so selection, drag, and row-view handling treat a spacer
+  exactly like a header; `viewFor` falls through its `case .header` check and
+  returns nil, rendering an empty row at the table's uniform 24pt row height.
+- Four new `DiscHeaderTests` cases: spacer emitted on work→ungrouped, absent
+  on work→work, absent on ungrouped→work, absent when no grouping applies.
+
+Build clean with zero compiler warnings; full suite **TEST SUCCEEDED** with
+these four tests passing alongside the existing grouping cases; SwiftLint
+clean (0 violations across 104 files).
+
+**Live verification: pending — Tim to confirm by hand** against *Japanese
+Love Songs* (Claude Delangle) on his real server: a blank line should
+separate track 6 (`Three Love Songs III. Hotaru (Firefly)`) from track 7
+(`First Eclogue After Epos Among Ainu Races`), the two work headers should be
+unchanged, sorting by Title should withdraw all grouping including the
+spacer, and a normal multi-disc album should render unaffected. Automated
+live-verification wasn't attempted this round — the desktop had other
+concurrent sessions actively stealing window focus, and driving the app
+blind under those conditions risked misclicking into unrelated windows.
+
+---
+
 ## Issue #56: Space play/pause from focused lists (2026-08-24)
 Focus-owning collection controls now preserve the global Space play/pause
 shortcut instead of consuming it as selection input.
