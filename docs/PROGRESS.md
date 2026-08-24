@@ -2413,9 +2413,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full combined #47/#48 suite passes (**211 tests,
-  0 failures**, 2026-08-24); CI repeats the run on every push
+- ✅ `xcodebuild test` — full combined #46/#47/#48 suite passes (**217 tests,
+  0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
+- ✅ `swiftlint` — **0 violations across 102 files** (2026-08-24).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
