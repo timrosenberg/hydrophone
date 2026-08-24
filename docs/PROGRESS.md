@@ -52,6 +52,31 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #46 follow-up: Movement sort/display mismatch (2026-08-24)
+Code review on PR #52 caught a bug in the fix below: the Movement column's
+sort comparator ranked by `movementNumber` alone, while the cell text
+requires both `movementNumber` and `movementTotal` to show anything but `—`.
+A track with a movement number but no total displayed `—` yet still sorted
+by its number, interleaved among fully-tagged rows instead of grouped with
+the truly-untagged rows at the end.
+
+- `workMovementColumnOrderedBefore`'s `"movement"` case now nils out
+  `movementNumber` whenever `movementTotal` is missing before comparing, so
+  an incomplete pair sorts exactly like a missing one — matching the display
+  guard's definition of "incomplete."
+- `columnsSortBothDirectionsWithMissingMovementNumbersLast` had encoded the
+  bug: its `four`/`one` fixtures set `movementNumber` without
+  `movementTotal`, so the old (wrong) comparator happened to satisfy the
+  test. Rewrote the fixtures to give complete pairs a total, added a
+  `partial` (number, no total) case, and asserted it sorts last alongside
+  `missing` in both directions.
+- Build clean, `swiftlint` clean, full suite green including the six
+  `WorkMovementTrackColumnsTests`. Not re-verified against a live server —
+  the change is confined to comparator logic already covered by the
+  ascending/descending sort test above.
+
+---
+
 ## Issue #46: Work and Movement track columns (2026-08-24)
 E5 (#13), sub-issue 2 of 4, built on #45's native WorkInfo-to-Song join.
 

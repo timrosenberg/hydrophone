@@ -50,7 +50,13 @@ extension MusicTrackTable.Coordinator {
         switch id {
         case "work": return text(lhs.work, rhs.work)
         case "movementName": return text(lhs.movementName, rhs.movementName)
-        case "movement": return value(lhs.movementNumber, rhs.movementNumber)
+        case "movement":
+            // Matches the display guard above: a row needs both tags to show
+            // a value, so a movement number without a total sorts as missing.
+            return value(
+                lhs.movementTotal != nil ? lhs.movementNumber : nil,
+                rhs.movementTotal != nil ? rhs.movementNumber : nil
+            )
         default: return nil
         }
     }

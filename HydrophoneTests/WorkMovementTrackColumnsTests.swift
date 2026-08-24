@@ -128,10 +128,13 @@ struct WorkMovementTrackColumnsTests {
 
         let movements = [
             Song(id: "missing", title: "A"),
-            Song(id: "four", title: "M", movementNumber: 4),
-            Song(id: "one", title: "Z", movementNumber: 1)
+            Song(id: "partial", title: "P", movementNumber: 2),
+            Song(id: "four", title: "M", movementNumber: 4, movementTotal: 14),
+            Song(id: "one", title: "Z", movementNumber: 1, movementTotal: 14)
         ]
-        #expect(sortedIDs(movements, by: "movement", ascending: true) == ["one", "four", "missing"])
-        #expect(sortedIDs(movements, by: "movement", ascending: false) == ["four", "one", "missing"])
+        // "partial" has a number but no total — it displays "—" just like
+        // "missing", so it must sort last alongside it, not by its number.
+        #expect(sortedIDs(movements, by: "movement", ascending: true) == ["one", "four", "missing", "partial"])
+        #expect(sortedIDs(movements, by: "movement", ascending: false) == ["four", "one", "missing", "partial"])
     }
 }
