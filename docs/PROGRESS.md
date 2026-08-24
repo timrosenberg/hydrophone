@@ -85,12 +85,12 @@ Under an active work header, the Title column now shows the movement number
 (230 executed cases, 0 failures) including 9 new tests covering the roman
 conversion, each of the four fallback rules, the double-numbering guard, and
 the gating (no-work track and withdrawn headers stay untouched); `swiftlint`
-0 violations. **Live verification against a real server is still pending** —
-this Mac's screen was shared with another concurrent Claude Code session
-mid-task when this branch was ready, and automating the GUI risked stray
-input landing in that other session's terminal, so it was skipped rather than
-risked. Tim will check by hand against *Japanese Love Songs* (Claude
-Delangle) and *Schwanengesang* (Schubert) on his real Navidrome server.
+0 violations. Automated GUI live-verification wasn't attempted — this Mac's
+screen was shared with another concurrent Claude Code session mid-task when
+this branch was ready, and automating the GUI risked stray input landing in
+that other session's terminal. Instead the Debug build from this branch was
+launched and handed to Tim, who live-verified it by hand against his real
+Navidrome server and confirmed it working.
 
 ---
 
