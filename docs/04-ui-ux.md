@@ -124,6 +124,13 @@ rendered visibly washed out.
   disc into each label (`Disc 2 · Work Name`). Headers appear only in natural
   track order or ascending `#`, and withdraw under every other sort. Albums
   with zero or one Work retain the existing disc-header behavior unchanged.
+  A work header is double-click-to-play (#55, reversing #47's "no new
+  interactivity" deferral): starts the whole Work from its first movement;
+  ⌥-double-click adds it to Up Next instead. Disc headers stay inert — only
+  a header carrying a Work identity is actionable — and headers remain
+  unselectable either way. Movement ordering/track resolution is shared with
+  the context menu's Work submenu (`resolveWorkTracks`, #48) so the two can
+  never disagree.
 - Dense row height; right-aligned monospaced-digit time; edge-to-edge stripes.
 - Double-click (or ⏎) plays the row and sets the queue from the current view;
   **⌥-double-click queues it next**.

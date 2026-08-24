@@ -54,6 +54,66 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #55: double-click a work header to play the whole work (2026-08-24)
+E5 (#13) follow-up tweak after #47 and #48. #47 deliberately deferred header
+interactivity ("the header row stays a plain, non-clickable label") to the
+context-menu sub-issue; Tim has now asked for the direct interaction, so this
+reverses that line.
+
+- `TrackTableRow.header` now carries the grouping identity alongside its
+  display string (`case header(String, work: String?)`), set from
+  `groupedRows`' key — `nil` for a disc header, the Work name for a work
+  header (folded-in disc number included). `Coordinator.work(atRow:)` reads
+  it back; `trackIndex(atRow:)` is unchanged.
+- `MusicTrackTable.Coordinator.doubleClicked()` now branches three ways: a
+  track row plays/queues-next as before; a work-header row plays the work
+  from movement 1, or (⌥) adds it to Up Next via a new `onEnqueue` closure
+  threaded through from `TrackTableView` to `player.enqueue`; a disc header
+  (no work identity) falls through and does nothing.
+- Extracted `resolveWorkTracks(work:among:)` out of #48's `makeWorkMenuItem`
+  so the header double-click and the context menu's Work submenu share one
+  movement-ordering implementation (`movementNumber ?? track ?? .max`,
+  original offset as tiebreak) — they can't diverge.
+- Moved the four `NSTableCellView` builders (`discHeaderCell`,
+  `indicatorCell`, `favoriteCell`, `textCell`) out of `Coordinator` into an
+  `extension MusicTrackTable.Coordinator` in `TrackTableCells.swift` (pure
+  move, no behavior change) to keep the coordinator's own body under
+  SwiftLint's `type_body_length` after the new branch.
+- `docs/04-ui-ux.md`'s "Album work grouping" bullet now records the
+  reversal: a work header is double-click-to-play, ⌥-double-click adds it to
+  Up Next; disc headers stay inert; headers stay unselectable either way.
+
+Five new `WorkHeaderDoubleClickTests`: `resolveWorkTracks` ordering by
+movement (falling back to track, tiebroken by offset) and its independence
+from a reversed display sort; `Coordinator.work(atRow:)` resolving a work
+header's identity, returning `nil` for a disc header, and resolving the
+folded-in work on a multi-disc album. `table.clickedRow` isn't settable
+outside real AppKit mouse tracking, so the actual `doubleAction` dispatch —
+the "Verify first" risk the issue called out, since header rows are
+unselectable — was checked live instead, not simulated.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server,**
+driven via `cliclick` mouse/keyboard automation against the running Debug
+build (screenshots inspected at each step): on *Japanese Love Songs*,
+double-clicking the `Two Poems By Ryokan` header played movement I and
+queued II then III in Up Next, in order; ⌥-double-click on `Three Love
+Songs` left movement I playing uninterrupted and appended I/II/III to Up
+Next after the remaining Two Poems tracks, in order. On *Mendelssohn: Songs
+Without Words* (multi-disc, every track Work-tagged), double-clicking a
+`Disc 2 · Kinderstücke, Op. 72`-style header likewise played that work from
+its first movement, confirming the disc-folded case; a plain track
+double-click still played that single track and queued the album from
+there, unchanged. A genuinely disc-only header (no Work tag) wasn't
+available in the library to click by hand; that path is a pure early-return
+in `doubleClicked()` (`guard let work = work(atRow:) else { return }`) on
+the same dispatch mechanism already proven live, and is covered by
+`discHeaderRowHasNoWorkIdentity`.
+
+Build clean, zero compiler warnings; full suite green (226 tests, +5 new);
+SwiftLint clean (0 violations, 105 files).
+
+---
+
 ## Issue #56: Space play/pause from focused lists (2026-08-24)
 Focus-owning collection controls now preserve the global Space play/pause
 shortcut instead of consuming it as selection input.
@@ -2470,10 +2530,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #56 passes (**221 executed cases,
+- ✅ `xcodebuild test` — full suite through #55 passes (**226 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
-- ✅ `swiftlint` — **0 violations across 104 files** (2026-08-24).
+- ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
