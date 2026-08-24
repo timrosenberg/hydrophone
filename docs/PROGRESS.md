@@ -145,6 +145,78 @@ five grouping cases and the album-detail join regression); SwiftLint clean.
 
 ---
 
+## Issue #46 follow-up: Movement sort/display mismatch (2026-08-24)
+Code review on PR #52 caught a bug in the fix below: the Movement column's
+sort comparator ranked by `movementNumber` alone, while the cell text
+requires both `movementNumber` and `movementTotal` to show anything but `—`.
+A track with a movement number but no total displayed `—` yet still sorted
+by its number, interleaved among fully-tagged rows instead of grouped with
+the truly-untagged rows at the end.
+
+- `workMovementColumnOrderedBefore`'s `"movement"` case now nils out
+  `movementNumber` whenever `movementTotal` is missing before comparing, so
+  an incomplete pair sorts exactly like a missing one — matching the display
+  guard's definition of "incomplete."
+- `columnsSortBothDirectionsWithMissingMovementNumbersLast` had encoded the
+  bug: its `four`/`one` fixtures set `movementNumber` without
+  `movementTotal`, so the old (wrong) comparator happened to satisfy the
+  test. Rewrote the fixtures to give complete pairs a total, added a
+  `partial` (number, no total) case, and asserted it sorts last alongside
+  `missing` in both directions.
+- Build clean, `swiftlint` clean, full suite green including the six
+  `WorkMovementTrackColumnsTests`. Not re-verified against a live server —
+  the change is confined to comparator logic already covered by the
+  ascending/descending sort test above.
+
+After merging current `origin/main` (including #47 and #48), the combined
+branch built clean, all 217 tests passed, and SwiftLint reported 0 violations
+across 102 files. The exact signed build reconnected to
+`music.tail9575a5.ts.net`: Songs exposed Work, Movement Name, and Movement;
+real Work/name values rendered; an ascending Movement header sort showed
+numbered values from `1 of 3` through `15 of 24` before every `—` fallback.
+The pre-test Songs/playlist columns, scroll position, and ascending Album sort
+were restored.
+
+---
+
+## Issue #46: Work and Movement track columns (2026-08-24)
+E5 (#13), sub-issue 2 of 4, built on #45's native WorkInfo-to-Song join.
+
+- Added picker-only Work, Movement Name, and Movement columns to the shared
+  AppKit track table without changing any call site's default visible columns.
+  Work and Movement Name are left-aligned text; Movement is a narrow,
+  right-aligned `n of total` value and falls back to `—` unless both numbers
+  exist.
+- Work and Movement Name sort as localized text. Movement sorts numerically
+  in both directions with missing movement numbers kept last.
+- The three choices are present only while
+  `ConnectionModel.nativeFeaturesState == .available`. Sessions where native
+  detection is still in progress, and plain Subsonic sessions, omit them from
+  the menu and live table. A saved native layout remains intact and returns
+  if native capability becomes available again.
+- Six focused tests cover AppKit header metadata, native-feature gating,
+  capability transitions (including unavailable-session layout edits),
+  value/fallback rendering, and ascending/descending sort behavior.
+
+**Live verification (2026-08-24), `music.tail9575a5.ts.net`:** the signed
+Debug build loaded the real library and exposed all three choices in both a
+Mahler playlist and sortable Songs. Real Work and Movement Name tags rendered;
+complete records showed values including `1 of 2`, `1 of 3`, and `2 of 5`,
+while incomplete records showed `—`. Direct header clicks exercised Work and
+Movement Name in both ascending and descending directions. Movement ascending
+put numbered rows in 1-then-2 order; descending reversed the numeric order;
+both directions kept missing values after numbered rows. A second signed build
+temporarily forced native features unavailable (source change reverted before
+commit): the saved native columns disappeared from the live table and all
+three native choices remained absent from the picker. The pre-test
+Songs/playlist columns, scroll position, and ascending Album sort were
+restored.
+
+Build clean, zero compiler warnings; full suite green (209 tests, +6 focused
+tests); SwiftLint clean across 101 files.
+
+---
+
 ## Issue #45: join native WorkInfo onto Song (2026-08-24)
 E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
 (columns, work-grouping headers, "Play Work") builds on.
@@ -2341,9 +2413,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full combined #47/#48 suite passes (**211 tests,
-  0 failures**, 2026-08-24); CI repeats the run on every push
+- ✅ `xcodebuild test` — full combined #46/#47/#48 suite passes (**217 tests,
+  0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
+- ✅ `swiftlint` — **0 violations across 102 files** (2026-08-24).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

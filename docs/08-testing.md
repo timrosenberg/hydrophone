@@ -80,16 +80,18 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 190 tests)
+## Current suite (Swift Testing, 209 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
-`QualityLabelTests` · `ExpandedTrackColumnsTests` ·
+`QualityLabelTests` · `ExpandedTrackColumnsTests` · `WorkMovementTrackColumnsTests` ·
 `TrackColumnPreferencesTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
-`FlacStreamingTests` · `AlbumFilterEndpointTests` · `ReplayGainTests` ·
+`FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
+`NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
+`SongWorkInfoDecodingTests` · `LibraryModelWorkInfoJoinTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
@@ -103,6 +105,11 @@ in the same test, since `ConnectionModel` drives both.
 `ExpandedTrackColumnsTests` drives the real AppKit table-sort delegate path
 and verifies missing Date Added, Last Played, Plays, and Sample Rate values
 remain last in both ascending and descending order.
+
+`WorkMovementTrackColumnsTests` covers #46's AppKit header metadata,
+native-feature picker gating, value/fallback rendering, ascending/descending
+sorting, and saved native-column filtering/restoration across capability
+transitions, including edits made while native columns are hidden.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 

@@ -19,7 +19,9 @@ extension MusicTrackTable.Coordinator {
     func columnPickerMenu(for table: NSTableView) -> NSMenu {
         let menu = NSMenu()
         let visibleIDs = Set(table.tableColumns.map(\.identifier.rawValue))
-        for column in TrackColumn.allCases where column != .number {
+        for column in TrackColumn.pickerColumns(
+            nativeFeaturesAvailable: parent.nativeFeaturesAvailable
+        ) {
             let item = NSMenuItem(title: column.header, action: #selector(toggleColumn(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = column.id
@@ -60,7 +62,64 @@ extension MusicTrackTable.Coordinator {
 
     private func persistVisibleColumnsAndOrder(table: NSTableView) {
         guard let viewKind = columnViewKind else { return }
-        TrackColumnPreferences.persistColumns(contentColumns(in: table), for: viewKind)
+        let savedColumns = TrackColumnPreferences.persistedColumns(for: viewKind) ?? parent.columns
+        let columnsToPersist = TrackColumn.mergingVisibleColumns(
+            contentColumns(in: table),
+            into: savedColumns,
+            nativeFeaturesAvailable: parent.nativeFeaturesAvailable
+        )
+        TrackColumnPreferences.persistColumns(columnsToPersist, for: viewKind)
+    }
+
+    /// Applies a native-capability transition to the live table without
+    /// rewriting the saved column list. Native columns disappear while the
+    /// feature is unavailable and return in their saved positions if it later
+    /// becomes available again.
+    func reconcileNativeColumnsIfNeeded(in table: NSTableView) {
+        let available = parent.nativeFeaturesAvailable
+        guard parent.columnsCustomizable,
+              lastNativeFeaturesAvailable != available else { return }
+        lastNativeFeaturesAvailable = available
+
+        let savedColumns: [TrackColumn] = {
+            guard let viewKind = columnViewKind,
+                  let persisted = TrackColumnPreferences.persistedColumns(for: viewKind) else {
+                return parent.columns
+            }
+            return persisted
+        }()
+        let desired = TrackColumn.columnsAvailableForCurrentServer(
+            savedColumns,
+            nativeFeaturesAvailable: available
+        )
+        guard contentColumns(in: table) != desired else { return }
+
+        reconcilingNativeColumns = true
+        defer { reconcilingNativeColumns = false }
+
+        for column in contentColumns(in: table) where !desired.contains(column) {
+            if let existing = table.tableColumn(withIdentifier: .init(column.id)) {
+                table.removeTableColumn(existing)
+            }
+        }
+        for column in desired where table.tableColumn(withIdentifier: .init(column.id)) == nil {
+            let newColumn = column.makeTableColumn(sortable: parent.sortable)
+            if let viewKind = columnViewKind,
+               let width = TrackColumnPreferences.persistedWidth(for: column.id, in: viewKind) {
+                newColumn.width = width
+            }
+            table.addTableColumn(newColumn)
+        }
+
+        guard let firstContentIndex = table.tableColumns.firstIndex(where: {
+            TrackColumn(id: $0.identifier.rawValue) != nil
+        }) else { return }
+        for (offset, column) in desired.enumerated() {
+            guard let currentIndex = table.tableColumns.firstIndex(where: {
+                $0.identifier.rawValue == column.id
+            }) else { continue }
+            table.moveColumn(currentIndex, toColumn: firstContentIndex + offset)
+        }
     }
 
     /// Registers the resize/reorder observers that keep persisted
@@ -79,7 +138,8 @@ extension MusicTrackTable.Coordinator {
     /// this repeatedly, and only the width once the drag settles is worth a
     /// write.
     @objc private func columnDidResize(_ note: Notification) {
-        guard let viewKind = columnViewKind,
+        guard !reconcilingNativeColumns,
+              let viewKind = columnViewKind,
               let column = note.userInfo?["NSTableColumn"] as? NSTableColumn,
               TrackColumn(id: column.identifier.rawValue) != nil else { return }
         let columnID = column.identifier.rawValue
@@ -93,7 +153,7 @@ extension MusicTrackTable.Coordinator {
     }
 
     @objc private func columnDidMove(_ note: Notification) {
-        guard let table else { return }
+        guard !reconcilingNativeColumns, let table else { return }
         persistVisibleColumnsAndOrder(table: table)
     }
 }
