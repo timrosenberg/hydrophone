@@ -96,6 +96,23 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
     }
 }
 
+/// One full native song-index result plus its reusable id lookup. Constructed
+/// once when an index build completes so every metadata join is O(requested
+/// ids) rather than rebuilding an O(library size) dictionary per table load.
+struct NativeSongIndexSnapshot: Sendable {
+    let records: [NativeSongRecord]
+    private let recordsByID: [String: NativeSongRecord]
+
+    init(records: [NativeSongRecord]) {
+        self.records = records
+        self.recordsByID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    func record(id: String) -> NativeSongRecord? {
+        recordsByID[id]
+    }
+}
+
 /// A song's work/movement metadata, read from `NativeSongRecord.tags`.
 /// `movementNumber`/`movementTotal` are Navidrome's separate plain-number
 /// tag strings (e.g. `"13"`/`"14"`), not a combined "n/total" string — each

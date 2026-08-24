@@ -19,7 +19,11 @@ extension LibraryModel {
     }
 
     func playlist(id: String) async -> Playlist? {
-        try? await client.object(.playlist(id: id), as: Playlist.self)
+        guard var playlist = try? await client.object(.playlist(id: id), as: Playlist.self) else { return nil }
+        var songs = playlist.entry ?? []
+        await joinWorkInfo(into: &songs)
+        playlist.entry = songs
+        return playlist
     }
 
     // MARK: - Playlist editing (M5)

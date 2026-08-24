@@ -52,6 +52,18 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// Sort-key title (e.g. strips a leading "The"), distinct from `title`.
     var sortName: String?
 
+    /// Native (Navidrome-only) work/movement metadata, joined onto this
+    /// `Song` by `LibraryModel` after the Subsonic fetch — Subsonic never
+    /// sends these, so they're deliberately absent from `CodingKeys` below;
+    /// every `Optional` property already defaults to `nil` on its own, which
+    /// is what lets synthesized `Codable` compile without a decode entry for
+    /// them. `movementNumber`/`movementTotal` are separate plain-number tags,
+    /// not a combined "n/total" string. See #45, epic #13.
+    var work: String?
+    var movementName: String?
+    var movementNumber: Int?
+    var movementTotal: Int?
+
     var isStarred: Bool { starred != nil }
     /// Genre for display, preferring the legacy field, then the OpenSubsonic array.
     var displayGenre: String? { genre ?? genres?.first?.name }

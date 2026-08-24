@@ -52,6 +52,55 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #45: join native WorkInfo onto Song (2026-08-24)
+E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
+(columns, work-grouping headers, "Play Work") builds on.
+
+- `Song` gained four client-side-only fields — `work`, `movementName`,
+  `movementNumber`, `movementTotal` — deliberately absent from `CodingKeys`
+  (Subsonic never sends them) and relying on `Optional`'s own implicit `nil`
+  default for synthesized `Codable` to keep compiling.
+- `NavidromeClient` gained `workInfo(forSongIds:)`, a batch join backed by a
+  reusable id dictionary constructed once with the cached `songIndex()`
+  snapshot. Album, search, and playlist fan-outs now cost O(requested ids),
+  without rebuilding an O(library size) dictionary per fetch;
+  `workMetadata(songId:)` uses the same lookup.
+- `LibraryModel` gained a `navidrome` reference and a `nativeFeaturesAvailable`
+  closure (mirroring `PlayerModel`'s `scrobbler`/`queueStore` closure pattern —
+  `AppModel` is the only place peer models actually wire together), plus a
+  `joinWorkInfo(into:)` helper (`LibraryModel+WorkInfo.swift`, split out for
+  the type-body-length lint) wired into all six track-table sources: album
+  detail, genre/Column Browser, the Songs sample, Favorites, playlist entries,
+  and search results. Its async availability gate waits for the launch-time
+  connection/native probe (and coalesces with one already in flight), so an
+  early library fetch cannot permanently cache unenriched songs. The join is
+  still a no-op — no native network call — when native features are unavailable.
+
+**Live verification (2026-08-24), Tim's real Navidrome server** (14,794
+songs, 2,946 with `movementname`): a temporary opt-in test (reverted before
+this PR, same convention as `LiveDecodeTests`) exercised the real path
+end-to-end — `NavidromeClient.login()`, a real `songIndex()` walk, confirmed
+real songs carrying `work`/`movementname`/`movement`/`movementtotal` tags,
+`workInfo(forSongIds:)` correctly joining one, and — the actual point of this
+issue — `LibraryModel.songs(forAlbum:)` returning that song with `.work`
+populated end-to-end. All assertions passed (~11s per run, consistent with
+#8's measured full-index-walk cost).
+
+**Post-review live verification (2026-08-24), same real server:** a temporary
+Keychain-backed test (reverted before commit; no credentials logged or copied)
+started `ConnectionModel.refresh()` and a real `LibraryModel.search()` in the
+startup-race order, selected a real work-tagged song from the 14,794-song native
+index, and confirmed the search result carried the same Work value after the
+probe completed. The single non-parallel arm64 run passed in 7.349s.
+
+Build clean, zero compiler warnings; full suite green (203 tests, +13 new
+hermetic tests: batch/cache coverage in `NavidromeComposerSongLookupTests`,
+a `Song`-decode default-nil test, five `LibraryModel` join tests, and three
+launch/native-availability regression tests);
+SwiftLint clean across 99 files.
+
+---
+
 ## Issue #38: column picker on every track view (2026-08-23)
 E2 (#10), sub-issue 5 of 5. The header picker proven in Songs by #37 now
 works on all six `TrackTableView` call sites.
@@ -2199,9 +2248,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 190 tests,
-  0 failures — count current after #38's six-view picker rollout, which added
-  no new hermetic tests, 2026-08-23; see that entry above), and CI repeats the run on every push
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 203 tests,
+  0 failures — count current after #45's work/movement join (+13 hermetic
+  tests), 2026-08-24; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)

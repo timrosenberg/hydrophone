@@ -66,8 +66,16 @@ final class LibraryModel {
     // Internal (not private): LibraryModel+Playlists.swift sends through it.
     let client: SubsonicClient
 
-    init(client: SubsonicClient) {
+    // Native Navidrome access; work/movement join lives in
+    // LibraryModel+WorkInfo.swift (#45, epic #13).
+    let navidrome: NavidromeClient
+    let nativeFeaturesAvailable: () async -> Bool
+
+    init(client: SubsonicClient, navidrome: NavidromeClient,
+         nativeFeaturesAvailable: @escaping () async -> Bool) {
         self.client = client
+        self.navidrome = navidrome
+        self.nativeFeaturesAvailable = nativeFeaturesAvailable
     }
 
     func reset() {
@@ -188,7 +196,9 @@ final class LibraryModel {
         guard songs.isEmpty else { return }
         if case .loading = songsState { return }
         await load("song", into: \.songsState) { () async throws(SubsonicError) in
-            songs = try await client.list(.randomSongs(size: 500), of: Song.self)
+            var fetched = try await client.list(.randomSongs(size: 500), of: Song.self)
+            await joinWorkInfo(into: &fetched)
+            songs = fetched
         }
     }
 
@@ -236,40 +246,15 @@ final class LibraryModel {
         do {
             let starred = try await client.object(.starred2, as: StarredContent.self)
             starredAlbums = starred.album ?? []
-            starredSongs = starred.song ?? []
+            var songs = starred.song ?? []
+            await joinWorkInfo(into: &songs)
+            starredSongs = songs
             starredSongIDs = Set(starredSongs.map(\.id))
             starredLoaded = true
             return true
         } catch {
             // leave existing values; surfaced via UI empty state
             return false
-        }
-    }
-
-    // MARK: - Search
-
-    struct SearchResults: Sendable {
-        var artists: [Artist] = []
-        var albums: [Album] = []
-        var songs: [Song] = []
-        var isEmpty: Bool { artists.isEmpty && albums.isEmpty && songs.isEmpty }
-    }
-
-    func search(_ query: String) async -> SearchResults {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return SearchResults() }
-        do {
-            let found = try await client.object(
-                .search3(query: trimmed, songCount: 50, songOffset: 0, albumCount: 20, artistCount: 20),
-                as: SearchContent.self
-            )
-            return SearchResults(
-                artists: found.artist ?? [],
-                albums: found.album ?? [],
-                songs: found.song ?? []
-            )
-        } catch {
-            return SearchResults()
         }
     }
 
@@ -334,11 +319,15 @@ final class LibraryModel {
         _ = try? await client.sendStatus(endpoint)
         await reload()
     }
+}
 
-    // MARK: - Album detail
+// MARK: - Album detail
 
+extension LibraryModel {
     func songs(forAlbum id: String) async -> [Song] {
-        (try? await client.object(.album(id: id), as: Album.self))?.song ?? []
+        var songs = (try? await client.object(.album(id: id), as: Album.self))?.song ?? []
+        await joinWorkInfo(into: &songs)
+        return songs
     }
 
     /// The full album record for an id — used by "Go to Album" from a track,
@@ -352,9 +341,10 @@ final class LibraryModel {
     }
 
     func songs(forGenre genre: String) async -> [Song] {
-        await fetchList(.songsByGenre(genre, count: Self.pageSize, offset: 0))
+        var songs: [Song] = await fetchList(.songsByGenre(genre, count: Self.pageSize, offset: 0))
+        await joinWorkInfo(into: &songs)
+        return songs
     }
-
 }
 
 // MARK: - Discovery (artist info, radio mixes, album shuffle)

@@ -36,6 +36,30 @@ final class ConnectionModel {
     }
 
     private(set) var nativeFeaturesState: NativeFeaturesState = .unknown
+    private var nativeFeatureWaiters: [CheckedContinuation<Bool, Never>] = []
+
+    /// Resolves native availability for consumers that may start loading at
+    /// the same time as the launch-time connection refresh. An early caller
+    /// starts that refresh itself rather than treating `.unknown` as a final
+    /// "unavailable" answer.
+    func nativeFeaturesAvailable() async -> Bool {
+        switch nativeFeaturesState {
+        case .available:
+            return true
+        case .unavailable:
+            return false
+        case .checking:
+            return await withCheckedContinuation { nativeFeatureWaiters.append($0) }
+        case .unknown:
+            guard isConfigured else { return false }
+            if case .connecting = state {
+                while case .connecting = state { await Task.yield() }
+                return await nativeFeaturesAvailable()
+            }
+            await refresh()
+            return nativeFeaturesState == .available
+        }
+    }
 
     // Editable form fields (bound by the Settings UI).
     var serverAddress: String = ""
@@ -159,12 +183,18 @@ final class ConnectionModel {
     /// persisted store, so probing there would check the wrong server.
     private func probeNativeFeatures() async {
         nativeFeaturesState = .checking
+        let available: Bool
         do {
             _ = try await navidrome.login()
             nativeFeaturesState = .available
+            available = true
         } catch {
             nativeFeaturesState = .unavailable
+            available = false
         }
+        let waiters = nativeFeatureWaiters
+        nativeFeatureWaiters = []
+        for waiter in waiters { waiter.resume(returning: available) }
     }
 
     func disconnect() {

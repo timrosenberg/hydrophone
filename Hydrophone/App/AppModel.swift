@@ -131,18 +131,23 @@ final class AppModel {
     init() {
         let credentials = Self.makeCredentialStore()
         let client = SubsonicClient(credentials: credentials)
-        // Native Navidrome feature detection (#26): `ConnectionModel` owns
-        // the only reference for now — no E4/E5 UI consumes it yet.
+        // Native Navidrome feature detection (#26). `LibraryModel` also holds
+        // a reference (#45, epic #13) to join work/movement metadata onto
+        // fetched songs; local `connection` (not `self.connection`) is
+        // captured below so the closure doesn't need `self` before this
+        // init finishes assigning every stored property.
         let navidrome = NavidromeClient(credentials: credentials)
         let playback = PlaybackService(client: client)
         let nowPlaying = NowPlayingCenter()
+        let connection = ConnectionModel(client: client, navidrome: navidrome, credentials: credentials)
 
         self.credentials = credentials
         self.client = client
         self.playback = playback
         self.nowPlaying = nowPlaying
-        self.connection = ConnectionModel(client: client, navidrome: navidrome, credentials: credentials)
-        self.library = LibraryModel(client: client)
+        self.connection = connection
+        self.library = LibraryModel(client: client, navidrome: navidrome,
+                                    nativeFeaturesAvailable: { await connection.nativeFeaturesAvailable() })
         self.player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in
             // Best-effort: a failed scrobble should never surface in the UI.

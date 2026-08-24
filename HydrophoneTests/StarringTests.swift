@@ -11,7 +11,9 @@ struct StarringTests {
         let creds = ServerCredentials(
             baseURL: URL(string: "http://127.0.0.1:9")!,
             username: "u", secret: "s", authMethod: .tokenSalt)
-        return LibraryModel(client: SubsonicClient(credentials: InMemoryCredentialStore(creds)))
+        return LibraryModel(client: SubsonicClient(credentials: InMemoryCredentialStore(creds)),
+                           navidrome: NavidromeClient(credentials: InMemoryCredentialStore(creds)),
+                           nativeFeaturesAvailable: { false })
     }
 
     @Test func rowFlagIsTruthUntilStarredListLoads() {
