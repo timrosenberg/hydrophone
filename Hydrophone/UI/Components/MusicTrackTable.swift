@@ -103,6 +103,8 @@ struct MusicTrackTable: NSViewRepresentable {
         // Column-resize persistence (see TrackColumnPicker.swift), debounced
         // the same way.
         var pendingColumnWidthSave: DispatchWorkItem?
+        var lastNativeFeaturesAvailable: Bool?
+        var reconcilingNativeColumns = false
 
         private(set) var rows: [TrackTableRow] = []
 

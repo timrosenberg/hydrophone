@@ -59,6 +59,19 @@ struct WorkMovementTrackColumnsTests {
         #expect(available.contains(.movement))
     }
 
+    @Test func capabilityTransitionsHideAndRestorePersistedNativeColumns() {
+        let persisted: [TrackColumn] = [.title, .work, .movementName, .movement, .artist]
+
+        #expect(TrackColumn.columnsAvailableForCurrentServer(
+            persisted,
+            nativeFeaturesAvailable: false
+        ) == [.title, .artist])
+        #expect(TrackColumn.columnsAvailableForCurrentServer(
+            persisted,
+            nativeFeaturesAvailable: true
+        ) == persisted)
+    }
+
     @Test func cellsRenderValuesAndRequireCompleteMovementNumbers() {
         let complete = Song(
             id: "complete",

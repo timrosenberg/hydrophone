@@ -50,9 +50,19 @@ enum TrackColumn: Equatable, CaseIterable {
     /// work/movement metadata is absent on plain Subsonic servers, so those
     /// choices are omitted rather than shown disabled.
     static func pickerColumns(nativeFeaturesAvailable: Bool) -> [Self] {
-        allCases.filter { column in
-            column != .number && (nativeFeaturesAvailable || !column.isNativeOnly)
-        }
+        columnsAvailableForCurrentServer(allCases, nativeFeaturesAvailable: nativeFeaturesAvailable)
+            .filter { $0 != .number }
+    }
+
+    /// Filters a saved/default column list for the current server without
+    /// mutating that source list. This lets a plain Subsonic session hide
+    /// native columns while preserving the user's Navidrome layout for a
+    /// later capability transition.
+    static func columnsAvailableForCurrentServer(
+        _ columns: [Self],
+        nativeFeaturesAvailable: Bool
+    ) -> [Self] {
+        columns.filter { nativeFeaturesAvailable || !$0.isNativeOnly }
     }
 
     private var isNativeOnly: Bool {

@@ -56,6 +56,7 @@ extension MusicTrackTable {
         table.onReturn = { context.coordinator.playSelected() }
         table.setDraggingSourceOperationMask([.copy], forLocal: true)
         addColumns(to: table)
+        context.coordinator.lastNativeFeaturesAvailable = nativeFeaturesAvailable
 
         if columnsCustomizable {
             let header = InnerTableHeaderView()
@@ -102,11 +103,15 @@ extension MusicTrackTable {
         // Customizable views restore the user's last visible set/order once
         // one has been persisted; everyone else (and a customizable view's
         // first launch) uses the caller's default list.
-        let effectiveColumns: [TrackColumn] = {
+        let savedColumns: [TrackColumn] = {
             guard columnsCustomizable, let key = sortAutosaveKey,
                   let persisted = TrackColumnPreferences.persistedColumns(for: key) else { return columns }
             return persisted
         }()
+        let effectiveColumns = TrackColumn.columnsAvailableForCurrentServer(
+            savedColumns,
+            nativeFeaturesAvailable: nativeFeaturesAvailable
+        )
         // With a track-number column, the # cell itself hosts the speaker on
         // the playing row (iTunes style) — no separate indicator column.
         if !effectiveColumns.contains(.number) {
@@ -129,6 +134,7 @@ extension MusicTrackTable {
         context.coordinator.parent = self
         guard let table = scroll.documentView as? InnerTableView else { return }
         table.contextMenuProvider = { context.coordinator.menuForSelection($0) }
+        context.coordinator.reconcileNativeColumnsIfNeeded(in: table)
         context.coordinator.reloadIfNeeded()
         context.coordinator.restoreScrollIfReady(scroll)
 
