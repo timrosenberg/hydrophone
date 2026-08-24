@@ -4,6 +4,13 @@ import AppKit
 // NSViewRepresentable lifecycle for `MusicTrackTable`: building the table,
 // its columns, and applying SwiftUI-driven updates.
 
+/// Header view that surfaces the column-picker context menu (#37) on
+/// right-click, mirroring how `InnerTableView.menu(for:)` does it for rows.
+private final class InnerTableHeaderView: NSTableHeaderView {
+    var menuProvider: (() -> NSMenu?)?
+    override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+}
+
 /// NSTableView subclass that surfaces a per-row context menu and Return-to-play.
 private final class InnerTableView: NSTableView {
     var contextMenuProvider: ((IndexSet) -> NSMenu?)?
@@ -50,6 +57,18 @@ extension MusicTrackTable {
         table.setDraggingSourceOperationMask([.copy], forLocal: true)
         addColumns(to: table)
 
+        if columnsCustomizable {
+            let header = InnerTableHeaderView()
+            // Weak: table retains header (headerView), so a strong capture of
+            // `table` here would close the loop table → header → closure → table.
+            header.menuProvider = { [weak table] in
+                guard let table else { return nil }
+                return context.coordinator.columnPickerMenu(for: table)
+            }
+            table.headerView = header
+            context.coordinator.observeColumnChanges(of: table)
+        }
+
         // Restore a persisted sort — only for a column that still exists.
         if sortable, let descriptor = context.coordinator.persistedSortDescriptor(),
            table.tableColumns.contains(where: { $0.identifier.rawValue == descriptor.key }) {
@@ -72,32 +91,36 @@ extension MusicTrackTable {
     }
 
     private func addColumns(to table: NSTableView) {
-        func addColumn(_ id: String, _ title: String, width: CGFloat, min: CGFloat, max: CGFloat,
-                       sortKey: String? = nil, alignment: NSTextAlignment = .left) {
+        func addFixedColumn(_ id: String, width: CGFloat) {
             let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-            col.title = title
+            col.title = "" // NSTableColumn's own default is a placeholder ("Field"), not blank
             col.width = width
-            col.minWidth = min
-            col.maxWidth = max
-            // Match the header's alignment to the cell content (e.g.
-            // right-aligned Time, centered #).
-            col.headerCell.alignment = alignment
-            if sortable, let sortKey {
-                col.sortDescriptorPrototype = NSSortDescriptor(key: sortKey, ascending: true)
+            col.minWidth = width
+            col.maxWidth = width
+            table.addTableColumn(col)
+        }
+        // Customizable views restore the user's last visible set/order once
+        // one has been persisted; everyone else (and a customizable view's
+        // first launch) uses the caller's default list.
+        let effectiveColumns: [TrackColumn] = {
+            guard columnsCustomizable, let key = sortAutosaveKey,
+                  let persisted = TrackColumnPreferences.persistedColumns(for: key) else { return columns }
+            return persisted
+        }()
+        // With a track-number column, the # cell itself hosts the speaker on
+        // the playing row (iTunes style) — no separate indicator column.
+        if !effectiveColumns.contains(.number) {
+            addFixedColumn("indicator", width: 22)
+        }
+        for column in effectiveColumns {
+            let col = column.makeTableColumn(sortable: sortable)
+            if columnsCustomizable, let key = sortAutosaveKey,
+               let width = TrackColumnPreferences.persistedWidth(for: column.id, in: key) {
+                col.width = width
             }
             table.addTableColumn(col)
         }
-        // With a track-number column, the # cell itself hosts the speaker on
-        // the playing row (iTunes style) — no separate indicator column.
-        if !columns.contains(.number) {
-            addColumn("indicator", "", width: 22, min: 22, max: 22)
-        }
-        for column in columns {
-            let widths = column.widths
-            addColumn(column.id, column.header, width: widths.initial, min: widths.min, max: widths.max,
-                      sortKey: column.id, alignment: column.alignment)
-        }
-        addColumn("fav", "", width: 26, min: 26, max: 26)
+        addFixedColumn("fav", width: 26)
         // Flexible columns absorb extra width so rows/stripes fill edge-to-edge.
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
     }

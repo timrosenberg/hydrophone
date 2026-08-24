@@ -42,6 +42,23 @@ enum TrackColumn: Equatable, CaseIterable {
         guard let match = Self.allCases.first(where: { $0.id == id }) else { return nil }
         self = match
     }
+
+    /// Builds a live `NSTableColumn` for this case from its own
+    /// header/widths/alignment. `sortable` mirrors `MusicTrackTable.sortable`
+    /// (playlist-mode tables attach no sort descriptor).
+    @MainActor
+    func makeTableColumn(sortable: Bool) -> NSTableColumn {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+        column.title = header
+        column.width = widths.initial
+        column.minWidth = widths.min
+        column.maxWidth = widths.max
+        column.headerCell.alignment = alignment
+        if sortable {
+            column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true)
+        }
+        return column
+    }
     var header: String {
         switch self {
         case .number: "#"

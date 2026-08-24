@@ -33,7 +33,8 @@ struct SongsView: View {
                     TrackTableView(tracks: library.songs,
                                    columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
                                    sortAutosaveKey: "songs",
-                                   scrollAutosaveKey: "songs")
+                                   scrollAutosaveKey: "songs",
+                                   columnsCustomizable: true)
                 }
             }
         }

@@ -52,6 +52,136 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #37: address review findings (2026-08-23)
+Review of PR #42 at `3c26dfd` found four issues, all fixed on the same
+branch:
+
+- **[P1] Table-header retain cycle.** `makeNSView`'s `header.menuProvider`
+  closure captured `table` strongly; `table.headerView = header` already
+  retains `header`, so the pair closed `table → header → closure → table`.
+  Fixed with `[weak table]` in the closure, guarding on `nil` — the
+  coordinator's own `table` reference was already weak, so this was the
+  only strong leg of the cycle.
+- **[P2] Re-adding a hidden column lost its resized width.** `toggleColumn`'s
+  add path always used `TrackColumn.widths.initial`, unlike `addColumns(to:)`,
+  which already checks `TrackColumnPreferences.persistedWidth`. Now checks
+  it too. Live-verified: resized Genre to 222pt (set directly via the
+  Accessibility API, since the table's rendered content was wider than the
+  window and made a real mouse-drag land off-screen), hid it, showed it
+  again — restored at exactly 222pt, not the 100pt default.
+- **[P2] Resize persistence wasn't debounced.** `columnDidResize` wrote to
+  `UserDefaults` on every notification during a drag, not just once it
+  settles — #37 explicitly asked for the same debounce scroll-offset
+  persistence already uses. Added a `pendingColumnWidthSave: DispatchWorkItem?`
+  on `Coordinator` (parallel to `pendingScrollSave`) and mirrored
+  `scrollBoundsChanged(_:)`'s cancel-and-reschedule pattern exactly.
+- **[P2] `docs/04-ui-ux.md` didn't mention the picker.** Only `PROGRESS.md`
+  described it; the state-restoration list still said sort/scroll only, and
+  the Track Table section still described a fixed column set. Both updated:
+  the restoration list now notes column visibility/order/width persistence
+  on `columnsCustomizable` views, and a new bullet describes the picker,
+  its `.number` exclusion, and that it's opt-in per call site.
+
+A follow-up recheck at `20d4cf0` found the new
+`TrackColumn.makeTableColumn(sortable:)` helper performing AppKit work from
+a nonisolated method, producing eight Swift 6 main-actor warnings. Marking the
+factory `@MainActor` carries the isolation already guaranteed by both callers;
+the targeted red/green build audit went from all eight warnings to none.
+
+Build clean, zero warnings; full suite green (190 tests, unchanged — no new
+hermetic coverage, matching the original entry's reasoning); SwiftLint
+clean across 95 files.
+
+**Follow-up live verification (2026-08-23), same real server:** launched the
+fixed Debug build against `music.tail9575a5.ts.net`; Songs loaded 100 live
+tracks and right-clicking the Title header still presented all 15 togglable
+columns. The isolation-only fix caused no runtime behavior change.
+
+## Issue #37: header context-menu column picker (2026-08-23)
+E2 (#10), sub-issue 4 of 5; blocked by #35 and #36. Right-click a column
+header → checkable list of every togglable column; reorder/resize (already
+native `NSTableView` behavior) now persist too.
+
+**Rolled out via an opt-in flag, not globally.** `MusicTrackTable`/
+`TrackTableView` gain `columnsCustomizable: Bool = false`. Since all six
+`TrackTableView` call sites share this exact implementation, shipping the
+picker without a gate would have turned it on everywhere at once —
+un-verified on five views the issue explicitly scoped out ("do not wire
+this into more than one view for now"). Only `SongsView` opts in this
+round; #38 flips the flag on the rest after confirming each view's column
+set makes sense with it.
+
+**`UI/Components/TrackColumnPicker.swift`** (new): `columnPickerMenu(for:)`
+builds a checkable `NSMenu` from `TrackColumn.allCases` (minus `.number` —
+see below); `toggleColumn(_:)` adds/removes the column live, refusing to
+drop the last one; `observeColumnChanges(of:)` hooks
+`columnDidResizeNotification`/`columnDidMoveNotification` to persist
+width/order via #36's `TrackColumnPreferences`, keyed by `sortAutosaveKey`.
+New columns land just before the trailing favorite column, matching
+`addColumns(to:)`'s own construction order.
+
+**`.number` is deliberately excluded from the picker.** It doubles as the
+now-playing indicator column (`addColumns(to:)` only adds the fixed
+`"indicator"` column when `.number` is absent from the list) — toggling it
+generically would mean swapping that fixed column in or out too, a
+call-site decision (`AlbumDetailView` wants `.number`, `SongsView` doesn't),
+not something a one-size-fits-all picker should own. Deferred, not solved.
+
+**`TrackColumn` gains `makeTableColumn(sortable:)`**, shared by
+`addColumns(to:)` and the picker's add-column path — the single place an
+`NSTableColumn` gets built from a case, instead of duplicating the
+construction logic in two files.
+
+**Bug found and fixed during live verification:** the `addColumns(to:)`
+refactor (extracting a `addFixedColumn` helper for the indicator/favorite
+columns) dropped the explicit `col.title = ""` the original code had.
+`NSTableColumn`'s own default title isn't blank — it's a generic
+placeholder ("Field") — so both fixed columns briefly showed visible
+truncated header text ("F…" / "Fi…") instead of nothing. Caught from a
+screenshot crop, not from the running app at a glance; fixed by restoring
+the explicit empty title.
+
+**Live verification (2026-08-23), driving the Debug build against Tim's
+real Navidrome library** (`music.tail9575a5.ts.net`): no GUI-automation
+tool was available this session (as in #35), so verification combined
+Accessibility-API scripting, `cliclick` for drag/right-click gestures, and
+`screencapture` crops for anything text-precision-sensitive. Confirmed,
+each via a genuine fresh process relaunch (not just live in-session state):
+- Right-click renders all 15 togglable columns, checkmarked correctly
+  against the live table.
+- Toggling a column on/off updates the table immediately and survives
+  relaunch (`Comments` added, `Album` removed, both still correct after
+  quitting and reopening).
+- Dragging a column border resizes it and the new width survives relaunch
+  (`Quality` 68→110pt, confirmed on two separate subsequent launches).
+- Dragging a header to reorder columns persists the new order (`Genre`
+  moved before `Artist`, confirmed after relaunch).
+- Toggling columns off one at a time down to a single remaining column,
+  then attempting to remove that last one too, correctly refuses — the
+  column stays.
+- One verification wrinkle worth recording: `defaults read`/`plutil`
+  against the sandboxed app's own preferences file consistently failed to
+  show the newly-written `trackColumns.songs`/`trackColumnWidth.*` keys —
+  even immediately, even after `killall cfprefsd`, even with the app still
+  running — while the app's own genuine relaunch behavior (the actual
+  end-user scenario) repeatedly and consistently proved the values were
+  correctly written and read back. Treated the app's own behavior as
+  ground truth rather than the CLI inspection tooling, which appears
+  unreliable for freshly-written sandboxed-container keys in this
+  environment specifically (older keys from earlier sessions, e.g.
+  `trackSort.album`, *do* show up via the same commands).
+- Restored the column set to the original 7-column default (Title, Artist,
+  Composer, Album, Genre, Quality, Time) before finishing, since `UserDefaults`
+  is keyed by bundle id (`app.hydrophone`) — shared with any other build of
+  the app Tim might run, not scoped to this Debug binary.
+
+Build clean, zero warnings; full suite green (190 tests, unchanged — this
+is AppKit header/menu interaction with no hermetic coverage per
+`docs/08-testing.md`, matching #35's precedent); SwiftLint clean across 95
+files.
+
+---
+
 ## Issue #36: per-view column-visibility/order/width persistence (2026-08-23)
 E2 (#10), sub-issue 3 of 5; blocked by #35. Storage only — no picker UI, no
 `MusicTrackTable` wiring (both land in #37).
