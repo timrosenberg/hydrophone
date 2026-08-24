@@ -11,10 +11,11 @@ private final class InnerTableHeaderView: NSTableHeaderView {
     override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
 }
 
-/// NSTableView subclass that surfaces a per-row context menu and Return-to-play.
-private final class InnerTableView: NSTableView {
+/// NSTableView subclass that surfaces per-row menus and playback keys.
+final class InnerTableView: NSTableView {
     var contextMenuProvider: ((IndexSet) -> NSMenu?)?
     var onReturn: (() -> Void)?
+    var onSpace: (() -> Void)?
     /// Disc headers are not selectable; programmatic selection must skip them
     /// (`selectRowIndexes` bypasses the shouldSelect delegate).
     var selectableRow: ((Int) -> Bool)?
@@ -32,6 +33,8 @@ private final class InnerTableView: NSTableView {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
             onReturn?()
+        } else if event.keyCode == 49 { // Space
+            onSpace?()
         } else {
             super.keyDown(with: event)
         }
@@ -54,6 +57,7 @@ extension MusicTrackTable {
         table.contextMenuProvider = { context.coordinator.menuForSelection($0) }
         table.selectableRow = { context.coordinator.trackIndex(atRow: $0) != nil }
         table.onReturn = { context.coordinator.playSelected() }
+        table.onSpace = { context.coordinator.parent.onSpace() }
         table.setDraggingSourceOperationMask([.copy], forLocal: true)
         addColumns(to: table)
         context.coordinator.lastNativeFeaturesAvailable = nativeFeaturesAvailable

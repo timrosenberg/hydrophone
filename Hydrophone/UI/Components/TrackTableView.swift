@@ -56,6 +56,7 @@ struct TrackTableView: View {
             selection: $selection,
             isFavorite: { library.isStarred($0) },
             onPlay: { displayed, index in player.play(tracks: displayed, startAt: index) },
+            onSpace: { player.togglePlayPause() },
             onPlayNext: { song in player.playNext([song]) },
             onToggleFavorite: { song in toggleStar([song.id], star: !library.isStarred(song)) },
             makeMenu: { displayed, indices in buildMenu(displayed, indices) }
