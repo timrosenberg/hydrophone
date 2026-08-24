@@ -32,7 +32,7 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts, restoration incl. scroll offset, accessibility semantics
+M7 ✅ (shortcuts, restoration incl. per-view track columns and scroll offset, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -49,6 +49,36 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO
 ```
+
+---
+
+## Issue #38: column picker on every track view (2026-08-23)
+E2 (#10), sub-issue 5 of 5. The header picker proven in Songs by #37 now
+works on all six `TrackTableView` call sites.
+
+- Album, Favorites, Column Browser, Playlist, and Search now opt into the
+  existing `columnsCustomizable` path; Songs retains its #37 opt-in.
+- Every call site's shipped `columns:` array is unchanged, so each view keeps
+  its prior first-launch defaults until the user customizes it.
+- Album, Favorites, Songs, Browser, Playlist, and Search use distinct
+  preference keys. Playlist adds the `"playlist"` key and passes it through
+  `TrackTableView` for column persistence while remaining unsortable; no new
+  storage or picker mechanism was added.
+- `docs/04-ui-ux.md` now records the six-view rollout and per-view persistence
+  contract.
+
+**Live verification (2026-08-23), user-configured real Navidrome server:**
+drove the final Debug build through Album (2018 Concert at UCF), Favorites,
+flat Songs, the Classical Column Browser, a Mahler playlist, and Search
+(`Hippocrene`). On every table, right-clicking the header opened the same
+15-item picker; enabling Date Added rendered real `Aug 18, 2026` values.
+Quit the app completely, relaunched the same build, and revisited all six
+views: each independently restored Date Added. The test-only column changes
+and original Column Browser visibility were restored before finishing.
+
+Build clean, zero compiler warnings; full suite green (190 tests, unchanged —
+this is declarative call-site/AppKit UI wiring with no new hermetic test seam);
+SwiftLint clean across 95 files.
 
 ---
 
@@ -2170,8 +2200,8 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
 - ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 190 tests,
-  0 failures — count current after #36's `TrackColumnPreferences` tests,
-  2026-08-23; see that entry above), and CI repeats the run on every push
+  0 failures — count current after #38's six-view picker rollout, which added
+  no new hermetic tests, 2026-08-23; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)

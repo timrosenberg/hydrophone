@@ -102,9 +102,10 @@ rendered visibly washed out.
   which doubles as the now-playing indicator and stays a per-call-site
   choice). Toggling shows/hides live; reordering (drag) and resizing (drag
   the border) already work natively. All three — visible set, order, and
-  width — persist per view kind via `TrackColumnPreferences`. Opt-in per
-  call site (`MusicTrackTable.columnsCustomizable`), not automatic just from
-  using the shared table — see `TrackColumnPicker.swift`.
+  width — persist per view kind via `TrackColumnPreferences`. All six table
+  contexts (album, favorites, songs, column browser, playlist, and search)
+  opt in while retaining their call-site defaults until customized — see
+  `TrackColumnPicker.swift`.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The

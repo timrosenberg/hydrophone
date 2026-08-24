@@ -22,8 +22,10 @@ struct PlaylistDetailView: View {
                     TrackTableView(
                         tracks: tracks,
                         columns: [.title, .artist, .album, .genre, .quality, .time],
+                        sortAutosaveKey: "playlist",
                         onRemoveFromPlaylist: { offsets in remove(offsets) },
-                        onMovePlaylist: { offsets, destination in move(offsets, to: destination) }
+                        onMovePlaylist: { offsets, destination in move(offsets, to: destination) },
+                        columnsCustomizable: true
                     )
                 }
             } else {

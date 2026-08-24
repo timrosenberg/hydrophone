@@ -12,8 +12,8 @@ struct TrackTableView: View {
     let tracks: [Song]
     /// Content columns to show, in order — specified explicitly per call site.
     let columns: [TrackColumn]
-    /// When set, the table's sort key/direction persist across launches under
-    /// this name (one slot per view kind, e.g. "songs", "favorites").
+    /// When set, the table's sort key/direction and customizable column
+    /// preferences persist under this view-kind name (e.g. "songs", "favorites").
     var sortAutosaveKey: String?
     /// When set, the scroll offset persists too — only for views whose content
     /// is stable across launches (see `MusicTrackTable.scrollAutosaveKey`).
@@ -44,7 +44,7 @@ struct TrackTableView: View {
         MusicTrackTable(
             tracks: tracks,
             sortable: !isPlaylist,
-            sortAutosaveKey: isPlaylist ? nil : sortAutosaveKey,
+            sortAutosaveKey: sortAutosaveKey,
             scrollAutosaveKey: isPlaylist ? nil : scrollAutosaveKey,
             columns: columns,
             columnsCustomizable: columnsCustomizable,
