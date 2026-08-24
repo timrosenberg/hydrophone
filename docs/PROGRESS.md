@@ -52,6 +52,32 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #48: play complete works from track context menus (2026-08-24)
+E5 (#13) context-menu sub-issue — complete-work playback and queueing from
+movement rows.
+
+- A single selected movement now exposes a submenu titled with its native Work
+  metadata, containing **Play Work** and **Add Work to Up Next**.
+- Both actions derive the complete Work from the view's underlying tracks and
+  use movement-number order, falling back to track number without depending on
+  the table's current display sort. **Play Work** starts at movement 1.
+- Tracks without Work metadata and multi-row selections keep the existing
+  context menu with no Work submenu.
+- Added two AppKit target-action tests covering submenu construction, stable
+  filtering and ordering, play/queue dispatch, and the no-Work case; synced the
+  context-menu contract in `docs/04-ui-ux.md`.
+
+**Live verification (2026-08-24), Tim's real Navidrome server:** in Search,
+sorted results by duration and opened movement 3 of Mahler's *Symphony No. 1 in
+D Major "Titan"*. The Work-titled submenu showed exactly **Play Work** and
+**Add Work to Up Next**. **Play Work** started movement 1 and placed movements
+2–4 in Up Next; **Add Work to Up Next** queued movements 1–4 in movement order.
+The submenu was absent on an untagged Dvorak result and when movements 2–3 were
+multi-selected. Real FLAC playback advanced normally.
+
+Build clean, zero compiler warnings; full suite green (205 tests, +2 new
+hermetic Work-menu tests); SwiftLint clean (0 violations across 100 files).
+
 ## Issue #45: join native WorkInfo onto Song (2026-08-24)
 E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
 (columns, work-grouping headers, "Play Work") builds on.
@@ -2248,9 +2274,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 203 tests,
-  0 failures — count current after #45's work/movement join (+13 hermetic
-  tests), 2026-08-24; see that entry above), and CI repeats the run on every push
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 205 tests,
+  0 failures — count current after #48's Work context menu (+2 hermetic tests),
+  2026-08-24; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
