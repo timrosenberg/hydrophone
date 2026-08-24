@@ -82,9 +82,20 @@ branch:
   on `columnsCustomizable` views, and a new bullet describes the picker,
   its `.number` exclusion, and that it's opt-in per call site.
 
+A follow-up recheck at `20d4cf0` found the new
+`TrackColumn.makeTableColumn(sortable:)` helper performing AppKit work from
+a nonisolated method, producing eight Swift 6 main-actor warnings. Marking the
+factory `@MainActor` carries the isolation already guaranteed by both callers;
+the targeted red/green build audit went from all eight warnings to none.
+
 Build clean, zero warnings; full suite green (190 tests, unchanged — no new
 hermetic coverage, matching the original entry's reasoning); SwiftLint
 clean across 95 files.
+
+**Follow-up live verification (2026-08-23), same real server:** launched the
+fixed Debug build against `music.tail9575a5.ts.net`; Songs loaded 100 live
+tracks and right-clicking the Title header still presented all 15 togglable
+columns. The isolation-only fix caused no runtime behavior change.
 
 ## Issue #37: header context-menu column picker (2026-08-23)
 E2 (#10), sub-issue 4 of 5; blocked by #35 and #36. Right-click a column

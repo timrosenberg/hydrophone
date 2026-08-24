@@ -46,6 +46,7 @@ enum TrackColumn: Equatable, CaseIterable {
     /// Builds a live `NSTableColumn` for this case from its own
     /// header/widths/alignment. `sortable` mirrors `MusicTrackTable.sortable`
     /// (playlist-mode tables attach no sort descriptor).
+    @MainActor
     func makeTableColumn(sortable: Bool) -> NSTableColumn {
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
         column.title = header
