@@ -9,7 +9,7 @@ extension LibraryModel {
     /// including on any native-side failure — when native features aren't
     /// available, so a plain Subsonic server never pays for or sees this.
     func joinWorkInfo(into songs: inout [Song]) async {
-        guard nativeFeaturesAvailable(), !songs.isEmpty else { return }
+        guard !songs.isEmpty, await nativeFeaturesAvailable() else { return }
         guard let info = try? await navidrome.workInfo(forSongIds: songs.map(\.id)), !info.isEmpty else { return }
         for index in songs.indices {
             guard let work = info[songs[index].id] else { continue }

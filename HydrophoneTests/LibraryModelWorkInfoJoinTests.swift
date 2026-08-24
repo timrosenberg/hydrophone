@@ -3,8 +3,8 @@ import Foundation
 @testable import Hydrophone
 
 /// Hermetic coverage for `LibraryModel`'s work/movement join (#45, epic #13):
-/// `songs(forAlbum:)` and `reloadStarred()` should carry `Song.work` etc. onto
-/// their results when native features are available, and leave every song
+/// Album, Favorites, search, and playlist sources should carry `Song.work`
+/// etc. onto their results when native features are available, and leave songs
 /// untouched — with no native network call at all — when they aren't. Stubs
 /// both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s
 /// `/api/...` calls behind one shared `URLProtocol`, reusing the pattern
@@ -19,7 +19,7 @@ struct LibraryModelWorkInfoJoinTests {
         return URLSession(configuration: config)
     }
 
-    private func makeLibrary(nativeFeaturesAvailable: @escaping () -> Bool) -> LibraryModel {
+    private func makeLibrary(nativeFeaturesAvailable: @escaping () async -> Bool) -> LibraryModel {
         let creds = ServerCredentials(baseURL: URL(string: "https://music.example.com")!,
                                       username: "tim", secret: "sesame", authMethod: .tokenSalt)
         let store = InMemoryCredentialStore(creds)
@@ -71,6 +71,30 @@ struct LibraryModelWorkInfoJoinTests {
         #expect(song.work == "Schwanengesang, D. 957")
     }
 
+    @Test func searchJoinsWorkInfoOntoSongResults() async throws {
+        await WorkInfoJoinMockProtocol.reset()
+        await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())
+        let library = makeLibrary(nativeFeaturesAvailable: { true })
+
+        let results = await library.search("Doppelgänger")
+
+        let song = try #require(results.songs.first)
+        #expect(song.work == "Schwanengesang, D. 957")
+        #expect(song.movementName == "Der Doppelgänger")
+    }
+
+    @Test func playlistJoinsWorkInfoOntoEntries() async throws {
+        await WorkInfoJoinMockProtocol.reset()
+        await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())
+        let library = makeLibrary(nativeFeaturesAvailable: { true })
+
+        let playlist = try #require(await library.playlist(id: "playlist-1"))
+
+        let song = try #require(playlist.entry?.first)
+        #expect(song.work == "Schwanengesang, D. 957")
+        #expect(song.movementName == "Der Doppelgänger")
+    }
+
     // MARK: - Mock handler
 
     private static func makeHandler() -> @Sendable (URLRequest) -> WorkInfoJoinMockProtocol.Response {
@@ -93,6 +117,21 @@ struct LibraryModelWorkInfoJoinTests {
             if path.hasSuffix("/rest/getStarred2.view") {
                 let body = """
                 {"subsonic-response":{"status":"ok","version":"1.16.1","starred2":{"song":[
+                {"id":"schubert-song","title":"Der Doppelgänger","duration":240}]}}}
+                """
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            if path.hasSuffix("/rest/search3.view") {
+                let body = """
+                {"subsonic-response":{"status":"ok","version":"1.16.1","searchResult3":{"song":[
+                {"id":"schubert-song","title":"Der Doppelgänger","duration":240}]}}}
+                """
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            if path.hasSuffix("/rest/getPlaylist.view") {
+                let body = """
+                {"subsonic-response":{"status":"ok","version":"1.16.1","playlist":{
+                "id":"playlist-1","name":"Classical","entry":[
                 {"id":"schubert-song","title":"Der Doppelgänger","duration":240}]}}}
                 """
                 return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))

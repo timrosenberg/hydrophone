@@ -147,7 +147,7 @@ final class AppModel {
         self.nowPlaying = nowPlaying
         self.connection = connection
         self.library = LibraryModel(client: client, navidrome: navidrome,
-                                    nativeFeaturesAvailable: { connection.nativeFeaturesState == .available })
+                                    nativeFeaturesAvailable: { await connection.nativeFeaturesAvailable() })
         self.player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in
             // Best-effort: a failed scrobble should never surface in the UI.

@@ -69,9 +69,10 @@ final class LibraryModel {
     // Native Navidrome access; work/movement join lives in
     // LibraryModel+WorkInfo.swift (#45, epic #13).
     let navidrome: NavidromeClient
-    let nativeFeaturesAvailable: () -> Bool
+    let nativeFeaturesAvailable: () async -> Bool
 
-    init(client: SubsonicClient, navidrome: NavidromeClient, nativeFeaturesAvailable: @escaping () -> Bool) {
+    init(client: SubsonicClient, navidrome: NavidromeClient,
+         nativeFeaturesAvailable: @escaping () async -> Bool) {
         self.client = client
         self.navidrome = navidrome
         self.nativeFeaturesAvailable = nativeFeaturesAvailable
@@ -254,33 +255,6 @@ final class LibraryModel {
         } catch {
             // leave existing values; surfaced via UI empty state
             return false
-        }
-    }
-
-    // MARK: - Search
-
-    struct SearchResults: Sendable {
-        var artists: [Artist] = []
-        var albums: [Album] = []
-        var songs: [Song] = []
-        var isEmpty: Bool { artists.isEmpty && albums.isEmpty && songs.isEmpty }
-    }
-
-    func search(_ query: String) async -> SearchResults {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return SearchResults() }
-        do {
-            let found = try await client.object(
-                .search3(query: trimmed, songCount: 50, songOffset: 0, albumCount: 20, artistCount: 20),
-                as: SearchContent.self
-            )
-            return SearchResults(
-                artists: found.artist ?? [],
-                albums: found.album ?? [],
-                songs: found.song ?? []
-            )
-        } catch {
-            return SearchResults()
         }
     }
 

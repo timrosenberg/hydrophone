@@ -53,6 +53,49 @@ struct ConnectionModelNativeFeaturesTests {
         #expect(model.nativeFeaturesState == .available)
     }
 
+    @Test func nativeFeaturesAvailableStartsAndAwaitsDetectionWhenUnknown() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
+        let (model, _) = makeModel(creds())
+
+        let available = await model.nativeFeaturesAvailable()
+
+        #expect(available)
+        #expect(model.nativeFeaturesState == .available)
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/rest/ping.view") == 1)
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/auth/login") == 1)
+    }
+
+    @Test func nativeFeaturesAvailableWaitsForAnInFlightProbe() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler(loginDelay: .milliseconds(100)))
+        let (model, _) = makeModel(creds())
+
+        let refresh = Task { await model.refresh() }
+        while model.nativeFeaturesState != .checking { await Task.yield() }
+        let available = await model.nativeFeaturesAvailable()
+        await refresh.value
+
+        #expect(available)
+        #expect(model.nativeFeaturesState == .available)
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/auth/login") == 1)
+    }
+
+    @Test func nativeFeaturesAvailableWaitsForLaunchRefreshBeforeProbeStarts() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler(pingDelay: .milliseconds(100)))
+        let (model, _) = makeModel(creds())
+
+        let refresh = Task { await model.refresh() }
+        while model.state != .connecting { await Task.yield() }
+        let available = await model.nativeFeaturesAvailable()
+        await refresh.value
+
+        #expect(available)
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/rest/ping.view") == 1)
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/auth/login") == 1)
+    }
+
     @Test func refreshMarksNativeFeaturesUnavailableWhenLoginFails() async {
         await ConnectionProbeMockProtocol.reset()
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler(loginStatus: 401))
@@ -138,7 +181,9 @@ struct ConnectionModelNativeFeaturesTests {
     // MARK: - Mock handler
 
     private static func makeHandler(
-        loginStatus: Int = 200
+        loginStatus: Int = 200,
+        loginDelay: Duration = .zero,
+        pingDelay: Duration = .zero
     ) -> @Sendable (URLRequest) -> ConnectionProbeMockProtocol.Response {
         { request in
             let path = request.url?.path ?? ""
@@ -148,14 +193,16 @@ struct ConnectionModelNativeFeaturesTests {
                 }
                 let jwt = Self.makeJWT(exp: Date().addingTimeInterval(3600).timeIntervalSince1970)
                 let body = #"{"token":"\#(jwt)"}"#
-                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+                return .init(status: 200, headers: ["Content-Type": "application/json"],
+                             body: Data(body.utf8), delay: loginDelay)
             }
             if path.hasSuffix("/rest/ping.view") {
                 let body = """
                 {"subsonic-response":{"status":"ok","version":"1.16.1","type":"navidrome",\
                 "serverVersion":"0.52.0","openSubsonic":true}}
                 """
-                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+                return .init(status: 200, headers: ["Content-Type": "application/json"],
+                             body: Data(body.utf8), delay: pingDelay)
             }
             if path.hasSuffix("/rest/startScan.view") {
                 let body = """
@@ -200,6 +247,7 @@ final class ConnectionProbeMockProtocol: URLProtocol, @unchecked Sendable {
         let status: Int
         let headers: [String: String]
         let body: Data
+        var delay: Duration = .zero
     }
 
     private actor State {
@@ -241,6 +289,7 @@ final class ConnectionProbeMockProtocol: URLProtocol, @unchecked Sendable {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))
                 return
             }
+            try? await Task.sleep(for: response.delay)
             let httpResponse = HTTPURLResponse(
                 url: url, statusCode: response.status, httpVersion: "HTTP/1.1", headerFields: response.headers
             )!
