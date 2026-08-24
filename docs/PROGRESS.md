@@ -40,7 +40,9 @@ M8 ✅ (Developer ID pipeline: notarized, stapled, Gatekeeper-accepted
 builds via publish.sh; CI on every push; **Mac App Store: 0.6.2 approved
 and released 2026-08-16** after three review rounds — window-scene fix,
 rights-cleared screenshots, and the recorded evidence package did it;
-store page linked from website + README)
+store page linked from website + README) ·
+E5 🚧 (WorkInfo join + album work-grouping headers + Work context-menu actions complete; 3 of 4
+sub-issues delivered)
 
 ## How to build / test
 ```sh
@@ -49,6 +51,34 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO
 ```
+
+---
+
+## Issue #47: PR #51 review cleanup (2026-08-24)
+`/code-review medium` on PR #51 flagged two findings: `TrackTableRow.build`
+duplicated the same "walk tracks, detect key change, emit header, append
+track" loop once for Work grouping and once for disc grouping, and the Work
+path ignores `headers[disc]` for multi-disc, multi-Work albums.
+
+- Factored both loops into one `groupedRows(tracks:key:title:)` helper
+  parameterized by key type and header-title closure; behavior unchanged
+  (verified: all 209 tests still pass, including the five grouping cases).
+- The `headers[disc]`-drop finding was **not** fixed: `DiscHeaderTests
+  .multiDiscWorkHeadersFoldInDiscNumber` already asserts the disc title is
+  dropped in the Work-grouping path — that's the tested, intended design
+  (Work name takes priority over the disc's custom title), not an oversight.
+  Left as a comment on the PR for Tim to weigh in on if the design should
+  change.
+
+Build clean, zero compiler warnings; full suite green (209 tests); SwiftLint
+clean (0 violations).
+
+After merging `origin/main` (including #48), the combined branch remained
+clean: build succeeded with zero compiler warnings, all 211 tests passed,
+SwiftLint reported 0 violations, and the exact signed branch build was checked
+against Tim's real Navidrome server. *Japanese Love Songs* showed the
+`Two Poems By Ryokan` and `Three Love Songs` Work headers; Title sort hid both,
+and ascending `#` restored both. No credentials were read, logged, or copied.
 
 ---
 
@@ -77,6 +107,43 @@ multi-selected. Real FLAC playback advanced normally.
 
 Build clean, zero compiler warnings; full suite green (205 tests, +2 new
 hermetic Work-menu tests); SwiftLint clean (0 violations across 100 files).
+
+---
+
+## Issue #47: work-grouping headers on album pages (2026-08-24)
+E5 (#13), sub-issue 2 of 4; blocked by and built on #45.
+
+- Album track tables now use `Song.work` to insert the existing flat,
+  unselectable `TrackTableRow.header` before each consecutive Work run when an
+  album contains more than one distinct non-nil Work.
+- Work grouping takes priority over disc grouping. Single-disc labels are the
+  Work name; multi-disc labels are `Disc N · Work Name`. Nil Work rows remain
+  ordinary tracks and break a run, so a repeated Work receives a fresh header
+  when it resumes.
+- Headers remain limited to natural track order and ascending `#`; Title and
+  every other sort withdraw them. Zero/single-Work albums retain the previous
+  disc-header path byte-for-byte.
+- The album-detail fetch now performs #45's native metadata join on the exact
+  `Album.song` array rendered by `AlbumDetailView`. A live-gate regression
+  exposed that this path had bypassed `songs(forAlbum:)`; a new hermetic test
+  locks the corrected path, and the table reload signature now includes Work
+  and disc identity.
+
+**Live verification (2026-08-24), user-configured real Navidrome server:**
+the final signed Debug build showed `Two Poems By Ryokan` and
+`Three Love Songs` headers on the single-disc *Japanese Love Songs* album.
+Sorting by Title removed both headers; selecting ascending `#` restored them.
+The two-disc *Mendelssohn: Songs Without Words* album showed ten Work headers,
+each folded into its disc label (for example,
+`Disc 1 · Songs Without Words, Op. 19` and
+`Disc 2 · Kinderstücke, Op. 72`). The single-Work
+*Variations on a Melancholy Theme* remained headerless. No credentials were
+read, logged, or copied.
+
+Build clean, zero compiler warnings; full suite green (209 tests, +6 new:
+five grouping cases and the album-detail join regression); SwiftLint clean.
+
+---
 
 ## Issue #45: join native WorkInfo onto Song (2026-08-24)
 E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
@@ -2274,9 +2341,8 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 205 tests,
-  0 failures — count current after #48's Work context menu (+2 hermetic tests),
-  2026-08-24; see that entry above), and CI repeats the run on every push
+- ✅ `xcodebuild test` — full combined #47/#48 suite passes (**211 tests,
+  0 failures**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)

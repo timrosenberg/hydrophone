@@ -2,12 +2,14 @@ import Testing
 import Foundation
 @testable import Hydrophone
 
-/// Disc group headers on multi-disc albums (issue #8): row building keeps
-/// track indices stable while interleaving unselectable headers.
+/// Album group headers: row building keeps track indices stable while
+/// interleaving unselectable disc or classical-work headers.
 @MainActor
 struct DiscHeaderTests {
-    private func song(_ id: String, disc: Int?, track: Int) -> Song {
-        Song(id: id, title: id, duration: 100, track: track, discNumber: disc)
+    private func song(_ id: String, disc: Int?, track: Int, work: String? = nil) -> Song {
+        var song = Song(id: id, title: id, duration: 100, track: track, discNumber: disc)
+        song.work = work
+        return song
     }
 
     @Test func multiDiscGetsHeadersWithStableTrackIndices() {
@@ -40,6 +42,57 @@ struct DiscHeaderTests {
 
     @Test func optOutProducesPlainRows() {
         let tracks = [song("a", disc: 1, track: 1), song("b", disc: 2, track: 1)]
+        let rows = TrackTableRow.build(tracks: tracks, headers: nil)
+        #expect(rows == [.track(0), .track(1)])
+    }
+
+    @Test func multipleWorksUseFlatHeadersWithStableTrackIndices() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Piano Sonata No. 14"),
+            song("b", disc: 1, track: 2, work: "Piano Sonata No. 14"),
+            song("c", disc: 1, track: 3, work: "Bagatelle No. 25")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.header("Piano Sonata No. 14"), .track(0), .track(1),
+                         .header("Bagatelle No. 25"), .track(2)])
+    }
+
+    @Test func multiDiscWorkHeadersFoldInDiscNumber() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Piano Sonata No. 14"),
+            song("b", disc: 1, track: 2, work: "Piano Sonata No. 14"),
+            song("c", disc: 2, track: 1, work: "Bagatelle No. 25")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [2: "The Late Works"])
+        #expect(rows == [.header("Disc 1 · Piano Sonata No. 14"), .track(0), .track(1),
+                         .header("Disc 2 · Bagatelle No. 25"), .track(2)])
+    }
+
+    @Test func oneWorkKeepsExistingDiscHeaders() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "The Ring"),
+            song("b", disc: 2, track: 1, work: "The Ring")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [2: "Götterdämmerung"])
+        #expect(rows == [.header("Disc 1"), .track(0),
+                         .header("Disc 2 · Götterdämmerung"), .track(1)])
+    }
+
+    @Test func repeatedWorkGetsAHeaderForEachContiguousRun() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Work A"),
+            song("b", disc: 1, track: 2, work: "Work B"),
+            song("c", disc: 1, track: 3, work: "Work A")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.header("Work A"), .track(0),
+                         .header("Work B"), .track(1),
+                         .header("Work A"), .track(2)])
+    }
+
+    @Test func workMetadataStillHonorsHeaderOptOut() {
+        let tracks = [song("a", disc: 1, track: 1, work: "Work A"),
+                      song("b", disc: 1, track: 2, work: "Work B")]
         let rows = TrackTableRow.build(tracks: tracks, headers: nil)
         #expect(rows == [.track(0), .track(1)])
     }
