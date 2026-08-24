@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 /// All external index semantics (selection binding, onPlay, drag) stay in
 /// *displayed*-track space; the coordinator's delegate methods translate.
 enum TrackTableRow: Equatable {
-    case header(String)
+    /// `work` is non-nil only for a work header, never a disc header.
+    case header(String, work: String?)
     case track(Int)   // index into the displayed track order
 
     static func build(tracks: [Song], headers: [Int: String]?) -> [TrackTableRow] {
@@ -18,12 +19,12 @@ enum TrackTableRow: Equatable {
             return groupedRows(tracks: tracks, key: { $0.work }, title: { work, track in
                 let disc = track.discNumber ?? 1
                 return discs.count > 1 ? "Disc \(disc) · \(work)" : work
-            })
+            }, work: { $0 })
         }
         guard discs.count > 1 else { return plain }
         return groupedRows(tracks: tracks, key: { $0.discNumber ?? 1 }, title: { disc, _ in
             headers[disc].map { "Disc \(disc) · \($0)" } ?? "Disc \(disc)"
-        })
+        }, work: { _ in nil })
     }
 
     /// Walks `tracks`, emitting a header row each time `key` changes (skipping
@@ -31,7 +32,8 @@ enum TrackTableRow: Equatable {
     private static func groupedRows<Key: Equatable>(
         tracks: [Song],
         key: (Song) -> Key?,
-        title: (Key, Song) -> String
+        title: (Key, Song) -> String,
+        work: (Key) -> String?
     ) -> [TrackTableRow] {
         var rows: [TrackTableRow] = []
         var current: Key?
@@ -42,7 +44,7 @@ enum TrackTableRow: Equatable {
                 current = trackKey
                 hasCurrent = true
                 if let trackKey {
-                    rows.append(.header(title(trackKey, track)))
+                    rows.append(.header(title(trackKey, track), work: work(trackKey)))
                 }
             }
             rows.append(.track(index))
@@ -100,6 +102,7 @@ struct MusicTrackTable: NSViewRepresentable {
     var onPlay: ([Song], Int) -> Void          // displayed order + start index
     var onSpace: () -> Void = {}
     var onPlayNext: (Song) -> Void             // ⌥-double-click: queue as next
+    var onEnqueue: ([Song]) -> Void = { _ in }  // ⌥-double-click a work header: add to Up Next
     var onToggleFavorite: (Song) -> Void
     var makeMenu: ([Song], IndexSet) -> NSMenu?  // displayed order + selected indices
 
@@ -165,10 +168,16 @@ struct MusicTrackTable: NSViewRepresentable {
             }
         }
 
-        /// The displayed-track index at a table row (nil for a disc header).
+        /// The displayed-track index at a table row (nil for a header).
         func trackIndex(atRow row: Int) -> Int? {
             guard rows.indices.contains(row), case let .track(index) = rows[row] else { return nil }
             return index
+        }
+
+        /// The work identity at a table row (nil for a disc header or a track).
+        func work(atRow row: Int) -> String? {
+            guard rows.indices.contains(row), case let .header(_, work) = rows[row] else { return nil }
+            return work
         }
 
         func tableRows(forTrackIndices indices: Set<Int>) -> IndexSet {
@@ -251,7 +260,7 @@ struct MusicTrackTable: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard let index = trackIndex(atRow: row) else {
                 // Group rows get a single full-width view (tableColumn is nil).
-                if case let .header(title) = rows[row] { return discHeaderCell(title) }
+                if case let .header(title, _) = rows[row] { return discHeaderCell(title) }
                 return nil
             }
             guard let id = tableColumn?.identifier.rawValue else { return nil }
@@ -274,90 +283,21 @@ struct MusicTrackTable: NSViewRepresentable {
             }
         }
 
-        @MainActor private func discHeaderCell(_ title: String) -> NSTableCellView {
-            let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-            label.textColor = .secondaryLabelColor
-            label.lineBreakMode = .byTruncatingTail
-            label.translatesAutoresizingMaskIntoConstraints = false
-            let cell = NSTableCellView()
-            cell.textField = label
-            cell.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -8),
-                label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-            return cell
-        }
-
-        @MainActor private func indicatorCell(for song: Song) -> NSTableCellView {
-            song.id == parent.nowPlayingID ? NowPlayingIndicatorCell() : NSTableCellView()
-        }
-
-        @MainActor private func favoriteCell(for song: Song, trackIndex: Int) -> NSTableCellView {
-            let cell = NSTableCellView()
-            let btn = NSButton()
-            btn.isBordered = false
-            btn.imagePosition = .imageOnly
-            btn.image = NSImage(systemSymbolName: parent.isFavorite(song) ? "star.fill" : "star",
-                                accessibilityDescription: "Favorite")
-            btn.setAccessibilityLabel(parent.isFavorite(song) ? "Remove from Favorites" : "Add to Favorites")
-            btn.contentTintColor = parent.isFavorite(song) ? .systemYellow : .tertiaryLabelColor
-            btn.tag = trackIndex
-            btn.target = self
-            btn.action = #selector(favoriteClicked(_:))
-            btn.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(btn)
-            NSLayoutConstraint.activate([
-                btn.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
-                btn.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-            return cell
-        }
-
-        @MainActor private func textCell(id: String, song: Song) -> NSTableCellView {
-            let text: String
-            switch id {
-            case "number": text = song.track.map(String.init) ?? ""
-            case "title": text = song.title
-            case "artist": text = song.artist ?? "—"
-            case "composer": text = song.nonEmptyDisplayComposer ?? "—"
-            case "album": text = song.album ?? "—"
-            case "genre": text = song.displayGenre ?? "—"
-            case "time": text = formatTime(song.duration)
-            default: text = pickerOnlyColumnText(id: id, song: song) ?? ""
-            }
-            let label = NSTextField(labelWithString: text)
-            label.lineBreakMode = .byTruncatingTail
-            label.translatesAutoresizingMaskIntoConstraints = false
-            // Title is the primary label; other columns are dimmed. Assigning
-            // `cell.textField` lets both turn white on the selected row.
-            let cell: NSTableCellView = (id == "title") ? NSTableCellView() : SecondaryTextCell()
-            if id != "title" { label.textColor = .secondaryLabelColor }
-            cell.textField = label
-            cell.addSubview(label)
-            let trailing = styleAlignment(of: label, id: id)
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: trailing),
-                label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-            return cell
-        }
-
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updatingSelection, let table else { return }
             parent.selection = Set(table.selectedRowIndexes.compactMap { trackIndex(atRow: $0) })
         }
 
+        // ⌥-double-click queues next (a track) or adds to Up Next (a work)
+        // instead of playing immediately.
         @objc func doubleClicked() {
-            guard let table, let index = trackIndex(atRow: table.clickedRow) else { return }
-            // ⌥-double-click queues the track next instead of playing it.
-            if NSApp.currentEvent?.modifierFlags.contains(.option) == true {
-                parent.onPlayNext(displayed[index])
-            } else {
-                parent.onPlay(displayed, index)
+            guard let table else { return }
+            let isOption = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+            if let index = trackIndex(atRow: table.clickedRow) {
+                if isOption { parent.onPlayNext(displayed[index]) } else { parent.onPlay(displayed, index) }
+            } else if let work = work(atRow: table.clickedRow) {
+                let workTracks = resolveWorkTracks(work: work, among: parent.tracks)
+                if isOption { parent.onEnqueue(workTracks) } else { parent.onPlay(workTracks, 0) }
             }
         }
 

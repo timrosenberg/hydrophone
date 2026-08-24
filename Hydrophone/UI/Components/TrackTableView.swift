@@ -58,6 +58,7 @@ struct TrackTableView: View {
             onPlay: { displayed, index in player.play(tracks: displayed, startAt: index) },
             onSpace: { player.togglePlayPause() },
             onPlayNext: { song in player.playNext([song]) },
+            onEnqueue: { songs in player.enqueue(songs) },
             onToggleFavorite: { song in toggleStar([song.id], star: !library.isStarred(song)) },
             makeMenu: { displayed, indices in buildMenu(displayed, indices) }
         )
@@ -190,6 +191,20 @@ struct TrackTableView: View {
     }
 }
 
+/// Resolves every track belonging to `work`, in movement order (falling back
+/// to track order, tiebroken by original position) — shared by #48's context
+/// menu and the #55 work-header double-click so they can never diverge.
+func resolveWorkTracks(work: String, among tracks: [Song]) -> [Song] {
+    tracks.enumerated()
+        .filter { $0.element.work == work }
+        .sorted { lhs, rhs in
+            let lhsOrder = lhs.element.movementNumber ?? lhs.element.track ?? .max
+            let rhsOrder = rhs.element.movementNumber ?? rhs.element.track ?? .max
+            return lhsOrder == rhsOrder ? lhs.offset < rhs.offset : lhsOrder < rhsOrder
+        }
+        .map(\.element)
+}
+
 /// Builds the single-selection work submenu from the table's underlying tracks,
 /// so a display sort can never change classical movement order.
 @MainActor
@@ -200,14 +215,7 @@ func makeWorkMenuItem(
     onEnqueue: @escaping ([Song]) -> Void
 ) -> NSMenuItem? {
     guard let work = song.work else { return nil }
-    let workTracks = tracks.enumerated()
-        .filter { $0.element.work == work }
-        .sorted { lhs, rhs in
-            let lhsOrder = lhs.element.movementNumber ?? lhs.element.track ?? .max
-            let rhsOrder = rhs.element.movementNumber ?? rhs.element.track ?? .max
-            return lhsOrder == rhsOrder ? lhs.offset < rhs.offset : lhsOrder < rhsOrder
-        }
-        .map(\.element)
+    let workTracks = resolveWorkTracks(work: work, among: tracks)
 
     let submenu = NSMenu()
     submenu.autoenablesItems = false
