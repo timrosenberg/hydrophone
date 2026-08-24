@@ -400,7 +400,32 @@ extension NavidromeClient {
     /// See #25, epic #11.
     func workMetadata(songId: String) async throws(NavidromeError) -> WorkInfo? {
         guard let song = try await songIndex().first(where: { $0.id == songId }) else { return nil }
-        let tags = song.tags ?? [:]
+        return Self.workInfo(from: song)
+    }
+
+    /// Batch variant of `workMetadata(songId:)`: joins work/movement metadata
+    /// for many songs at once against a single dictionary built from the
+    /// cached `songIndex()`, so an album's dozen tracks don't each pay
+    /// `workMetadata`'s O(n) scan of the whole library. Ids with no match, or
+    /// with none of the four fields, are simply absent from the result — same
+    /// "nothing to show" contract as the single-song version. See #45, epic
+    /// #13.
+    func workInfo(forSongIds ids: [String]) async throws(NavidromeError) -> [String: WorkInfo] {
+        guard !ids.isEmpty else { return [:] }
+        let byId = Dictionary(try await songIndex().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var result: [String: WorkInfo] = [:]
+        for id in ids {
+            guard let song = byId[id], let info = Self.workInfo(from: song) else { continue }
+            result[id] = info
+        }
+        return result
+    }
+
+    /// `nil` when `record` carries none of the four tags — the shared "is
+    /// there anything to show" rule both `workMetadata(songId:)` and
+    /// `workInfo(forSongIds:)` apply.
+    private static func workInfo(from record: NativeSongRecord) -> WorkInfo? {
+        let tags = record.tags ?? [:]
         let info = WorkInfo(
             work: tags["work"]?.first,
             movementName: tags["movementname"]?.first,

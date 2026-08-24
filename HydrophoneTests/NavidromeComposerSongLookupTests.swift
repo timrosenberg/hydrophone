@@ -142,4 +142,51 @@ extension NavidromeClientNetworkTests {
         #expect(try await client.workMetadata(songId: "no-composer-song") == nil) // no tags at all
         #expect(try await client.workMetadata(songId: "does-not-exist") == nil) // not in the index
     }
+
+    @Test func workInfoForSongIdsJoinsMultipleSongsInOneBatch() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        let ids = ["schubert-song", "single-movement-song", "no-composer-song", "does-not-exist"]
+        let info = try await client.workInfo(forSongIds: ids)
+
+        #expect(info["schubert-song"] == WorkInfo(
+            work: "Schwanengesang, D. 957", movementName: "Der Doppelgänger",
+            movementNumber: 13, movementTotal: 14
+        ))
+        #expect(info["single-movement-song"] == WorkInfo(
+            work: "Some Sonata", movementName: "Some Sonata",
+            movementNumber: nil, movementTotal: nil
+        ))
+        // No tags, and not-in-the-index: both simply absent from the result.
+        #expect(info["no-composer-song"] == nil)
+        #expect(info["does-not-exist"] == nil)
+        #expect(info.count == 2)
+    }
+
+    @Test func workInfoForSongIdsDoesNotRefetchTheSongIndex() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        _ = try await client.songIndex()
+        _ = try await client.workInfo(forSongIds: ["schubert-song", "single-movement-song"])
+
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 1) // reused the cache built by songIndex(), no extra network call
+    }
+
+    @Test func workInfoForSongIdsIsEmptyForEmptyInput() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        let info = try await client.workInfo(forSongIds: [])
+        #expect(info.isEmpty)
+
+        // No network call at all — not even to build the song index.
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 0)
+    }
 }
