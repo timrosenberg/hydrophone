@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Table rows: tracks interleaved with unselectable disc group headers.
+/// Table rows: tracks interleaved with unselectable album group headers.
 /// All external index semantics (selection binding, onPlay, drag) stay in
 /// *displayed*-track space; the coordinator's delegate methods translate.
 enum TrackTableRow: Equatable {
@@ -13,6 +13,23 @@ enum TrackTableRow: Equatable {
         let plain = tracks.indices.map(TrackTableRow.track)
         guard let headers else { return plain }
         let discs = Set(tracks.map { $0.discNumber ?? 1 })
+        let works = Set(tracks.compactMap(\.work))
+        if works.count > 1 {
+            var rows: [TrackTableRow] = []
+            var currentWork: String?
+            for (index, track) in tracks.enumerated() {
+                if track.work != currentWork {
+                    currentWork = track.work
+                    if let work = track.work {
+                        let disc = track.discNumber ?? 1
+                        let title = discs.count > 1 ? "Disc \(disc) · \(work)" : work
+                        rows.append(.header(title))
+                    }
+                }
+                rows.append(.track(index))
+            }
+            return rows
+        }
         guard discs.count > 1 else { return plain }
         var rows: [TrackTableRow] = []
         var current: Int?
@@ -55,9 +72,10 @@ struct MusicTrackTable: NSViewRepresentable {
     /// (`SongsView` first; the rest in #38) rather than globally at once,
     /// since every `TrackTableView` caller shares this same implementation.
     var columnsCustomizable: Bool = false
-    /// Disc → subtitle; non-nil opts into disc group headers on multi-disc
-    /// content (album page). Headers appear only in disc order — the natural
-    /// order or an ascending # sort — since other sorts interleave discs.
+    /// Disc → subtitle; non-nil opts the album page into group headers. More
+    /// than one tagged work takes priority over disc grouping, prefixing the
+    /// work with its disc on multi-disc albums. Headers appear only in track
+    /// order — natural or ascending # — since other sorts split movements.
     var discHeaders: [Int: String]?
     /// Order-stable rendering of `discHeaders` for the reload signature.
     var discHeadersSignature: String? {
@@ -124,8 +142,8 @@ struct MusicTrackTable: NSViewRepresentable {
             rebuild()
         }
 
-        /// Headers require disc order: no user sort, or the disc-aware # sort
-        /// ascending. Any other sort interleaves discs — headers withdraw.
+        /// Album headers require track order: no user sort, or the disc-aware
+        /// # sort ascending. Any other sort interleaves groups, so they withdraw.
         private var activeDiscHeaders: [Int: String]? {
             guard let headers = parent.discHeaders else { return nil }
             switch sortKey {
