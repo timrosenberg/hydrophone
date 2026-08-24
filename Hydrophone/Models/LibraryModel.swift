@@ -333,7 +333,11 @@ extension LibraryModel {
     /// The full album record for an id — used by "Go to Album" from a track,
     /// where only the song's `albumId` is at hand.
     func album(id: String) async -> Album? {
-        try? await client.object(.album(id: id), as: Album.self)
+        guard var album = try? await client.object(.album(id: id), as: Album.self) else { return nil }
+        var songs = album.song ?? []
+        await joinWorkInfo(into: &songs)
+        album.song = songs
+        return album
     }
 
     func albums(forArtist id: String) async -> [Album] {

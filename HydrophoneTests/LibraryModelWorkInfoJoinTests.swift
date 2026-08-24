@@ -46,6 +46,22 @@ struct LibraryModelWorkInfoJoinTests {
         #expect(songs[1].work == nil) // no work tags on this one — untouched
     }
 
+    @Test func albumDetailJoinsWorkInfoOntoReturnedSongs() async throws {
+        await WorkInfoJoinMockProtocol.reset()
+        await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())
+        let library = makeLibrary(nativeFeaturesAvailable: { true })
+
+        let album = try #require(await library.album(id: "album-1"))
+        let songs = (album.song ?? []).sorted { $0.id < $1.id }
+
+        #expect(songs.map(\.id) == ["schubert-song", "untagged-song"])
+        #expect(songs[0].work == "Schwanengesang, D. 957")
+        #expect(songs[0].movementName == "Der Doppelgänger")
+        #expect(songs[0].movementNumber == 13)
+        #expect(songs[0].movementTotal == 14)
+        #expect(songs[1].work == nil)
+    }
+
     @Test func songsForAlbumLeavesWorkFieldsNilWhenNativeFeaturesAreUnavailable() async throws {
         await WorkInfoJoinMockProtocol.reset()
         await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())

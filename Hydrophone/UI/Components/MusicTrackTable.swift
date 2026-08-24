@@ -132,6 +132,7 @@ struct MusicTrackTable: NSViewRepresentable {
 
         func reloadIfNeeded() {
             var sig = parent.tracks.map(\.id)
+            sig.append(contentsOf: parent.tracks.map { "group:\($0.discNumber ?? 1)|\($0.work ?? "")" })
             sig.append("sort:\(sortKey ?? "")\(ascending)")
             sig.append("np:\(parent.nowPlayingID ?? "")")
             sig.append("discs:" + (parent.discHeadersSignature ?? "off"))
