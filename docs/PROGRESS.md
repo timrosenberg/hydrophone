@@ -54,6 +54,27 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #47: PR #51 review cleanup (2026-08-24)
+`/code-review medium` on PR #51 flagged two findings: `TrackTableRow.build`
+duplicated the same "walk tracks, detect key change, emit header, append
+track" loop once for Work grouping and once for disc grouping, and the Work
+path ignores `headers[disc]` for multi-disc, multi-Work albums.
+
+- Factored both loops into one `groupedRows(tracks:key:title:)` helper
+  parameterized by key type and header-title closure; behavior unchanged
+  (verified: all 209 tests still pass, including the five grouping cases).
+- The `headers[disc]`-drop finding was **not** fixed: `DiscHeaderTests
+  .multiDiscWorkHeadersFoldInDiscNumber` already asserts the disc title is
+  dropped in the Work-grouping path — that's the tested, intended design
+  (Work name takes priority over the disc's custom title), not an oversight.
+  Left as a comment on the PR for Tim to weigh in on if the design should
+  change.
+
+Build clean, zero compiler warnings; full suite green (209 tests); SwiftLint
+clean (0 violations).
+
+---
+
 ## Issue #47: work-grouping headers on album pages (2026-08-24)
 E5 (#13), sub-issue 2 of 4; blocked by and built on #45.
 

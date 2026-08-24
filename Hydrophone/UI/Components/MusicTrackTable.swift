@@ -15,30 +15,35 @@ enum TrackTableRow: Equatable {
         let discs = Set(tracks.map { $0.discNumber ?? 1 })
         let works = Set(tracks.compactMap(\.work))
         if works.count > 1 {
-            var rows: [TrackTableRow] = []
-            var currentWork: String?
-            for (index, track) in tracks.enumerated() {
-                if track.work != currentWork {
-                    currentWork = track.work
-                    if let work = track.work {
-                        let disc = track.discNumber ?? 1
-                        let title = discs.count > 1 ? "Disc \(disc) · \(work)" : work
-                        rows.append(.header(title))
-                    }
-                }
-                rows.append(.track(index))
-            }
-            return rows
+            return groupedRows(tracks: tracks, key: { $0.work }, title: { work, track in
+                let disc = track.discNumber ?? 1
+                return discs.count > 1 ? "Disc \(disc) · \(work)" : work
+            })
         }
         guard discs.count > 1 else { return plain }
+        return groupedRows(tracks: tracks, key: { $0.discNumber ?? 1 }, title: { disc, _ in
+            headers[disc].map { "Disc \(disc) · \($0)" } ?? "Disc \(disc)"
+        })
+    }
+
+    /// Walks `tracks`, emitting a header row each time `key` changes (skipping
+    /// runs where `key` is nil), and a track row for every track.
+    private static func groupedRows<Key: Equatable>(
+        tracks: [Song],
+        key: (Song) -> Key?,
+        title: (Key, Song) -> String
+    ) -> [TrackTableRow] {
         var rows: [TrackTableRow] = []
-        var current: Int?
+        var current: Key?
+        var hasCurrent = false
         for (index, track) in tracks.enumerated() {
-            let disc = track.discNumber ?? 1
-            if disc != current {
-                current = disc
-                let title = headers[disc].map { "Disc \(disc) · \($0)" } ?? "Disc \(disc)"
-                rows.append(.header(title))
+            let trackKey = key(track)
+            if !hasCurrent || current != trackKey {
+                current = trackKey
+                hasCurrent = true
+                if let trackKey {
+                    rows.append(.header(title(trackKey, track)))
+                }
             }
             rows.append(.track(index))
         }
