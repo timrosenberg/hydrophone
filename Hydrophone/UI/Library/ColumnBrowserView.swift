@@ -160,6 +160,7 @@ struct ColumnBrowserView: View {
                 }
             }
             .listStyle(.plain)
+            .playPauseOnSpace()
         }
         .frame(maxWidth: .infinity)
     }

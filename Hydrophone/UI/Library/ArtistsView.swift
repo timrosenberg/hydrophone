@@ -45,6 +45,7 @@ struct ArtistsView: View {
                 }
             }
             .listStyle(.plain)
+            .playPauseOnSpace()
             .background(ListSelectionHighlightDisabler())
             .frame(width: 240)
 

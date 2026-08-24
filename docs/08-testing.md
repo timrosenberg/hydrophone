@@ -80,7 +80,7 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 209 tests)
+## Current suite (Swift Testing, 221 executed cases)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -91,6 +91,7 @@ audio hardware.
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
 `NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
+`TrackTableKeyboardTests` ·
 `SongWorkInfoDecodingTests` · `LibraryModelWorkInfoJoinTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
@@ -138,8 +139,9 @@ These can't be fully automated — verify by hand each release. Status as of
 - [x] Light/Dark verified (dark in daily use; light via per-app Aqua
       override, 2026-07-07). VoiceOver semantics verified via the AX API
       (sliders expose value + increment/decrement; favorite buttons expose
-      state-aware labels + AXPress); keyboard: table arrows/⏎, ⌘F, transport
-      and view shortcuts. Remaining by hand: increased-contrast and
+      state-aware labels + AXPress); keyboard: table arrows/⏎, letter
+      type-select, Space play/pause from focused track tables and Lists, ⌘F,
+      transport and view shortcuts. Remaining by hand: increased-contrast and
       reduce-transparency spot checks (system-settings toggles), a full
       VoiceOver listening pass.
 - [ ] Liquid Glass appearance on macOS 26 — **blocked on a Tahoe machine**

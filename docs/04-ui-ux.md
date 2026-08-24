@@ -262,6 +262,11 @@ Menu bar via `Commands` (`HydrophoneCommands`):
   track (⌘L, title reflects its starred state), Show Album in Library (⇧⌘L),
   Repeat (Off/All/One picker), Shuffle toggle — playback items disabled when
   nothing is loaded.
+- **Focus routing:** the shared AppKit track table forwards Space explicitly
+  while preserving native letter type-select. SwiftUI Lists that otherwise
+  consume Space (Artists, every column-browser pane, and Up Next) handle it at
+  the List boundary; search/text fields still type literal spaces. Up Next row
+  gestures remain forbidden so drag reorder continues to own mouse-down.
 - **View:** Show Now Playing (⌘U, disabled when nothing plays/queued), Show
   Column Browser (⌥⌘B), plus the standard sidebar toggle.
 - **Find:** ⌘F focuses the sidebar search field (a hidden button —

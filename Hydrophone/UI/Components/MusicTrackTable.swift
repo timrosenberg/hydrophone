@@ -98,6 +98,7 @@ struct MusicTrackTable: NSViewRepresentable {
     @Binding var selection: Set<Int>          // indices into the *displayed* order
     var isFavorite: (Song) -> Bool
     var onPlay: ([Song], Int) -> Void          // displayed order + start index
+    var onSpace: () -> Void = {}
     var onPlayNext: (Song) -> Void             // ⌥-double-click: queue as next
     var onToggleFavorite: (Song) -> Void
     var makeMenu: ([Song], IndexSet) -> NSMenu?  // displayed order + selected indices

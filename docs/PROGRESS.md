@@ -32,7 +32,7 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts, restoration incl. per-view track columns and scroll offset, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause, restoration incl. per-view track columns and scroll offset, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -51,6 +51,63 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO
 ```
+
+---
+
+## Issue #56: Space play/pause from focused lists (2026-08-24)
+Focus-owning collection controls now preserve the global Space play/pause
+shortcut instead of consuming it as selection input.
+
+- `InnerTableView` intercepts hardware key code 49 and forwards a narrow
+  playback callback. Return/Enter keep their existing route, while every other
+  key still goes through `NSTableView`, preserving letter type-select.
+- Artists, every column-browser pane, and Up Next apply the same handling at
+  the `List` boundary. Up Next's row gestures and `.onMove` implementation are
+  untouched; no row `.contentShape` or tap gesture was added.
+- Added direct AppKit routing tests plus an offscreen hosted-`List` regression
+  test. The host is retained for the test-process lifetime because asynchronous
+  SwiftUI/AppKit teardown otherwise races Swift Testing's concurrent jobs.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server:**
+Space toggled playback in both directions from Songs, and toggled from
+Favorites, an album track table, and a playlist track table. It also toggled
+from Artists, the Artist and Composer column-browser lists, and Up Next. Letter
+type-select still moved a track-table selection to the first matching title;
+Space typed a literal space in Search without changing playback. The sidebar
+already allowed the menu shortcut through. Album-grid buttons did not acquire
+keyboard focus under the machine's current keyboard-navigation setting, so
+there was no swallowed Space path to override.
+
+Build clean with zero compiler warnings; the full suite passed **221 executed
+cases, 0 failures, 0 skipped** (220 declarations, with one parameterized case
+run twice); SwiftLint clean (**0 violations across 104 files**).
+
+**PR #57 review cleanup (2026-08-24):** `/code-review medium` flagged two
+findings, posted as inline PR comments.
+
+- **Duplication (fixed):** `.playPauseOnSpace { player.togglePlayPause() }`
+  plus a fresh `@Environment(PlayerModel.self)` was repeated at all three call
+  sites. Added a no-argument `playPauseOnSpace()` convenience overload
+  (`PlayPauseOnSpace.swift`) that reads `PlayerModel` from the environment
+  internally; `ArtistsView` and `ColumnBrowserView` dropped their now-unused
+  `player` properties (each had no other use of it). The closure-taking
+  overload stays, since `TrackTableKeyboardTests` depends on the generic form
+  to count invocations without a real `PlayerModel`.
+- **Full Keyboard Access precedence (investigated, not fixed):** the concern
+  is that a List's `.playPauseOnSpace` could swallow Space before a
+  Tab-focused row button (e.g. Up Next's Play/Remove) gets to activate it.
+  Attempted a hermetic regression test analogous to the existing
+  `swiftUIListRoutesSpaceToPlayback` — host a `List { Button(...) }`
+  offscreen, `makeFirstResponder` the button, send Space, assert the button
+  fires and playback doesn't. Dumping the actual view hierarchy showed why
+  this can't work: a plain SwiftUI `Button` inside a `List` row doesn't back
+  onto a real `NSButton`; the only AppKit object present is a private
+  `_FocusRingView` inside `CellHostingView`, which isn't reachable or
+  drivable from public API. That's the same wall Tim's live verification hit
+  — the machine's keyboard-navigation setting didn't make buttons
+  Tab-focusable, so this path has never actually been exercised in either
+  direction. Left the behavior unchanged rather than guess at a fix with no
+  way to verify it; needs a real Full Keyboard Access pass on a live machine.
 
 ---
 
@@ -2413,10 +2470,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full combined #46/#47/#48 suite passes (**217 tests,
+- ✅ `xcodebuild test` — full suite through #56 passes (**221 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
-- ✅ `swiftlint` — **0 violations across 102 files** (2026-08-24).
+- ✅ `swiftlint` — **0 violations across 104 files** (2026-08-24).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,
