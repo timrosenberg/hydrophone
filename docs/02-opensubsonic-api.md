@@ -273,13 +273,13 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   (`[String: [String]]`) — kept separate from `Song` (`SubsonicModels.swift`),
   the playback pipeline's model.
 - **Work/movement join onto `Song` (#45, epic #13):** `NavidromeClient`
-  exposes `workMetadata(songId:)` (#25, one song, O(n) scan of the cached
-  index) and `workInfo(forSongIds:)` (#45, many songs at once against a
-  dictionary built from the same cache — an album's dozen tracks cost one
-  dictionary build, not one scan per track). `LibraryModel.joinWorkInfo(into:)`
+  exposes `workMetadata(songId:)` (#25, one song) and
+  `workInfo(forSongIds:)` (#45, many songs at once) against the same reusable
+  id dictionary, constructed once with each cached song-index snapshot.
+  `LibraryModel.joinWorkInfo(into:)`
   calls the batch form and copies `work`/`movementName`/`movementNumber`/
   `movementTotal` onto the matching `Song` values, gated on
-  `ConnectionModel.nativeFeaturesState == .available` — a no-op, with no
-  native network call at all, otherwise. Wired into the album, genre, Songs
-  sample, and Favorites fetches in `LibraryModel`; playlist and search results
-  don't get the join yet (different data shapes — deliberately deferred).
+  an async `ConnectionModel.nativeFeaturesAvailable()` gate that waits for the
+  launch-time probe or starts it when necessary — a no-op, with no native
+  network call at all, when unavailable. Wired into all six track-table
+  sources: album, genre/Column Browser, Songs, Favorites, playlist, and search.

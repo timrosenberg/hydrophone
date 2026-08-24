@@ -60,24 +60,21 @@ E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
   `movementNumber`, `movementTotal` — deliberately absent from `CodingKeys`
   (Subsonic never sends them) and relying on `Optional`'s own implicit `nil`
   default for synthesized `Codable` to keep compiling.
-- `NavidromeClient` gained `workInfo(forSongIds:)`, a batch join built on a
-  dictionary over the existing cached `songIndex()` — an album's dozen tracks
-  now cost one dictionary build, not one O(n) scan per track like
-  `workMetadata(songId:)` (#25) still does for its single-song callers. Both
-  now share one internal `workInfo(from:)` helper; `workMetadata(songId:)`'s
-  behavior and test coverage are unchanged.
+- `NavidromeClient` gained `workInfo(forSongIds:)`, a batch join backed by a
+  reusable id dictionary constructed once with the cached `songIndex()`
+  snapshot. Album, search, and playlist fan-outs now cost O(requested ids),
+  without rebuilding an O(library size) dictionary per fetch;
+  `workMetadata(songId:)` uses the same lookup.
 - `LibraryModel` gained a `navidrome` reference and a `nativeFeaturesAvailable`
   closure (mirroring `PlayerModel`'s `scrobbler`/`queueStore` closure pattern —
   `AppModel` is the only place peer models actually wire together), plus a
   `joinWorkInfo(into:)` helper (`LibraryModel+WorkInfo.swift`, split out for
-  the type-body-length lint) wired into the four `[Song]`-returning fetches
-  that feed a track table today: album detail, genre, the Songs sample, and
-  Favorites. The join is a no-op — no network call at all — when
-  `ConnectionModel.nativeFeaturesState != .available`.
-- **Deliberately out of scope:** playlist songs (`Playlist.entry`) and search
-  results (`SearchResults.songs`) don't get the join yet — different data
-  shapes; keeping this branch reviewable mattered more than covering every
-  call site in one pass. Candidate follow-up if #46/#47/#48 need them.
+  the type-body-length lint) wired into all six track-table sources: album
+  detail, genre/Column Browser, the Songs sample, Favorites, playlist entries,
+  and search results. Its async availability gate waits for the launch-time
+  connection/native probe (and coalesces with one already in flight), so an
+  early library fetch cannot permanently cache unenriched songs. The join is
+  still a no-op — no native network call — when native features are unavailable.
 
 **Live verification (2026-08-24), Tim's real Navidrome server** (14,794
 songs, 2,946 with `movementname`): a temporary opt-in test (reverted before
@@ -89,10 +86,18 @@ issue — `LibraryModel.songs(forAlbum:)` returning that song with `.work`
 populated end-to-end. All assertions passed (~11s per run, consistent with
 #8's measured full-index-walk cost).
 
-Build clean, zero compiler warnings; full suite green (197 tests, +7 new
-hermetic tests: batch-join coverage in `NavidromeComposerSongLookupTests`,
-a `Song`-decode default-nil test, and three `LibraryModel` join tests);
-SwiftLint clean across 98 files.
+**Post-review live verification (2026-08-24), same real server:** a temporary
+Keychain-backed test (reverted before commit; no credentials logged or copied)
+started `ConnectionModel.refresh()` and a real `LibraryModel.search()` in the
+startup-race order, selected a real work-tagged song from the 14,794-song native
+index, and confirmed the search result carried the same Work value after the
+probe completed. The single non-parallel arm64 run passed in 7.349s.
+
+Build clean, zero compiler warnings; full suite green (203 tests, +13 new
+hermetic tests: batch/cache coverage in `NavidromeComposerSongLookupTests`,
+a `Song`-decode default-nil test, five `LibraryModel` join tests, and three
+launch/native-availability regression tests);
+SwiftLint clean across 99 files.
 
 ---
 
@@ -2243,8 +2248,8 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 197 tests,
-  0 failures — count current after #45's work/movement join (+7 hermetic
+- ✅ `xcodebuild test` — full suite green (**TEST SUCCEEDED**, 203 tests,
+  0 failures — count current after #45's work/movement join (+13 hermetic
   tests), 2026-08-24; see that entry above), and CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 
