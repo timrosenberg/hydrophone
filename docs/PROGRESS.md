@@ -52,6 +52,44 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #46: Work and Movement track columns (2026-08-24)
+E5 (#13), sub-issue 2 of 4, built on #45's native WorkInfo-to-Song join.
+
+- Added picker-only Work, Movement Name, and Movement columns to the shared
+  AppKit track table without changing any call site's default visible columns.
+  Work and Movement Name are left-aligned text; Movement is a narrow,
+  right-aligned `n of total` value and falls back to `—` unless both numbers
+  exist.
+- Work and Movement Name sort as localized text. Movement sorts numerically
+  in both directions with missing movement numbers kept last.
+- The three choices are present only while
+  `ConnectionModel.nativeFeaturesState == .available`. Sessions where native
+  detection is still in progress, and plain Subsonic sessions, omit them from
+  the menu and live table. A saved native layout remains intact and returns
+  if native capability becomes available again.
+- Five focused tests cover AppKit header metadata, native-feature gating,
+  capability transitions, value/fallback rendering, and
+  ascending/descending sort behavior.
+
+**Live verification (2026-08-24), `music.tail9575a5.ts.net`:** the signed
+Debug build loaded the real library and exposed all three choices in both a
+Mahler playlist and sortable Songs. Real Work and Movement Name tags rendered;
+complete records showed values including `1 of 2`, `1 of 3`, and `2 of 5`,
+while incomplete records showed `—`. Direct header clicks exercised Work and
+Movement Name in both ascending and descending directions. Movement ascending
+put numbered rows in 1-then-2 order; descending reversed the numeric order;
+both directions kept missing values after numbered rows. A second signed build
+temporarily forced native features unavailable (source change reverted before
+commit): the saved native columns disappeared from the live table and all
+three native choices remained absent from the picker. The pre-test
+Songs/playlist columns, scroll position, and ascending Album sort were
+restored.
+
+Build clean, zero compiler warnings; full suite green (208 tests, +5 focused
+tests); SwiftLint clean across 101 files.
+
+---
+
 ## Issue #45: join native WorkInfo onto Song (2026-08-24)
 E5 (#13), sub-issue 1 of 4 — the foundation every other E5 sub-issue
 (columns, work-grouping headers, "Play Work") builds on.
