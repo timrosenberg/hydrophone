@@ -11,6 +11,15 @@ import Testing
 /// `.serialized` trait and `NavidromeMockProtocol` state safely. See #25,
 /// epic #11.
 extension NavidromeClientNetworkTests {
+    @Test func songIndexSnapshotBuildsStableIDLookupOnce() {
+        let first = NativeSongRecord(id: "duplicate", title: "first", participants: nil, tags: nil)
+        let duplicate = NativeSongRecord(id: "duplicate", title: "second", participants: nil, tags: nil)
+        let snapshot = NativeSongIndexSnapshot(records: [first, duplicate])
+
+        #expect(snapshot.records.map(\.title) == ["first", "second"])
+        #expect(snapshot.record(id: "duplicate")?.title == "first")
+    }
+
     /// A representative `/api/song` page: one Beethoven solo credit, one
     /// Brahms/Clara Schumann joint credit (both composer ids present on the
     /// same song), a song with no composer credit at all, a Schubert song

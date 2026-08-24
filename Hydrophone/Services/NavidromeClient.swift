@@ -88,11 +88,6 @@ actor NavidromeClient {
         return try await login(using: creds)
     }
 
-    private func invalidateCachedToken() {
-        cachedToken = nil
-        cachedTokenCredentials = nil
-    }
-
     // MARK: - Pagination
 
     /// The parts of a `paginatedGet` call that stay constant across every
@@ -230,7 +225,7 @@ actor NavidromeClient {
     /// In-memory cache of `songIndex()`'s result, kept for the app session
     /// only — no disk persistence (M2 dropped the SwiftData cache; see
     /// docs/PROGRESS.md). Cleared by `invalidateSongIndex()`.
-    private var cachedSongIndex: [NativeSongRecord]?
+    private var cachedSongIndex: NativeSongIndexSnapshot?
     /// The credentials `cachedSongIndex` was built against — same reasoning
     /// as `cachedTokenCredentials`: a cache built for one server/account
     /// must not be served to a different one after Settings changes the
@@ -247,7 +242,7 @@ actor NavidromeClient {
     /// the caller's current credentials match (otherwise a caller under new
     /// credentials could be handed a build's result fetched under the old
     /// ones). See PR #31 review.
-    private var inFlightSongIndexBuild: Task<[NativeSongRecord], Error>?
+    private var inFlightSongIndexBuild: Task<NativeSongIndexSnapshot, Error>?
     private var inFlightSongIndexCredentials: ServerCredentials?
 
     /// Every song in the library, with per-role `participants` credits and
@@ -258,6 +253,10 @@ actor NavidromeClient {
     /// cached copy without refetching, unless credentials changed or
     /// `invalidateSongIndex()` was called. See #24, epic #11.
     func songIndex() async throws(NavidromeError) -> [NativeSongRecord] {
+        try await songIndexSnapshot().records
+    }
+
+    private func songIndexSnapshot() async throws(NavidromeError) -> NativeSongIndexSnapshot {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
         if let cachedSongIndex, cachedSongIndexCredentials == creds {
             return cachedSongIndex
@@ -272,27 +271,28 @@ actor NavidromeClient {
 
         songIndexGeneration += 1
         let generation = songIndexGeneration
-        let build = Task<[NativeSongRecord], Error> {
+        let build = Task<NativeSongIndexSnapshot, Error> {
             let query = PageQuery(
                 path: "song", sort: "id", order: "ASC",
                 extraQuery: [], credentials: creds
             )
-            return try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
+            let records = try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
+            return NativeSongIndexSnapshot(records: records)
         }
         inFlightSongIndexBuild = build
         inFlightSongIndexCredentials = creds
         do {
-            let index = try await build.value
+            let snapshot = try await build.value
             // Only the still-current build may finish the job: invalidation
             // or a credential-scoped replacement may have retired this task,
             // and its stale result must not overwrite the newer cache/state.
             if generation == songIndexGeneration {
-                cachedSongIndex = index
+                cachedSongIndex = snapshot
                 cachedSongIndexCredentials = creds
                 inFlightSongIndexBuild = nil
                 inFlightSongIndexCredentials = nil
             }
-            return index
+            return snapshot
         } catch {
             if generation == songIndexGeneration {
                 inFlightSongIndexBuild = nil
@@ -366,6 +366,11 @@ actor NavidromeClient {
 }
 
 extension NavidromeClient {
+    private func invalidateCachedToken() {
+        cachedToken = nil
+        cachedTokenCredentials = nil
+    }
+
     /// The full composer roster (`/api/artist?role=composer`), sorted by
     /// localized standard name order. The server-side sort keeps page boundaries
     /// stable; the final sort normalizes differences in database collation.
@@ -391,7 +396,9 @@ extension NavidromeClient {
     /// by composer" filter to call instead (see #24's doc comment). See #25,
     /// epic #11.
     func songs(byComposerId composerId: String) async throws(NavidromeError) -> [NativeSongRecord] {
-        try await songIndex().filter { $0.participants?.composer?.contains { $0.id == composerId } ?? false }
+        try await songIndexSnapshot().records.filter {
+            $0.participants?.composer?.contains { $0.id == composerId } ?? false
+        }
     }
 
     /// The work/movement metadata for one song, read from `songIndex()`'s
@@ -399,7 +406,7 @@ extension NavidromeClient {
     /// id isn't in the index, or is but carries none of the four fields.
     /// See #25, epic #11.
     func workMetadata(songId: String) async throws(NavidromeError) -> WorkInfo? {
-        guard let song = try await songIndex().first(where: { $0.id == songId }) else { return nil }
+        guard let song = try await songIndexSnapshot().record(id: songId) else { return nil }
         return Self.workInfo(from: song)
     }
 
@@ -412,10 +419,10 @@ extension NavidromeClient {
     /// #13.
     func workInfo(forSongIds ids: [String]) async throws(NavidromeError) -> [String: WorkInfo] {
         guard !ids.isEmpty else { return [:] }
-        let byId = Dictionary(try await songIndex().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let snapshot = try await songIndexSnapshot()
         var result: [String: WorkInfo] = [:]
         for id in ids {
-            guard let song = byId[id], let info = Self.workInfo(from: song) else { continue }
+            guard let song = snapshot.record(id: id), let info = Self.workInfo(from: song) else { continue }
             result[id] = info
         }
         return result
