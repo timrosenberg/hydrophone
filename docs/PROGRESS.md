@@ -75,14 +75,10 @@ Build clean with zero compiler warnings; full suite **TEST SUCCEEDED** with
 these four tests passing alongside the existing grouping cases; SwiftLint
 clean (0 violations across 104 files).
 
-**Live verification: pending — Tim to confirm by hand** against *Japanese
-Love Songs* (Claude Delangle) on his real server: a blank line should
-separate track 6 (`Three Love Songs III. Hotaru (Firefly)`) from track 7
-(`First Eclogue After Epos Among Ainu Races`), the two work headers should be
-unchanged, sorting by Title should withdraw all grouping including the
-spacer, and a normal multi-disc album should render unaffected. Automated
-live-verification wasn't attempted this round — the desktop had other
-concurrent sessions actively stealing window focus, and driving the app
+**Live-verified by Tim (2026-08-24)** against *Japanese Love Songs* (Claude
+Delangle) on his real server, confirming the blank row lands correctly.
+Automated live-verification wasn't attempted this round — the desktop had
+other concurrent sessions actively stealing window focus, and driving the app
 blind under those conditions risked misclicking into unrelated windows.
 
 ---
