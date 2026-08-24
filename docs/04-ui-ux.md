@@ -112,7 +112,8 @@ rendered visibly washed out.
   plain Subsonic or unavailable-native sessions omit those menu items rather
   than showing disabled choices. A saved native-column layout is filtered
   from the live table while unavailable, then restored if native capability
-  returns; the saved preference itself is not overwritten by that transition.
+  returns. Visible-column edits made during an unavailable session merge into
+  that preference without discarding its hidden native entries.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The

@@ -80,7 +80,7 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 208 tests)
+## Current suite (Swift Testing, 209 tests)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -109,7 +109,7 @@ remain last in both ascending and descending order.
 `WorkMovementTrackColumnsTests` covers #46's AppKit header metadata,
 native-feature picker gating, value/fallback rendering, ascending/descending
 sorting, and saved native-column filtering/restoration across capability
-transitions.
+transitions, including edits made while native columns are hidden.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 

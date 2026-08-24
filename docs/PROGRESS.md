@@ -67,9 +67,9 @@ E5 (#13), sub-issue 2 of 4, built on #45's native WorkInfo-to-Song join.
   detection is still in progress, and plain Subsonic sessions, omit them from
   the menu and live table. A saved native layout remains intact and returns
   if native capability becomes available again.
-- Five focused tests cover AppKit header metadata, native-feature gating,
-  capability transitions, value/fallback rendering, and
-  ascending/descending sort behavior.
+- Six focused tests cover AppKit header metadata, native-feature gating,
+  capability transitions (including unavailable-session layout edits),
+  value/fallback rendering, and ascending/descending sort behavior.
 
 **Live verification (2026-08-24), `music.tail9575a5.ts.net`:** the signed
 Debug build loaded the real library and exposed all three choices in both a
@@ -85,7 +85,7 @@ three native choices remained absent from the picker. The pre-test
 Songs/playlist columns, scroll position, and ascending Album sort were
 restored.
 
-Build clean, zero compiler warnings; full suite green (208 tests, +5 focused
+Build clean, zero compiler warnings; full suite green (209 tests, +6 focused
 tests); SwiftLint clean across 101 files.
 
 ---

@@ -65,6 +65,29 @@ enum TrackColumn: Equatable, CaseIterable {
         columns.filter { nativeFeaturesAvailable || !$0.isNativeOnly }
     }
 
+    /// Merges edits made while native columns are hidden back into the saved
+    /// layout. Hidden native entries keep their relative slots; reordered,
+    /// removed, or newly added visible entries fill the remaining slots.
+    static func mergingVisibleColumns(
+        _ visibleColumns: [Self],
+        into savedColumns: [Self],
+        nativeFeaturesAvailable: Bool
+    ) -> [Self] {
+        guard !nativeFeaturesAvailable else { return visibleColumns }
+
+        var remainingVisible = visibleColumns[...]
+        var merged: [Self] = []
+        for savedColumn in savedColumns {
+            if savedColumn.isNativeOnly {
+                merged.append(savedColumn)
+            } else if let nextVisible = remainingVisible.popFirst() {
+                merged.append(nextVisible)
+            }
+        }
+        merged.append(contentsOf: remainingVisible)
+        return merged
+    }
+
     private var isNativeOnly: Bool {
         switch self {
         case .work, .movementName, .movement: true

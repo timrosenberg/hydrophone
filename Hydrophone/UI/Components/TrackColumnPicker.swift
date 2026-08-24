@@ -62,7 +62,13 @@ extension MusicTrackTable.Coordinator {
 
     private func persistVisibleColumnsAndOrder(table: NSTableView) {
         guard let viewKind = columnViewKind else { return }
-        TrackColumnPreferences.persistColumns(contentColumns(in: table), for: viewKind)
+        let savedColumns = TrackColumnPreferences.persistedColumns(for: viewKind) ?? parent.columns
+        let columnsToPersist = TrackColumn.mergingVisibleColumns(
+            contentColumns(in: table),
+            into: savedColumns,
+            nativeFeaturesAvailable: parent.nativeFeaturesAvailable
+        )
+        TrackColumnPreferences.persistColumns(columnsToPersist, for: viewKind)
     }
 
     /// Applies a native-capability transition to the live table without

@@ -72,6 +72,23 @@ struct WorkMovementTrackColumnsTests {
         ) == persisted)
     }
 
+    @Test func unavailableEditsPreserveHiddenNativeColumnsForRestoration() {
+        let persisted: [TrackColumn] = [.title, .work, .movementName, .movement, .artist]
+        let editedVisible: [TrackColumn] = [.artist, .title, .album]
+
+        let merged = TrackColumn.mergingVisibleColumns(
+            editedVisible,
+            into: persisted,
+            nativeFeaturesAvailable: false
+        )
+
+        #expect(merged == [.artist, .work, .movementName, .movement, .title, .album])
+        #expect(TrackColumn.columnsAvailableForCurrentServer(
+            merged,
+            nativeFeaturesAvailable: true
+        ) == merged)
+    }
+
     @Test func cellsRenderValuesAndRequireCompleteMovementNumbers() {
         let complete = Song(
             id: "complete",
