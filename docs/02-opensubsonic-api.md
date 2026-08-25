@@ -107,7 +107,10 @@ otherwise; see `SubsonicClient.formPostRequest`).
 - `getSongsByGenre` — songs in a genre, with `count`/`offset` → pagination.
 - `getRandomSongs` — backs the Songs view (Subsonic has no "all songs"
   endpoint; a fuller aggregation is a tracked deferral).
-- ~~`getSong`~~ — not needed so far (list payloads carry full song metadata).
+- `getSong` — resolves the ids from Navidrome's native composer-song lookup
+  into complete `Song` values for track-table and playback consumers. Fetches
+  are best-effort, preserve composer order, and are capped at six concurrent
+  requests before work/movement metadata is joined.
 
 ### Discovery (added 2026-07-18, M10)
 - `getArtistInfo2` — artist bio + similar artists (server metadata agent,

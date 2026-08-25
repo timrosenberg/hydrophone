@@ -44,6 +44,7 @@ struct EndpointGoldenTests {
     @Test func idLookups() {
         #expect(Endpoint.artist(id: "ar-1").queryItems == [q("id", "ar-1")])
         #expect(Endpoint.album(id: "al-1").queryItems == [q("id", "al-1")])
+        #expect(Endpoint.song(id: "sg-1").queryItems == [q("id", "sg-1")])
         #expect(Endpoint.playlist(id: "pl-1").queryItems == [q("id", "pl-1")])
         #expect(Endpoint.deletePlaylist(id: "pl-1").queryItems == [q("id", "pl-1")])
     }

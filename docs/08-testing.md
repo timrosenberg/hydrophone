@@ -84,19 +84,23 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 246 executed cases)
+## Current suite (Swift Testing, 250 executed cases)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
+`AlbumFilterEndpointTests` ·
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
+`PlayQueueTests` ·
 `QualityLabelTests` · `ExpandedTrackColumnsTests` · `WorkMovementTrackColumnsTests` ·
 `TrackColumnPreferencesTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
 `NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
-`TrackTableKeyboardTests` · `SidebarSelectionTests` ·
-`SongWorkInfoDecodingTests` · `LibraryModelWorkInfoJoinTests` ·
+`TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
+`WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
+`LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
+`SidebarSelectionTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
