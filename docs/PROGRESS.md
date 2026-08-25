@@ -71,11 +71,24 @@ issue's "Correction to the epic text").
   albums-only, matching every other Home shelf; `starredSongs` isn't pulled
   in. `scrollBinding`'s `topIDs` (still just `["greeting"]`) is untouched;
   the shelf's `.id("favorites")` only feeds `scrollTargetLayout()`.
+- Review follow-up: Home's content/loading gate now counts `starredAlbums`.
+  When `getStarred2` succeeds but all four `getAlbumList2` requests fail or
+  return empty, the independently loaded Favorites shelf renders instead of
+  remaining trapped behind the legacy Home spinner.
 
-Build clean, zero compiler warnings; full suite green; SwiftLint clean (0
-violations, 105 files). No new tests: the change is a straight read of two
-existing, already-tested `LibraryModel` properties into an existing,
-already-tested `AlbumShelf` component — nothing new to unit-test.
+Build clean, zero compiler warnings; full suite green (239 tests, 0 failures,
+0 skipped); SwiftLint clean (0 violations, 105 files). The review follow-up
+adds a hermetic rendered-output regression in `StarringTests`: `getStarred2`
+returns one album while every legacy Home request fails, and the offscreen
+Home render must contain shelf content rather than only the loading spinner.
+
+**Review-fix live verification (2026-08-25), Tim's configured real Navidrome
+server,** against the exact unsigned branch build at the reviewed working tree:
+confirmed Home completed loading and rendered its populated Favorites shelf in
+the intended position. The server state was left unchanged. The legacy-shelf
+failure edge is exercised by the hermetic regression above because reproducing
+selective endpoint failures on the configured server would require changing
+the server rather than the app.
 
 **Live verification (2026-08-24), Tim's configured real Navidrome server,**
 driven via AppleScript/System Events UI automation against the running

@@ -22,11 +22,12 @@ struct HomeView: View {
     private var allEmpty: Bool {
         library.homeNewest.isEmpty && library.homeRecent.isEmpty
             && library.homeFrequent.isEmpty && library.homeRandom.isEmpty
+            && library.starredAlbums.isEmpty
     }
 
     var body: some View {
         Group {
-            if !library.homeLoaded {
+            if !library.homeLoaded && library.starredAlbums.isEmpty {
                 ProgressView()
             } else if allEmpty {
                 ContentUnavailableView("Nothing Here Yet", systemImage: "house",
