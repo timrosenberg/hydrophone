@@ -77,7 +77,8 @@ struct RootView: View {
                             // changes don't animate (the animation below is
                             // keyed on visibility only), so dragging is live.
                             .overlay(alignment: .leading) {
-                                PanelResizeHandle(width: $panelWidth, range: Self.panelWidthRange)
+                                PanelResizeHandle(width: $panelWidth, range: Self.panelWidthRange,
+                                                   anchoredEdge: .trailing)
                                     .offset(x: -5)
                             }
                     }

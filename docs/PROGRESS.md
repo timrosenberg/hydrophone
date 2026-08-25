@@ -56,6 +56,30 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #62: resizable Artists list (2026-08-24)
+E6 (#14) library/navigation UX polish; unblocks E4's eventual Composers view
+(#12), which should follow the same pattern once it exists.
+
+- `PanelResizeHandle` gained an explicit `anchoredEdge: HorizontalEdge`
+  parameter (no default, forcing every call site to be explicit) so the
+  same grab-strip component can drive a panel anchored to either edge of
+  its container: `.trailing` (Now Playing panel — dragging left widens it,
+  unchanged) or `.leading` (Artists list — dragging right widens it).
+  `RootView.swift`'s call site now passes `anchoredEdge: .trailing`
+  explicitly.
+- `ArtistsView` gained `@AppStorage("artistsListWidth")` (default 240,
+  range 180–360pt, mirroring `RootView`'s `nowPlayingPanelWidth` pattern)
+  and a trailing-edge `PanelResizeHandle` overlay straddling the existing
+  divider.
+- `docs/04-ui-ux.md`'s Artists bullet now records the resizable list and
+  the shared/generalized component.
+
+Verification: build clean (zero warnings), tests pass, swiftlint clean.
+Live-verified by Tim in a dedicated debug build: the list drags
+wider/narrower and clamps at both ends of the 180–360pt range, the Now
+Playing panel's own resize is unchanged, and the Artists list width
+persisted across a quit/relaunch.
+
 ## Issue #55: double-click a work header to play the whole work (2026-08-24)
 E5 (#13) follow-up tweak after #47 and #48. #47 deliberately deferred header
 interactivity ("the header row stays a plain, non-clickable label") to the

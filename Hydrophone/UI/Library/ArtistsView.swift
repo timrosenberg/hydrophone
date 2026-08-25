@@ -12,6 +12,11 @@ struct ArtistsView: View {
     /// album — Back must land on the same artist. Doubles as cross-launch
     /// restoration (the app-wide @AppStorage pattern, docs/06).
     @AppStorage("artistsSelectedID") private var selectedID: Artist.ID?
+    /// User-resizable Artists list width (via the grab strip on its trailing
+    /// edge), persisted across launches — mirrors RootView's
+    /// nowPlayingPanelWidth pattern.
+    @AppStorage("artistsListWidth") private var listWidth = 240.0
+    private static let listWidthRange = 180.0...360.0
 
     private var selected: Artist? {
         library.artists.first { $0.id == selectedID } ?? library.artists.first
@@ -47,7 +52,11 @@ struct ArtistsView: View {
             .listStyle(.plain)
             .playPauseOnSpace()
             .background(ListSelectionHighlightDisabler())
-            .frame(width: 240)
+            .frame(width: listWidth)
+            .overlay(alignment: .trailing) {
+                PanelResizeHandle(width: $listWidth, range: Self.listWidthRange, anchoredEdge: .leading)
+                    .offset(x: 5)
+            }
 
             Divider()
 
