@@ -8,6 +8,10 @@ import UniformTypeIdentifiers
 enum TrackTableRow: Equatable {
     case header(String)
     case track(Int)   // index into the displayed track order
+    /// Blank separator row at the boundary where a run of grouped tracks
+    /// ends and an ungrouped run begins — a header marks every other
+    /// boundary, but that one has none.
+    case spacer
 
     static func build(tracks: [Song], headers: [Int: String]?) -> [TrackTableRow] {
         let plain = tracks.indices.map(TrackTableRow.track)
@@ -39,6 +43,9 @@ enum TrackTableRow: Equatable {
         for (index, track) in tracks.enumerated() {
             let trackKey = key(track)
             if !hasCurrent || current != trackKey {
+                if hasCurrent, current != nil, trackKey == nil {
+                    rows.append(.spacer)
+                }
                 current = trackKey
                 hasCurrent = true
                 if let trackKey {
