@@ -94,6 +94,17 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         return suffix?.uppercased()
     }
 
+    /// Like `qualityLabel`, but lossless files also carry their bit rate —
+    /// for the Now Playing badge only; the Quality column stays compact.
+    var qualityDetailLabel: String? {
+        if let suffix = suffix?.lowercased(), Self.losslessSuffixes.contains(suffix) {
+            let format = suffix == "aif" ? "AIFF" : suffix.uppercased()
+            guard let bitRate, bitRate > 0 else { return format }
+            return "\(format) · \(bitRate) kbps"
+        }
+        return qualityLabel
+    }
+
     /// Sort key for the Quality column: lossless above any lossy bit rate.
     var qualityRank: Int {
         if let suffix = suffix?.lowercased(), Self.losslessSuffixes.contains(suffix) {

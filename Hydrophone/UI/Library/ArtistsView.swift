@@ -27,8 +27,7 @@ struct ArtistsView: View {
             List(selection: $selectedID) {
                 ForEach(library.artists) { artist in
                     let isSelected = artist.id == selectedID
-                    HStack(spacing: 10) {
-                        ArtworkView(coverArt: artist.coverArt, size: 36, cornerRadius: 18)
+                    HStack {
                         Text(artist.name).lineLimit(1)
                             .foregroundStyle(isSelected ? .white : .primary)
                         Spacer()
@@ -82,8 +81,9 @@ struct ArtistsView: View {
 }
 
 /// The selected artist's albums as a grid, under a header with the artist's
-/// portrait, bio (from `getArtistInfo2`) and an Artist Radio button; similar
-/// artists shelf below. Selecting an album opens it in place (via `Navigator`).
+/// name (no artwork — see #61), bio (from `getArtistInfo2`) and an Artist
+/// Radio button; similar artists shelf below. Selecting an album opens it in
+/// place (via `Navigator`).
 struct ArtistDetailView: View {
     let artist: Artist
     @Environment(AppModel.self) private var app
@@ -145,28 +145,25 @@ struct ArtistDetailView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            ArtworkView(coverArt: artist.coverArt, size: 84, cornerRadius: 42)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(artist.name).font(.title2).bold()
-                Button {
-                    app.startRadio(from: artist)
-                } label: {
-                    Label {
-                        Text("Artist Radio")
-                    } icon: {
-                        if app.isPreparingMix {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "dot.radiowaves.left.and.right")
-                        }
+        VStack(alignment: .leading, spacing: 6) {
+            Text(artist.name).font(.largeTitle).bold()
+            Button {
+                app.startRadio(from: artist)
+            } label: {
+                Label {
+                    Text("Artist Radio")
+                } icon: {
+                    if app.isPreparingMix {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "dot.radiowaves.left.and.right")
                     }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(app.isPreparingMix)
-                .help("Play a mix of this artist and similar music")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(app.isPreparingMix)
+            .help("Play a mix of this artist and similar music")
         }
         .padding(.horizontal).padding(.top, 14)
     }
@@ -191,14 +188,9 @@ struct ArtistDetailView: View {
             Divider().padding(.horizontal)
             Shelf(title: "Similar Artists") {
                 ForEach(similar) { other in
-                    Button { navigator.openArtist(other) } label: {
-                        VStack(spacing: 6) {
-                            ArtworkView(coverArt: other.coverArt, size: 64, cornerRadius: 32)
-                            Text(other.name).font(.caption).lineLimit(1)
-                        }
-                        .frame(width: 90)
-                    }
-                    .buttonStyle(.plain)
+                    Button(other.name) { navigator.openArtist(other) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                 }
             }
             .padding(.bottom, 6)

@@ -80,6 +80,124 @@ wider/narrower and clamps at both ends of the 180–360pt range, the Now
 Playing panel's own resize is unchanged, and the Artists list width
 persisted across a quit/relaunch.
 
+## Issue #61: remove artist artwork everywhere in the app (2026-08-24)
+E6 (#14) sub-issue. Scope grew mid-flight from just the Artists list row to
+every artist-portrait call site in the app, at Tim's request — he doesn't
+want artist artwork anywhere.
+
+- `ArtistsView.swift`: dropped `ArtworkView` from the Artists list row (no
+  more leading spacing reserved for it); dropped it from `ArtistDetailView`'s
+  header, which is now just the name + Artist Radio button — the name grows
+  from `.title2` to `.largeTitle` to compensate for the lost visual weight
+  and now sits flush against the page's leading edge instead of indented past
+  where the 84pt portrait used to be.
+- Similar Artists (`ArtistsView.swift`) and the search results Artists shelf
+  (`SearchResultsView.swift`) both dropped their `VStack`/`.frame(width: 90)`
+  tiles — built around holding a 64pt portrait above the name — for plain
+  content-sized name buttons (`.buttonStyle(.bordered)`) in the same
+  horizontal `Shelf` scroller. A fixed-width vertical tile made sense when it
+  had an image to anchor it; with no image it was just a row of mostly-empty
+  boxes.
+- `docs/04-ui-ux.md`'s Global search section updated (Artists shelf was
+  documented as "circular portraits").
+
+### Live verification — 2026-08-24, against Tim's real Navidrome library
+Launched the Debug build, drove it via Accessibility (`System Events` +
+`cliclick`), screenshotted each spot:
+- Artists list: rows show name + album count only, no thumbnails.
+- Artist detail page (2Pac): large flush-left name, Artist Radio button
+  underneath, no portrait.
+- Similar Artists shelf on that page: "Dr. Dre" renders as a single bordered
+  pill button, not an empty-image tile.
+- Search results ("beethoven"): the Artists shelf shows "Ludwig van
+  Beethoven" as the same style of pill button, Albums shelf below it
+  unaffected.
+
+## Issue #64: bit rate in the Now Playing quality badge for lossless files (2026-08-24)
+Part of #14 (E6). The Now Playing badge showed just "FLAC" for lossless
+files; it now adds the bit rate when the server reports one.
+
+- `Song.qualityDetailLabel` (`SubsonicModels.swift`), alongside the existing
+  `qualityLabel`: for a lossless suffix, appends `· N kbps` when `bitRate` is
+  present and positive, else falls back to the bare format name; for
+  anything else it delegates to `qualityLabel` unchanged.
+- `NowPlayingPanel.swift:222` now reads `song.qualityDetailLabel` instead of
+  `song.qualityLabel`. The Quality column (`MusicTrackTable.swift:290`) and
+  `qualityRank`'s lossless-always-ranks-above-lossy sort are untouched, per
+  the issue's explicit scope.
+
+Four new `QualityLabelTests` cases: lossless with a bit rate ("FLAC · 1006
+kbps"), lossless with no bit rate or a zero bit rate (bare "FLAC"), and
+lossy/no-suffix parity with `qualityLabel`.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server,**
+via a dedicated second app instance (`open -n`) driven with `cliclick`
+against the fresh Debug build, screenshots inspected at each step. A first
+pass across three FLAC albums (Beethoven piano sonatas/Alfred Brendel, Arvo
+Pärt's *Anima*/Alea Saxophone Quartet, Akropolis Reed Quintet's *The Space
+Between Us*) only ever showed the bare "FLAC" fallback and was reported as
+such — wrongly assumed to mean this library's FLACs simply carry no
+`bitRate`. Tim caught the error: a follow-up check on the same Akropolis
+Reed Quintet track ("The Space Between Us: III. Remembering") showed the
+badge correctly reading **"FLAC · 439 kbps"**, confirming the bit-rate-present
+path renders live, not just in the unit test. The Quality column kept
+showing plain "FLAC" unaffected throughout.
+
+Build clean, zero compiler warnings; full suite green (242 tests, +4 new);
+SwiftLint clean (0 violations, 105 files).
+
+## Issue #63: Favorites shelf on Home (2026-08-24)
+Part of #14 (E6). Surfaces starred albums on Home so favorites are visible
+without a trip to the Favorites sidebar item, matching the epic's intent —
+though its text was wrong about the data already being loaded (see the
+issue's "Correction to the epic text").
+
+- `HomeView` gained a second, independent `.task { await
+  library.loadStarredIfNeeded() }` beside the existing home-data task
+  (`:69`) — same pattern as `ArtistsView`'s two separate `.task`/`.task(id:)`
+  modifiers. Home no longer depends on Favorites having been visited first.
+- A `Favorites` `AlbumShelf(albums: library.starredAlbums)` shelf, hidden
+  when empty, sits between "Most Played" and "Random" (`:56-60`) —
+  albums-only, matching every other Home shelf; `starredSongs` isn't pulled
+  in. `scrollBinding`'s `topIDs` (still just `["greeting"]`) is untouched;
+  the shelf's `.id("favorites")` only feeds `scrollTargetLayout()`.
+- Review follow-up: Home's content/loading gate now counts `starredAlbums`.
+  When `getStarred2` succeeds but all four `getAlbumList2` requests fail or
+  return empty, the independently loaded Favorites shelf renders instead of
+  remaining trapped behind the legacy Home spinner.
+
+Build clean, zero compiler warnings; full suite green (239 tests, 0 failures,
+0 skipped); SwiftLint clean (0 violations, 105 files). The review follow-up
+adds a hermetic rendered-output regression in `StarringTests`: `getStarred2`
+returns one album while every legacy Home request fails, and the offscreen
+Home render must contain shelf content rather than only the loading spinner.
+
+**Review-fix live verification (2026-08-25), Tim's configured real Navidrome
+server,** against the exact unsigned branch build at the reviewed working tree:
+confirmed Home completed loading and rendered its populated Favorites shelf in
+the intended position. The server state was left unchanged. The legacy-shelf
+failure edge is exercised by the hermetic regression above because reproducing
+selective endpoint failures on the configured server would require changing
+the server rather than the app.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server,**
+driven via AppleScript/System Events UI automation against the running
+Debug build (screenshots inspected at each step). Server already had 6
+starred albums: confirmed the Favorites shelf appeared on Home in the
+correct position (between Most Played and Random) without ever having
+opened the Favorites tab. Unstarred all 6 one at a time (each album's own
+star toggle) and confirmed the shelf disappeared entirely after the last
+one — not an empty header — reactively, with no relaunch needed. Re-starred
+all 6 via search to restore the server's original state exactly. Separately
+confirmed: Home's scroll-position restore (`ScrollMemory.swift`) only ever
+covered surviving Back navigation (push an album, tap Back) — not
+switching to a different sidebar section and back — and that's true for
+Home, Albums, and Artist detail alike, predating this change; not a
+regression from the new shelf, and out of scope per the issue's explicit
+"Do NOT" on `scrollBinding`/`topIDs`.
+
+---
+
 ## Issue #55: double-click a work header to play the whole work (2026-08-24)
 E5 (#13) follow-up tweak after #47 and #48. #47 deliberately deferred header
 interactivity ("the header row stays a plain, non-clickable label") to the
@@ -2621,7 +2739,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #55 passes (**238 executed cases,
+- ✅ `xcodebuild test` — full suite through #62 passes (**242 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
