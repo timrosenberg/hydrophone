@@ -121,3 +121,81 @@ final class NowPlayingIndicatorCell: NSTableCellView {
         }
     }
 }
+
+// Cell builders for `MusicTrackTable.Coordinator`'s
+// `tableView(_:viewFor:row:)`, split out to keep the coordinator's own body
+// under SwiftLint's type_body_length.
+extension MusicTrackTable.Coordinator {
+    @MainActor func discHeaderCell(_ title: String) -> NSTableCellView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let cell = NSTableCellView()
+        cell.textField = label
+        cell.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -8),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
+    }
+
+    @MainActor func indicatorCell(for song: Song) -> NSTableCellView {
+        song.id == parent.nowPlayingID ? NowPlayingIndicatorCell() : NSTableCellView()
+    }
+
+    @MainActor func favoriteCell(for song: Song, trackIndex: Int) -> NSTableCellView {
+        let cell = NSTableCellView()
+        let btn = NSButton()
+        btn.isBordered = false
+        btn.imagePosition = .imageOnly
+        btn.image = NSImage(systemSymbolName: parent.isFavorite(song) ? "star.fill" : "star",
+                            accessibilityDescription: "Favorite")
+        btn.setAccessibilityLabel(parent.isFavorite(song) ? "Remove from Favorites" : "Add to Favorites")
+        btn.contentTintColor = parent.isFavorite(song) ? .systemYellow : .tertiaryLabelColor
+        btn.tag = trackIndex
+        btn.target = self
+        btn.action = #selector(favoriteClicked(_:))
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(btn)
+        NSLayoutConstraint.activate([
+            btn.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
+            btn.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
+    }
+
+    @MainActor func textCell(id: String, song: Song) -> NSTableCellView {
+        let text: String
+        switch id {
+        case "number": text = song.track.map(String.init) ?? ""
+        case "title":
+            text = WorkMovementTitle.titleForRow(song: song, workHeaderGroupingActive: workHeaderGroupingActive)
+        case "artist": text = song.artist ?? "—"
+        case "composer": text = song.nonEmptyDisplayComposer ?? "—"
+        case "album": text = song.album ?? "—"
+        case "genre": text = song.displayGenre ?? "—"
+        case "time": text = formatTime(song.duration)
+        default: text = pickerOnlyColumnText(id: id, song: song) ?? ""
+        }
+        let label = NSTextField(labelWithString: text)
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        // Title is the primary label; other columns are dimmed. Assigning
+        // `cell.textField` lets both turn white on the selected row.
+        let cell: NSTableCellView = (id == "title") ? NSTableCellView() : SecondaryTextCell()
+        if id != "title" { label.textColor = .secondaryLabelColor }
+        cell.textField = label
+        cell.addSubview(label)
+        let trailing = styleAlignment(of: label, id: id)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: trailing),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
+    }
+}
