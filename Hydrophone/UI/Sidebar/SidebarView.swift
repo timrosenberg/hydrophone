@@ -9,6 +9,7 @@ struct SidebarView: View {
     var onReselect: () -> Void = {}
     @Environment(LibraryModel.self) private var library
     @Environment(AppModel.self) private var app
+    @Environment(ConnectionModel.self) private var connection
 
     @State private var showNewPlaylist = false
     @State private var newName = ""
@@ -29,6 +30,9 @@ struct SidebarView: View {
                 libraryItem("Artists", "music.mic", .artists)
                 libraryItem("Songs", "music.note.list", .songs)
                 libraryItem("Favorites", "star", .favorites)
+                if connection.nativeFeaturesState == .available {
+                    libraryItem("Composers", "person.2", .composers)
+                }
             }
 
             Section {

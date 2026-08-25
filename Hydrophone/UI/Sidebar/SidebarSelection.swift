@@ -8,6 +8,7 @@ enum SidebarSelection: Hashable {
     case artists
     case songs
     case favorites
+    case composers
     case playlist(id: String)
 }
 
@@ -21,6 +22,7 @@ extension SidebarSelection: RawRepresentable {
         case "artists": self = .artists
         case "songs": self = .songs
         case "favorites": self = .favorites
+        case "composers": self = .composers
         default:
             guard rawValue.hasPrefix("playlist:") else { return nil }
             self = .playlist(id: String(rawValue.dropFirst("playlist:".count)))
@@ -34,6 +36,7 @@ extension SidebarSelection: RawRepresentable {
         case .artists: "artists"
         case .songs: "songs"
         case .favorites: "favorites"
+        case .composers: "composers"
         case .playlist(let id): "playlist:\(id)"
         }
     }
