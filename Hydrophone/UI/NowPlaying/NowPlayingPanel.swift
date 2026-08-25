@@ -219,7 +219,7 @@ private struct CurrentTrackCard: View {
                         .accessibilityLabel("Show \(album) in Library")
                 }
                 // Encoding badge ("FLAC", "320 kbps") for the quality-minded.
-                if let quality = song.qualityLabel {
+                if let quality = song.qualityDetailLabel {
                     Text(quality)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)

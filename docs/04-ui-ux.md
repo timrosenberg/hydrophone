@@ -120,7 +120,10 @@ rendered visibly washed out.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
-  same badge appears under the album line on the Now Playing hero card.
+  Now Playing hero card uses the same outline styling with
+  `Song.qualityDetailLabel`, which adds `· N kbps` for lossless files when the
+  server reports a positive bit rate while preserving `qualityLabel` behavior
+  for lossy files and lossless files without one.
 - **Album work grouping**: when an album contains more than one distinct
   tagged Work, flat, unselectable headers mark each consecutive run. Work
   grouping takes priority over disc grouping; a multi-disc album folds the

@@ -56,6 +56,39 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #64: bit rate in the Now Playing quality badge for lossless files (2026-08-24)
+Part of #14 (E6). The Now Playing badge showed just "FLAC" for lossless
+files; it now adds the bit rate when the server reports one.
+
+- `Song.qualityDetailLabel` (`SubsonicModels.swift`), alongside the existing
+  `qualityLabel`: for a lossless suffix, appends `· N kbps` when `bitRate` is
+  present and positive, else falls back to the bare format name; for
+  anything else it delegates to `qualityLabel` unchanged.
+- `NowPlayingPanel.swift:222` now reads `song.qualityDetailLabel` instead of
+  `song.qualityLabel`. The Quality column (`MusicTrackTable.swift:290`) and
+  `qualityRank`'s lossless-always-ranks-above-lossy sort are untouched, per
+  the issue's explicit scope.
+
+Four new `QualityLabelTests` cases: lossless with a bit rate ("FLAC · 1006
+kbps"), lossless with no bit rate or a zero bit rate (bare "FLAC"), and
+lossy/no-suffix parity with `qualityLabel`.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server,**
+via a dedicated second app instance (`open -n`) driven with `cliclick`
+against the fresh Debug build, screenshots inspected at each step. A first
+pass across three FLAC albums (Beethoven piano sonatas/Alfred Brendel, Arvo
+Pärt's *Anima*/Alea Saxophone Quartet, Akropolis Reed Quintet's *The Space
+Between Us*) only ever showed the bare "FLAC" fallback and was reported as
+such — wrongly assumed to mean this library's FLACs simply carry no
+`bitRate`. Tim caught the error: a follow-up check on the same Akropolis
+Reed Quintet track ("The Space Between Us: III. Remembering") showed the
+badge correctly reading **"FLAC · 439 kbps"**, confirming the bit-rate-present
+path renders live, not just in the unit test. The Quality column kept
+showing plain "FLAC" unaffected throughout.
+
+Build clean, zero compiler warnings; full suite green (242 tests, +4 new);
+SwiftLint clean (0 violations, 105 files).
+
 ## Issue #63: Favorites shelf on Home (2026-08-24)
 Part of #14 (E6). Surfaces starred albums on Home so favorites are visible
 without a trip to the Favorites sidebar item, matching the epic's intent —
@@ -2649,7 +2682,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #55 passes (**238 executed cases,
+- ✅ `xcodebuild test` — full suite through #64 passes (**242 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
