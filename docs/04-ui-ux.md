@@ -65,6 +65,11 @@ Grouped like iTunes, using `Section`s and SF Symbols:
 - **Library**
   - Home · Albums · Artists · Songs · Favorites (starred). Genre browsing
     lives in the column browser (no separate sidebar item).
+  - Composers appears only when Navidrome native features are available. It
+    opens an imageless master-detail view: a localized-name-sorted composer
+    roster with song counts, a 180–360pt resizable list whose width and
+    selection persist, and a name/count placeholder detail. Track listing and
+    playback actions are deferred to the next E4 sub-issue.
   - **Home** is a distinct landing page, not just re-sorted album lists: a
     time-of-day greeting, a full-width "Jump Back In" hero card for the most
     recently played album (cover on a blurred blow-up of itself + scrim,
