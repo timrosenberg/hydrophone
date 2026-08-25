@@ -41,7 +41,9 @@ builds via publish.sh; CI on every push; **Mac App Store: 0.6.2 approved
 and released 2026-08-16** after three review rounds — window-scene fix,
 rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
-E4 🚧 (playable composer-song resolution complete — #71; browse UI remains) ·
+E4 🚧 (Navidrome composer roster + song lookup complete — #71; #72 adds the
+native-gated sidebar route and resizable composer master list; track detail
+and playback actions remain for the next sub-issue) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
@@ -56,6 +58,35 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #72: Composers master list (2026-08-25)
+Part of E4 (#12). Adds the first user-facing consumer of the native Navidrome
+composer roster; track listing and playback actions remain explicitly deferred
+to the next E4 sub-issue.
+
+- Added `.composers` sidebar-selection persistence and a Composers library row
+  that appears only while native Navidrome features are available.
+- `LibraryModel` now loads the native composer roster once per connection,
+  caches it for repeated visits, and clears the roster and loaded state on
+  reset.
+- Added an imageless `ComposersView` master-detail layout. The roster shows
+  localized-name-sorted names and song counts, persists the selected composer,
+  and shares the existing resize handle for a persisted 180–360pt list width.
+  The detail pane intentionally contains only the selected name/count pending
+  the follow-up track-actions issue.
+- Added sidebar-selection round-trip coverage plus serialized network tests for
+  composer load-once caching and reset behavior.
+- Synced the UI and testing contracts in `docs/04-ui-ux.md` and
+  `docs/08-testing.md`.
+
+Verification: the unsigned macOS build completed with zero compiler warnings;
+the full Swift Testing result bundle reports **246 executed cases, 0 failures,
+0 skipped**; SwiftLint is clean. Live-verified 2026-08-25 in a signed Debug
+build against the configured real Navidrome server: the native-only row
+appeared, the sorted roster populated with numeric song counts, changing
+selection updated the name/count placeholder, and selection plus a resized list
+width survived quit/relaunch. A separate empty in-memory credential session
+confirmed the row is absent without native capability.
 
 ## Issue #71: playable songs for a composer (2026-08-25)
 E4 (#12) data foundation; no Composers UI is attached in this issue.
@@ -2762,10 +2793,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #62 passes (**242 executed cases,
-  0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
+- ✅ `xcodebuild test` — full suite through #72 passes (**246 executed cases,
+  0 failures, 0 skipped**, 2026-08-25); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
-- ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
+- ✅ `swiftlint` — **0 violations** (2026-08-25).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

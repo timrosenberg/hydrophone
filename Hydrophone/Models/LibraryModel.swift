@@ -34,6 +34,9 @@ final class LibraryModel {
     private(set) var artists: [Artist] = []
     private(set) var artistsState: Load<Void> = .idle
 
+    private(set) var composers: [Composer] = []
+    private(set) var composersState: Load<Void> = .idle
+
     private(set) var genres: [Genre] = []
 
     private(set) var songs: [Song] = []
@@ -86,6 +89,8 @@ final class LibraryModel {
         albumsState = .idle
         artists = []
         artistsState = .idle
+        composers = []
+        composersState = .idle
         genres = []
         starredSongs = []
         starredAlbums = []
@@ -187,6 +192,22 @@ final class LibraryModel {
         await load("artist", into: \.artistsState) { () async throws(SubsonicError) in
             artists = try await client.list(.artists, of: ArtistIndex.self)
                 .flatMap { $0.artist ?? [] }
+        }
+    }
+
+    // MARK: - Composers
+
+    func loadComposersIfNeeded() async {
+        guard composers.isEmpty else { return }
+        if case .loading = composersState { return }
+        guard await nativeFeaturesAvailable() else { return }
+        composersState = .loading
+        do {
+            composers = try await navidrome.composers()
+            composersState = .loaded(())
+        } catch {
+            composersState = .failed(error.userMessage)
+            Self.log.error("composer load failed: \(error.userMessage)")
         }
     }
 

@@ -80,7 +80,11 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 246 executed cases)
+  The same serialized network seam covers `LibraryModel`'s composer roster:
+  the first load requests and stores the Navidrome roster, repeated loads are
+  cached, and a library reset clears the roster and its loaded state.
+
+## Current suite (Swift Testing, 250 executed cases)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -96,6 +100,7 @@ audio hardware.
 `TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
+`SidebarSelectionTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
