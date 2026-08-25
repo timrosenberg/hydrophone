@@ -24,4 +24,25 @@ struct QualityLabelTests {
         let mp3 = Song(id: "2", title: "T", bitRate: 320, suffix: "mp3")
         #expect(flac.qualityRank > mp3.qualityRank)
     }
+
+    @Test func detailLabelAddsBitRateForLossless() {
+        #expect(Song(id: "1", title: "T", bitRate: 1006, suffix: "flac").qualityDetailLabel == "FLAC · 1006 kbps")
+    }
+
+    @Test func detailLabelFallsBackToBareFormatWithoutBitRate() {
+        #expect(Song(id: "1", title: "T", suffix: "flac").qualityDetailLabel == "FLAC")
+        #expect(Song(id: "1", title: "T", bitRate: 0, suffix: "flac").qualityDetailLabel == "FLAC")
+    }
+
+    @Test func detailLabelMatchesQualityLabelForLossy() {
+        let song = Song(id: "1", title: "T", bitRate: 320, suffix: "mp3")
+        #expect(song.qualityDetailLabel == song.qualityLabel)
+        #expect(song.qualityDetailLabel == "320 kbps")
+    }
+
+    @Test func detailLabelMatchesQualityLabelWithoutSuffix() {
+        let song = Song(id: "1", title: "T")
+        #expect(song.qualityDetailLabel == song.qualityLabel)
+        #expect(song.qualityDetailLabel == nil)
+    }
 }
