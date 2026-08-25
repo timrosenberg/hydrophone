@@ -80,19 +80,22 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
-## Current suite (Swift Testing, 221 executed cases)
+## Current suite (Swift Testing, 246 executed cases)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
+`AlbumFilterEndpointTests` ·
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
+`PlayQueueTests` ·
 `QualityLabelTests` · `ExpandedTrackColumnsTests` · `WorkMovementTrackColumnsTests` ·
 `TrackColumnPreferencesTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
 `NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
-`TrackTableKeyboardTests` ·
-`SongWorkInfoDecodingTests` · `LibraryModelWorkInfoJoinTests` ·
+`TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
+`WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
+`LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
