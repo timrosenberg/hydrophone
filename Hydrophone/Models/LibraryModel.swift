@@ -200,6 +200,7 @@ final class LibraryModel {
     func loadComposersIfNeeded() async {
         guard composers.isEmpty else { return }
         if case .loading = composersState { return }
+        guard await nativeFeaturesAvailable() else { return }
         composersState = .loading
         do {
             composers = try await navidrome.composers()
