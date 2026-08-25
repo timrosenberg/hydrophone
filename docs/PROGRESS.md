@@ -102,6 +102,16 @@ left against the table below it — the outer `VStack` needed explicit
 an outer `.frame(maxWidth: .infinity, alignment: .leading)` instead); fixed
 and reverified.
 
+Review follow-up: each composer detail now has selection-scoped SwiftUI
+identity so a newly selected composer cannot temporarily inherit the prior
+composer's track summary or Play/Shuffle actions; the two actions are wrapped
+in an explicit horizontal row; and the 2025 `apple.classical.pages.fill`
+sidebar symbol falls back to `person.2` before macOS 26. Reverified 2026-08-25
+against the same Navidrome server: the macOS 26 symbol rendered, Play/Shuffle
+were side-by-side, and switching from Alexander Glazunov (51 songs) to
+Alexander Scriabin rebuilt the detail with the correct 27-song summary and
+track table.
+
 ## Issue #72: Composers master list (2026-08-25)
 Part of E4 (#12). Adds the first user-facing consumer of the native Navidrome
 composer roster; track listing and playback actions remain explicitly deferred

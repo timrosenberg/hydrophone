@@ -51,6 +51,7 @@ struct ComposersView: View {
 
                 if let composer = selected {
                     ComposerDetailView(composer: composer)
+                        .id(composer.id)
                 } else {
                     ContentUnavailableView("No Composers", systemImage: "person.2")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -107,8 +108,10 @@ struct ComposerDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(composer.name).font(.largeTitle).bold()
             Text(trackSummary(tracks)).font(.callout).foregroundStyle(.secondary)
-            PlayShuffleButtons(tracks: tracks)
-                .padding(.top, 4)
+            HStack {
+                PlayShuffleButtons(tracks: tracks)
+            }
+            .padding(.top, 4)
         }
         .padding(.horizontal).padding(.top, 14).padding(.bottom, 10)
     }

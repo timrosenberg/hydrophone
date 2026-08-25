@@ -31,7 +31,7 @@ struct SidebarView: View {
                 libraryItem("Songs", "music.quarternote.3", .songs)
                 libraryItem("Favorites", "star", .favorites)
                 if connection.nativeFeaturesState == .available {
-                    libraryItem("Composers", "apple.classical.pages.fill", .composers)
+                    libraryItem("Composers", composerSystemImage, .composers)
                 }
             }
 
@@ -106,6 +106,14 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) {}
         } message: { playlist in
             Text("Delete “\(playlist.name)”? This cannot be undone.")
+        }
+    }
+
+    private var composerSystemImage: String {
+        if #available(macOS 26.0, *) {
+            "apple.classical.pages.fill"
+        } else {
+            "person.2"
         }
     }
 
