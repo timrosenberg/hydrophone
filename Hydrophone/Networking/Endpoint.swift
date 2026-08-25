@@ -99,6 +99,10 @@ struct Endpoint: Sendable {
         Endpoint("getAlbum", [.init(name: "id", value: id)])
     }
 
+    static func song(id: String) -> Endpoint {
+        Endpoint("getSong", [.init(name: "id", value: id)])
+    }
+
     static let genres = Endpoint("getGenres")
 
     static func songsByGenre(_ genre: String, count: Int, offset: Int) -> Endpoint {
