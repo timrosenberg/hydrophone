@@ -121,9 +121,13 @@ rendered visibly washed out.
 - **Album work grouping**: when an album contains more than one distinct
   tagged Work, flat, unselectable headers mark each consecutive run. Work
   grouping takes priority over disc grouping; a multi-disc album folds the
-  disc into each label (`Disc 2 · Work Name`). Headers appear only in natural
-  track order or ascending `#`, and withdraw under every other sort. Albums
-  with zero or one Work retain the existing disc-header behavior unchanged.
+  disc into each label (`Disc 2 · Work Name`). A blank spacer row marks the
+  opposite boundary — where a grouped run ends and an ungrouped run begins —
+  since no header exists there to separate them; it does not appear at the
+  top of the list, between two grouped runs, or on albums with no grouping.
+  Headers appear only in natural track order or ascending `#`, and withdraw
+  (spacer included) under every other sort. Albums with zero or one Work
+  retain the existing disc-header behavior unchanged.
 - Dense row height; right-aligned monospaced-digit time; edge-to-edge stripes.
 - Double-click (or ⏎) plays the row and sets the queue from the current view;
   **⌥-double-click queues it next**.

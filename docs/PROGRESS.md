@@ -43,8 +43,8 @@ rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
 E5 🚧 (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
-Title-column movement text under a work header done, #53 spacer row and #55
-header double-click still open)
+Title-column movement text under a work header and #53 spacer row both done,
+#55 header double-click still open)
 
 ## How to build / test
 ```sh
@@ -91,6 +91,33 @@ this branch was ready, and automating the GUI risked stray input landing in
 that other session's terminal. Instead the Debug build from this branch was
 launched and handed to Tim, who live-verified it by hand against his real
 Navidrome server and confirmed it working.
+
+## Issue #53: blank row between the end of a work and the next ungrouped track (2026-08-24)
+Follow-up to #47's work-grouping headers: a run of grouped tracks flowing
+straight into an ungrouped track had no visual separation, since headers only
+mark the *start* of a group.
+
+- New `TrackTableRow.spacer` case (`MusicTrackTable.swift`). `groupedRows`
+  emits it when the grouping key transitions from non-nil to nil — i.e.
+  leaving a grouped run into ungrouped tracks — never at the top of the list,
+  between two grouped runs (already separated by a header), or on albums with
+  no grouping at all.
+- No other plumbing changed: `trackIndex(atRow:)` already returns nil for any
+  non-`.track` row, so selection, drag, and row-view handling treat a spacer
+  exactly like a header; `viewFor` falls through its `case .header` check and
+  returns nil, rendering an empty row at the table's uniform 24pt row height.
+- Four new `DiscHeaderTests` cases: spacer emitted on work→ungrouped, absent
+  on work→work, absent on ungrouped→work, absent when no grouping applies.
+
+Build clean with zero compiler warnings; full suite **TEST SUCCEEDED** with
+these four tests passing alongside the existing grouping cases; SwiftLint
+clean (0 violations across 104 files).
+
+**Live-verified by Tim (2026-08-24)** against *Japanese Love Songs* (Claude
+Delangle) on his real server, confirming the blank row lands correctly.
+Automated live-verification wasn't attempted this round — the desktop had
+other concurrent sessions actively stealing window focus, and driving the app
+blind under those conditions risked misclicking into unrelated windows.
 
 ---
 

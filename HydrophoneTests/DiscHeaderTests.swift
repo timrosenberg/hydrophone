@@ -97,6 +97,49 @@ struct DiscHeaderTests {
         #expect(rows == [.track(0), .track(1)])
     }
 
+    @Test func spacerSeparatesEndOfWorkFromUngroupedTrack() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Work A"),
+            song("b", disc: 1, track: 2, work: "Work A"),
+            song("c", disc: 1, track: 3),
+            song("d", disc: 1, track: 4, work: "Work B")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.header("Work A"), .track(0), .track(1),
+                         .spacer, .track(2),
+                         .header("Work B"), .track(3)])
+    }
+
+    @Test func noSpacerBetweenTwoConsecutiveWorks() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Work A"),
+            song("b", disc: 1, track: 2, work: "Work B")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.header("Work A"), .track(0),
+                         .header("Work B"), .track(1)])
+    }
+
+    @Test func noSpacerFromUngroupedIntoWork() {
+        let tracks = [
+            song("a", disc: 1, track: 1),
+            song("b", disc: 1, track: 2, work: "Work A"),
+            song("c", disc: 1, track: 3, work: "Work B")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.track(0),
+                         .header("Work A"), .track(1),
+                         .header("Work B"), .track(2)])
+    }
+
+    @Test func noSpacerWhenNoGroupingApplies() {
+        let tracks = [song("a", disc: 1, track: 1),
+                      song("b", disc: 1, track: 2, work: "Work A"),
+                      song("c", disc: 1, track: 3)]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.track(0), .track(1), .track(2)])
+    }
+
     @Test func albumDecodesDiscTitles() throws {
         let json = Data("""
         {"id":"al1","name":"Big Album","discTitles":
