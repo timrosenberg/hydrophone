@@ -86,7 +86,7 @@ badge correctly reading **"FLAC · 439 kbps"**, confirming the bit-rate-present
 path renders live, not just in the unit test. The Quality column kept
 showing plain "FLAC" unaffected throughout.
 
-Build clean, zero compiler warnings; full suite green (241 tests, +4 new);
+Build clean, zero compiler warnings; full suite green (242 tests, +4 new);
 SwiftLint clean (0 violations, 105 files).
 
 ---
@@ -2632,7 +2632,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #64 passes (**241 executed cases,
+- ✅ `xcodebuild test` — full suite through #64 passes (**242 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
