@@ -8,6 +8,11 @@ import SwiftUI
 struct PanelResizeHandle: View {
     @Binding var width: Double
     let range: ClosedRange<Double>
+    /// Which edge of the panel this handle sits on: `.trailing` for a panel
+    /// anchored to the trailing edge of its container (dragging left widens
+    /// it), `.leading` for one anchored to the leading edge (dragging right
+    /// widens it).
+    let anchoredEdge: HorizontalEdge
 
     /// Panel width at drag start; increments apply to this, not the live
     /// value, so the handle tracks the cursor exactly.
@@ -25,9 +30,9 @@ struct PanelResizeHandle: View {
                     .onChanged { value in
                         let base = baseWidth ?? width
                         baseWidth = base
-                        // The panel sits at the trailing edge: dragging left
-                        // (negative translation) widens it.
-                        width = (base - value.translation.width).clamped(to: range)
+                        width = anchoredEdge == .trailing
+                            ? (base - value.translation.width).clamped(to: range)
+                            : (base + value.translation.width).clamped(to: range)
                     }
                     .onEnded { _ in baseWidth = nil }
             )

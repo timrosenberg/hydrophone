@@ -264,7 +264,12 @@ who prefer a plain table can hide it.
   untouched.
 - Artists is a master-detail split (artist list left, albums right); search
   hands an artist off via `Navigator.pendingArtist` (selects it in the Artists
-  section and clears the query).
+  section and clears the query). The list is user-resizable via a grab strip
+  on its trailing edge (`PanelResizeHandle`, 180–360pt, persisted) — the same
+  component the Now Playing panel uses, generalized with an `anchoredEdge`
+  parameter since this list is anchored to the leading edge of the window
+  (grows on a rightward drag) rather than the trailing edge (grows on a
+  leftward drag).
 - ⌘F focuses search.
 
 ## Menus & keyboard shortcuts ✅ (as implemented)
