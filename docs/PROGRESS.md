@@ -41,6 +41,7 @@ builds via publish.sh; CI on every push; **Mac App Store: 0.6.2 approved
 and released 2026-08-16** after three review rounds — window-scene fix,
 rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
+E4 🚧 (playable composer-song resolution complete — #71; browse UI remains) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
@@ -55,6 +56,28 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #71: playable songs for a composer (2026-08-25)
+E4 (#12) data foundation; no Composers UI is attached in this issue.
+
+- Added the standard Subsonic `getSong` endpoint and golden request coverage.
+- `LibraryModel.songs(forComposer:)` now resolves native composer-song ids
+  into the complete `Song` values required by track tables, queues, and
+  playback. The six-request concurrency cap preserves the native result order,
+  silently drops individual failed fetches, and returns an empty result when
+  the native lookup itself is unavailable.
+- Resolved songs receive the same work/movement metadata join as every other
+  song-list path. A dedicated serialized, hermetic `URLProtocol` suite covers
+  playable fields and ordering, metadata joining, per-song failure, and the
+  no-wasted-Subsonic-calls native-failure path.
+- Synchronized the API and testing contracts; the authoritative `.xcresult`
+  records 246 tests, 0 failures, and 0 skipped.
+
+Verification: build clean (zero compiler warnings), 246 tests pass,
+SwiftLint clean. Live-verified 2026-08-25 against the public Navidrome demo
+server: a composer resolved to two songs with real duration, bit rate, and
+suffix values; `PlayerModel.play(tracks:)` started playback, the playhead
+advanced, and no playback error surfaced.
 
 ## Issue #62: resizable Artists list (2026-08-24)
 E6 (#14) library/navigation UX polish; unblocks E4's eventual Composers view
