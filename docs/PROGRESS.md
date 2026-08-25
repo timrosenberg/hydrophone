@@ -41,9 +41,9 @@ builds via publish.sh; CI on every push; **Mac App Store: 0.6.2 approved
 and released 2026-08-16** after three review rounds — window-scene fix,
 rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
-E4 🚧 (Navidrome composer roster + song lookup complete — #71; #72 adds the
-native-gated sidebar route and resizable composer master list; track detail
-and playback actions remain for the next sub-issue) ·
+E4 ✅ (Navidrome composer roster + song lookup — #71; native-gated sidebar
+route and resizable composer master list — #72; composer track detail with
+play/shuffle/queue and a native-unavailable fallback — #73) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
@@ -58,6 +58,59 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #73: composer track detail view (2026-08-25)
+Completes E4 (#12). Replaces `ComposersView`'s placeholder detail with the
+real composer track list, and covers the epic's last acceptance criterion:
+a stale `.composers` sidebar selection on a server without native features.
+
+- Added `ComposerDetailView`: a Play/Shuffle header (`trackSummary` +
+  `PlayShuffleButtons`, the same shared components `AlbumDetailView` uses)
+  over a `TrackTableView` showing `[.title, .album, .artist, .genre,
+  .quality, .time]` — `.composer` is dropped since every row shares one, and
+  `.album` stays since a composer's songs usually span several. Per-row
+  "Add to Up Next" and double-click-to-play come from `TrackTableView`
+  as-is; a composer with zero songs shows a "No Songs" empty state instead
+  of a blank table.
+- `ComposersView` now branches on `connection.nativeFeaturesState ==
+  .unavailable` (deliberately not `!= .available`, since `.unknown`/
+  `.checking` are the normal startup window) to show a "Composers
+  Unavailable" message instead of an empty or broken screen.
+
+Verification: the unsigned macOS build completed with zero compiler
+warnings; the full Swift Testing result bundle reports **249 executed
+cases, 0 failures, 0 skipped** (`ComposerDetailView`/`ComposersView` are
+SwiftUI view code without unit coverage, matching #72's note); SwiftLint is
+clean. Live-verified 2026-08-25 against a real Navidrome server: selecting
+Alexander Glazunov listed all 51 songs correctly across albums, with
+working column-sort toggling (confirmed the "Album" column sorts
+alphabetically rather than grouping by track order — the same plain
+per-column sort `TrackTableView` already does elsewhere, not a regression);
+Play and Shuffle started playback; right-click "Add to Up Next" and
+double-click-to-play both worked. A composer with zero songs is logically
+unreachable with real data (composers are derived from track composer
+credits), so the empty state was verified by code inspection only. The
+native-unavailable fallback was verified by temporarily forcing
+`ConnectionModel.probeNativeFeatures()` to `.unavailable` in a local build
+(reverted before commit, never part of the diff) with a `.composers`
+sidebar selection already persisted from a prior session: the sidebar row
+disappeared and the "Composers Unavailable" message rendered in its place,
+with the rest of the app (playback, Up Next) unaffected. A UI review also
+caught the header/Play/Shuffle row rendering centered instead of flush
+left against the table below it — the outer `VStack` needed explicit
+`alignment: .leading` (`ArtistDetailView`'s equivalent container relies on
+an outer `.frame(maxWidth: .infinity, alignment: .leading)` instead); fixed
+and reverified.
+
+Review follow-up: each composer detail now has selection-scoped SwiftUI
+identity so a newly selected composer cannot temporarily inherit the prior
+composer's track summary or Play/Shuffle actions; the two actions are wrapped
+in an explicit horizontal row; and the 2025 `apple.classical.pages.fill`
+sidebar symbol falls back to `person.2` before macOS 26. Reverified 2026-08-25
+against the same Navidrome server: the macOS 26 symbol rendered, Play/Shuffle
+were side-by-side, and switching from Alexander Glazunov (51 songs) to
+Alexander Scriabin rebuilt the detail with the correct 27-song summary and
+track table.
 
 ## Issue #72: Composers master list (2026-08-25)
 Part of E4 (#12). Adds the first user-facing consumer of the native Navidrome
