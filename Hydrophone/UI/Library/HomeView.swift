@@ -53,6 +53,10 @@ struct HomeView: View {
                             .id("recentlyAdded")
                         shelf("Most Played", library.homeFrequent)
                             .id("mostPlayed")
+                        if !library.starredAlbums.isEmpty {
+                            AlbumShelf(title: "Favorites", albums: library.starredAlbums)
+                                .id("favorites")
+                        }
                         if !library.homeRandom.isEmpty {
                             AlbumShelf(title: "Random", albums: library.homeRandom,
                                        accessory: AnyView(rerollButton))
@@ -67,6 +71,7 @@ struct HomeView: View {
         }
         .navigationTitle("Home")
         .task { await library.loadHomeIfNeeded() }
+        .task { await library.loadStarredIfNeeded() }
     }
 
     private var greeting: String {

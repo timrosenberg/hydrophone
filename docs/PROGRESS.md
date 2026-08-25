@@ -56,6 +56,45 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #63: Favorites shelf on Home (2026-08-24)
+Part of #14 (E6). Surfaces starred albums on Home so favorites are visible
+without a trip to the Favorites sidebar item, matching the epic's intent —
+though its text was wrong about the data already being loaded (see the
+issue's "Correction to the epic text").
+
+- `HomeView` gained a second, independent `.task { await
+  library.loadStarredIfNeeded() }` beside the existing home-data task
+  (`:69`) — same pattern as `ArtistsView`'s two separate `.task`/`.task(id:)`
+  modifiers. Home no longer depends on Favorites having been visited first.
+- A `Favorites` `AlbumShelf(albums: library.starredAlbums)` shelf, hidden
+  when empty, sits between "Most Played" and "Random" (`:56-60`) —
+  albums-only, matching every other Home shelf; `starredSongs` isn't pulled
+  in. `scrollBinding`'s `topIDs` (still just `["greeting"]`) is untouched;
+  the shelf's `.id("favorites")` only feeds `scrollTargetLayout()`.
+
+Build clean, zero compiler warnings; full suite green; SwiftLint clean (0
+violations, 105 files). No new tests: the change is a straight read of two
+existing, already-tested `LibraryModel` properties into an existing,
+already-tested `AlbumShelf` component — nothing new to unit-test.
+
+**Live verification (2026-08-24), Tim's configured real Navidrome server,**
+driven via AppleScript/System Events UI automation against the running
+Debug build (screenshots inspected at each step). Server already had 6
+starred albums: confirmed the Favorites shelf appeared on Home in the
+correct position (between Most Played and Random) without ever having
+opened the Favorites tab. Unstarred all 6 one at a time (each album's own
+star toggle) and confirmed the shelf disappeared entirely after the last
+one — not an empty header — reactively, with no relaunch needed. Re-starred
+all 6 via search to restore the server's original state exactly. Separately
+confirmed: Home's scroll-position restore (`ScrollMemory.swift`) only ever
+covered surviving Back navigation (push an album, tap Back) — not
+switching to a different sidebar section and back — and that's true for
+Home, Albums, and Artist detail alike, predating this change; not a
+regression from the new shelf, and out of scope per the issue's explicit
+"Do NOT" on `scrollBinding`/`topIDs`.
+
+---
+
 ## Issue #55: double-click a work header to play the whole work (2026-08-24)
 E5 (#13) follow-up tweak after #47 and #48. #47 deliberately deferred header
 interactivity ("the header row stays a plain, non-clickable label") to the
