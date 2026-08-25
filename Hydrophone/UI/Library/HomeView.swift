@@ -22,11 +22,12 @@ struct HomeView: View {
     private var allEmpty: Bool {
         library.homeNewest.isEmpty && library.homeRecent.isEmpty
             && library.homeFrequent.isEmpty && library.homeRandom.isEmpty
+            && library.starredAlbums.isEmpty
     }
 
     var body: some View {
         Group {
-            if !library.homeLoaded {
+            if !library.homeLoaded && library.starredAlbums.isEmpty {
                 ProgressView()
             } else if allEmpty {
                 ContentUnavailableView("Nothing Here Yet", systemImage: "house",
@@ -53,6 +54,10 @@ struct HomeView: View {
                             .id("recentlyAdded")
                         shelf("Most Played", library.homeFrequent)
                             .id("mostPlayed")
+                        if !library.starredAlbums.isEmpty {
+                            AlbumShelf(title: "Favorites", albums: library.starredAlbums)
+                                .id("favorites")
+                        }
                         if !library.homeRandom.isEmpty {
                             AlbumShelf(title: "Random", albums: library.homeRandom,
                                        accessory: AnyView(rerollButton))
@@ -67,6 +72,7 @@ struct HomeView: View {
         }
         .navigationTitle("Home")
         .task { await library.loadHomeIfNeeded() }
+        .task { await library.loadStarredIfNeeded() }
     }
 
     private var greeting: String {

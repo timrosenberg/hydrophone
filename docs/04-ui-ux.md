@@ -70,9 +70,12 @@ Grouped like iTunes, using `Section`s and SF Symbols:
     recently played album (cover on a blurred blow-up of itself + scrim,
     inline Play; clicking the card opens the album), then shelves at varied
     sizes — Keep Listening (continues past the hero), Recently Added
-    (larger 150pt tiles), Most Played, Random (re-roll button). Backed by
-    `getAlbumList2` list types; shelves the server can't fill stay hidden;
-    the played-based shelves are fed by the app's own scrobbling (see `02`).
+    (larger 150pt tiles), Most Played, Favorites (starred albums; loaded by
+    Home itself, not dependent on visiting the Favorites tab), Random
+    (re-roll button). The starred load is independent: a non-empty Favorites
+    shelf keeps Home renderable even if all four `getAlbumList2` shelf requests
+    fail or return empty. Shelves the server can't fill stay hidden; the
+    played-based shelves are fed by the app's own scrobbling (see `02`).
 - **Playlists**
   - The user's server playlists (live from `getPlaylists`), each selectable;
     context menu for rename/delete; "+" to create.
