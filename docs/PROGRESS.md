@@ -41,8 +41,10 @@ builds via publish.sh; CI on every push; **Mac App Store: 0.6.2 approved
 and released 2026-08-16** after three review rounds — window-scene fix,
 rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
-E5 🚧 (WorkInfo join + album work-grouping headers + Work context-menu actions complete; 3 of 4
-sub-issues delivered)
+E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
+Work context-menu actions complete — #45-48; follow-up polish: #54
+Title-column movement text under a work header, #53 spacer row, and #55
+work-header double-click all done)
 
 ## How to build / test
 ```sh
@@ -111,6 +113,71 @@ the same dispatch mechanism already proven live, and is covered by
 
 Build clean, zero compiler warnings; full suite green (226 tests, +5 new);
 SwiftLint clean (0 violations, 105 files).
+
+---
+
+## Issue #54: Title-column movement text under a work header (2026-08-24)
+Under an active work header, the Title column now shows the movement number
+(roman numeral) and name instead of repeating the work name on every row.
+
+- `WorkMovementTitle` (`UI/Components/WorkMovementTrackColumns.swift`): a
+  roman-numeral converter (1–3999) plus `title(for:)`, which applies the
+  issue's four fallback rules in order — `movementNumber` tagged → roman +
+  name (from `movementName`, else the title with the work prefix stripped);
+  no number but the title starts with `work` → the stripped remainder
+  (preserving a tagger-written numeral); `movementName` alone → the bare
+  name; otherwise the title is untouched. A guard skips the roman prefix
+  when the name part already opens with one, so a tagged `movement` number
+  never double-numbers a title that already carries its own numeral.
+- `titleForRow(song:workHeaderGroupingActive:)` gates the whole thing: it
+  only applies when the album's current build is actually showing work
+  headers (not disc-only headers, and not withdrawn by a non-track-order
+  sort) *and* the row's own track carries a `work` tag — a track with no
+  work tag renders its full title unchanged even under an active header for
+  its neighbors.
+- `MusicTrackTable.Coordinator` tracks `workHeaderGroupingActive` alongside
+  `rows` in `rebuild()` (same `activeDiscHeaders` computation that already
+  gates header withdrawal on sort) and the Title cell calls
+  `WorkMovementTitle.titleForRow(...)` instead of always using `song.title`.
+  The Movement and Movement Name columns are untouched.
+
+**Verification (2026-08-24):** build clean, zero warnings; full suite passes
+(230 executed cases, 0 failures) including 9 new tests covering the roman
+conversion, each of the four fallback rules, the double-numbering guard, and
+the gating (no-work track and withdrawn headers stay untouched); `swiftlint`
+0 violations. Automated GUI live-verification wasn't attempted — this Mac's
+screen was shared with another concurrent Claude Code session mid-task when
+this branch was ready, and automating the GUI risked stray input landing in
+that other session's terminal. Instead the Debug build from this branch was
+launched and handed to Tim, who live-verified it by hand against his real
+Navidrome server and confirmed it working.
+
+## Issue #53: blank row between the end of a work and the next ungrouped track (2026-08-24)
+Follow-up to #47's work-grouping headers: a run of grouped tracks flowing
+straight into an ungrouped track had no visual separation, since headers only
+mark the *start* of a group.
+
+- New `TrackTableRow.spacer` case (`MusicTrackTable.swift`). `groupedRows`
+  emits it when the grouping key transitions from non-nil to nil — i.e.
+  leaving a grouped run into ungrouped tracks — never at the top of the list,
+  between two grouped runs (already separated by a header), or on albums with
+  no grouping at all.
+- No other plumbing changed: `trackIndex(atRow:)` already returns nil for any
+  non-`.track` row, so selection, drag, and row-view handling treat a spacer
+  exactly like a header; `viewFor` falls through its `case .header` check and
+  returns nil, rendering an empty row at the table's uniform 24pt row height.
+- Four new `DiscHeaderTests` cases: spacer emitted on work→ungrouped, absent
+  on work→work, absent on ungrouped→work, absent when no grouping applies.
+
+Build clean with zero compiler warnings; full suite **TEST SUCCEEDED** with
+these four tests passing alongside the existing grouping cases; SwiftLint
+clean (0 violations across 104 files).
+
+**Live-verified by Tim (2026-08-24)** against *Japanese Love Songs* (Claude
+Delangle) on his real server, confirming the blank row lands correctly.
+Automated live-verification wasn't attempted this round — the desktop had
+other concurrent sessions actively stealing window focus, and driving the app
+blind under those conditions risked misclicking into unrelated windows.
 
 ---
 
@@ -2530,7 +2597,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #55 passes (**226 executed cases,
+- ✅ `xcodebuild test` — full suite through #55 passes (**238 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).

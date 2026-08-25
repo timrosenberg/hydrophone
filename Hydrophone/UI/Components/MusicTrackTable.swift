@@ -9,6 +9,10 @@ enum TrackTableRow: Equatable {
     /// `work` is non-nil only for a work header, never a disc header.
     case header(String, work: String?)
     case track(Int)   // index into the displayed track order
+    /// Blank separator row at the boundary where a run of grouped tracks
+    /// ends and an ungrouped run begins — a header marks every other
+    /// boundary, but that one has none.
+    case spacer
 
     static func build(tracks: [Song], headers: [Int: String]?) -> [TrackTableRow] {
         let plain = tracks.indices.map(TrackTableRow.track)
@@ -41,6 +45,9 @@ enum TrackTableRow: Equatable {
         for (index, track) in tracks.enumerated() {
             let trackKey = key(track)
             if !hasCurrent || current != trackKey {
+                if hasCurrent, current != nil, trackKey == nil {
+                    rows.append(.spacer)
+                }
                 current = trackKey
                 hasCurrent = true
                 if let trackKey {
@@ -134,13 +141,19 @@ struct MusicTrackTable: NSViewRepresentable {
         var reconcilingNativeColumns = false
 
         private(set) var rows: [TrackTableRow] = []
+        /// True when the current build shows work-grouping headers (issue
+        /// #54's Title-column movement text applies only then, and only to
+        /// rows whose own track carries a `work` tag — see `textCell`).
+        private(set) var workHeaderGroupingActive = false
 
         init(_ parent: MusicTrackTable) { self.parent = parent }
 
         /// Recompute the displayed (optionally sorted) order and reload.
         func rebuild() {
             displayed = sortedTracks()
-            rows = TrackTableRow.build(tracks: displayed, headers: activeDiscHeaders)
+            let headers = activeDiscHeaders
+            rows = TrackTableRow.build(tracks: displayed, headers: headers)
+            workHeaderGroupingActive = headers != nil && Set(displayed.compactMap(\.work)).count > 1
             table?.reloadData()
         }
 

@@ -172,7 +172,8 @@ extension MusicTrackTable.Coordinator {
         let text: String
         switch id {
         case "number": text = song.track.map(String.init) ?? ""
-        case "title": text = song.title
+        case "title":
+            text = WorkMovementTitle.titleForRow(song: song, workHeaderGroupingActive: workHeaderGroupingActive)
         case "artist": text = song.artist ?? "—"
         case "composer": text = song.nonEmptyDisplayComposer ?? "—"
         case "album": text = song.album ?? "—"
