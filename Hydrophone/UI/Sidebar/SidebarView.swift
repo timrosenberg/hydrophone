@@ -28,10 +28,10 @@ struct SidebarView: View {
                 libraryItem("Home", "house", .home)
                 libraryItem("Albums", "square.stack", .albums)
                 libraryItem("Artists", "music.mic", .artists)
-                libraryItem("Songs", "music.note.list", .songs)
+                libraryItem("Songs", "music.quarternote.3", .songs)
                 libraryItem("Favorites", "star", .favorites)
                 if connection.nativeFeaturesState == .available {
-                    libraryItem("Composers", "person.2", .composers)
+                    libraryItem("Composers", "apple.classical.pages.fill", .composers)
                 }
             }
 
