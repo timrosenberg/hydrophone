@@ -56,6 +56,39 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #61: remove artist artwork everywhere in the app (2026-08-24)
+E6 (#14) sub-issue. Scope grew mid-flight from just the Artists list row to
+every artist-portrait call site in the app, at Tim's request — he doesn't
+want artist artwork anywhere.
+
+- `ArtistsView.swift`: dropped `ArtworkView` from the Artists list row (no
+  more leading spacing reserved for it); dropped it from `ArtistDetailView`'s
+  header, which is now just the name + Artist Radio button — the name grows
+  from `.title2` to `.largeTitle` to compensate for the lost visual weight
+  and now sits flush against the page's leading edge instead of indented past
+  where the 84pt portrait used to be.
+- Similar Artists (`ArtistsView.swift`) and the search results Artists shelf
+  (`SearchResultsView.swift`) both dropped their `VStack`/`.frame(width: 90)`
+  tiles — built around holding a 64pt portrait above the name — for plain
+  content-sized name buttons (`.buttonStyle(.bordered)`) in the same
+  horizontal `Shelf` scroller. A fixed-width vertical tile made sense when it
+  had an image to anchor it; with no image it was just a row of mostly-empty
+  boxes.
+- `docs/04-ui-ux.md`'s Global search section updated (Artists shelf was
+  documented as "circular portraits").
+
+### Live verification — 2026-08-24, against Tim's real Navidrome library
+Launched the Debug build, drove it via Accessibility (`System Events` +
+`cliclick`), screenshotted each spot:
+- Artists list: rows show name + album count only, no thumbnails.
+- Artist detail page (2Pac): large flush-left name, Artist Radio button
+  underneath, no portrait.
+- Similar Artists shelf on that page: "Dr. Dre" renders as a single bordered
+  pill button, not an empty-image tile.
+- Search results ("beethoven"): the Artists shelf shows "Ludwig van
+  Beethoven" as the same style of pill button, Albums shelf below it
+  unaffected.
+
 ## Issue #64: bit rate in the Now Playing quality badge for lossless files (2026-08-24)
 Part of #14 (E6). The Now Playing badge showed just "FLAC" for lossless
 files; it now adds the bit rate when the server reports one.
@@ -2682,7 +2715,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #64 passes (**242 executed cases,
+- ✅ `xcodebuild test` — full suite through #61 passes (**242 executed cases,
   0 failures, 0 skipped**, 2026-08-24); CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations across 105 files** (2026-08-24).
