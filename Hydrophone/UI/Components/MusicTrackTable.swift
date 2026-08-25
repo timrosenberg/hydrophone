@@ -138,13 +138,19 @@ struct MusicTrackTable: NSViewRepresentable {
         var reconcilingNativeColumns = false
 
         private(set) var rows: [TrackTableRow] = []
+        /// True when the current build shows work-grouping headers (issue
+        /// #54's Title-column movement text applies only then, and only to
+        /// rows whose own track carries a `work` tag — see `textCell`).
+        private(set) var workHeaderGroupingActive = false
 
         init(_ parent: MusicTrackTable) { self.parent = parent }
 
         /// Recompute the displayed (optionally sorted) order and reload.
         func rebuild() {
             displayed = sortedTracks()
-            rows = TrackTableRow.build(tracks: displayed, headers: activeDiscHeaders)
+            let headers = activeDiscHeaders
+            rows = TrackTableRow.build(tracks: displayed, headers: headers)
+            workHeaderGroupingActive = headers != nil && Set(displayed.compactMap(\.work)).count > 1
             table?.reloadData()
         }
 
@@ -327,7 +333,8 @@ struct MusicTrackTable: NSViewRepresentable {
             let text: String
             switch id {
             case "number": text = song.track.map(String.init) ?? ""
-            case "title": text = song.title
+            case "title":
+                text = WorkMovementTitle.titleForRow(song: song, workHeaderGroupingActive: workHeaderGroupingActive)
             case "artist": text = song.artist ?? "—"
             case "composer": text = song.nonEmptyDisplayComposer ?? "—"
             case "album": text = song.album ?? "—"
