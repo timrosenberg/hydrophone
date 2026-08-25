@@ -75,18 +75,16 @@ lossy/no-suffix parity with `qualityLabel`.
 
 **Live verification (2026-08-24), Tim's configured real Navidrome server,**
 via a dedicated second app instance (`open -n`) driven with `cliclick`
-against the fresh Debug build, screenshots inspected at each step: three
-different FLAC albums (Beethoven piano sonatas/Alfred Brendel, Arvo Pärt's
-*Anima*/Alea Saxophone Quartet, Akropolis Reed Quintet's *The Space Between
-Us*) all played with the Now Playing badge reading the bare "FLAC" fallback,
-confirmed against the server's own API data (`bitRate` absent/zero for these
-files) rather than a code defect — matching the issue's documented
-no-bit-rate fallback. The Quality column kept showing plain "FLAC"
-unaffected throughout. The bit-rate-present formatting ("FLAC · N kbps")
-wasn't reachable live because no lossless file in this library's current
-scan reports a nonzero `bitRate`; it's covered directly by
-`detailLabelAddsBitRateForLossless`, which exercises the same `qualityDetailLabel`
-code path the badge calls.
+against the fresh Debug build, screenshots inspected at each step. A first
+pass across three FLAC albums (Beethoven piano sonatas/Alfred Brendel, Arvo
+Pärt's *Anima*/Alea Saxophone Quartet, Akropolis Reed Quintet's *The Space
+Between Us*) only ever showed the bare "FLAC" fallback and was reported as
+such — wrongly assumed to mean this library's FLACs simply carry no
+`bitRate`. Tim caught the error: a follow-up check on the same Akropolis
+Reed Quintet track ("The Space Between Us: III. Remembering") showed the
+badge correctly reading **"FLAC · 439 kbps"**, confirming the bit-rate-present
+path renders live, not just in the unit test. The Quality column kept
+showing plain "FLAC" unaffected throughout.
 
 Build clean, zero compiler warnings; full suite green (241 tests, +4 new);
 SwiftLint clean (0 violations, 105 files).
