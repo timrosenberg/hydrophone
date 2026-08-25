@@ -236,9 +236,9 @@ who prefer a plain table can hide it.
 - A search field pinned at the top of the sidebar (`.searchable(placement:
   .sidebar)`), calling `search3` with debounce + task cancellation (see `02`).
   Previous results stay visible while the next query runs (no spinner flash).
-- Results: an Artists shelf (circular portraits) and an Albums shelf (covers,
-  same cell as Favorites) that open the regular artist/album screens in place,
-  above the songs in the shared `TrackTableView` (stripes,
+- Results: an Artists shelf (name buttons, no artwork — #61) and an Albums
+  shelf (covers, same cell as Favorites) that open the regular artist/album
+  screens in place, above the songs in the shared `TrackTableView` (stripes,
   double-click-to-play, context menu, favorites, now-playing indicator).
 
 ## Navigation (no stack) ✅

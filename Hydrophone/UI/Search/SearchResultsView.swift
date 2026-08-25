@@ -59,19 +59,15 @@ struct SearchResultsView: View {
         }
     }
 
-    /// Matching artists as a shelf of circular portraits; selecting one pushes
-    /// the artist's albums (same destination as the Artists section).
+    /// Matching artists as a shelf of name buttons (no artwork — see #61);
+    /// selecting one pushes the artist's albums (same destination as the
+    /// Artists section).
     private var artistsShelf: some View {
         Shelf(title: "Artists") {
             ForEach(results.artists) { artist in
-                Button { navigator.openArtist(artist) } label: {
-                    VStack(spacing: 6) {
-                        ArtworkView(coverArt: artist.coverArt, size: 64, cornerRadius: 32)
-                        Text(artist.name).font(.caption).lineLimit(1)
-                    }
-                    .frame(width: 90)
-                }
-                .buttonStyle(.plain)
+                Button(artist.name) { navigator.openArtist(artist) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
     }
