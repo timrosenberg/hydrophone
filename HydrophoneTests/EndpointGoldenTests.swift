@@ -35,6 +35,13 @@ struct EndpointGoldenTests {
         #expect(Endpoint.randomSongs(size: 500).queryItems == [q("size", "500")])
     }
 
+    @Test func allSongsUsesEmptySearchWithoutArtistOrAlbumResults() {
+        #expect(Endpoint.allSongs(count: 500, offset: 1_000).queryItems == [
+            q("query", ""), q("songCount", "500"), q("songOffset", "1000"),
+            q("albumCount", "0"), q("artistCount", "0")
+        ])
+    }
+
     @Test func songsByGenre() {
         #expect(Endpoint.songsByGenre("Rock", count: 200, offset: 400).queryItems == [
             q("genre", "Rock"), q("count", "200"), q("offset", "400")

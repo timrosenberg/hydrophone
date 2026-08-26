@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Foundation
 import Observation
 import os
@@ -8,7 +9,7 @@ import os
 /// the client and holds results in memory.
 @MainActor
 @Observable
-final class LibraryModel {
+final class LibraryModel { // swiftlint:disable:this type_body_length
     enum Load<T: Sendable>: Sendable {
         case idle
         case loading
@@ -41,6 +42,7 @@ final class LibraryModel {
 
     private(set) var songs: [Song] = []
     private(set) var songsState: Load<Void> = .idle
+    private var songsGeneration = 0
 
     private(set) var starredSongs: [Song] = []
     private(set) var starredAlbums: [Album] = []
@@ -92,6 +94,7 @@ final class LibraryModel {
         composers = []
         composersState = .idle
         genres = []
+        invalidateSongs()
         starredSongs = []
         starredAlbums = []
         starredSongIDs = []
@@ -211,15 +214,31 @@ final class LibraryModel {
         }
     }
 
-    // MARK: - Songs (random sample — see endpoint note)
+    // MARK: - Songs
+
+    /// Drops the rendered song snapshot so the next Songs-view load rebuilds
+    /// it from the client's credential-bound full-library cache.
+    func invalidateSongs() {
+        songsGeneration += 1
+        songs = []
+        songsState = .idle
+    }
 
     func loadSongsIfNeeded() async {
         guard songs.isEmpty else { return }
         if case .loading = songsState { return }
-        await load("song", into: \.songsState) { () async throws(SubsonicError) in
-            var fetched = try await client.list(.randomSongs(size: 500), of: Song.self)
+        let generation = songsGeneration
+        songsState = .loading
+        do {
+            var fetched = try await client.allSongs()
             await joinWorkInfo(into: &fetched)
+            guard generation == songsGeneration else { return }
             songs = fetched
+            songsState = .loaded(())
+        } catch {
+            guard generation == songsGeneration else { return }
+            songsState = .failed(error.userMessage)
+            Self.log.error("song load failed: \(error.userMessage)")
         }
     }
 

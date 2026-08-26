@@ -140,14 +140,17 @@ final class AppModel {
         let playback = PlaybackService(client: client)
         let nowPlaying = NowPlayingCenter()
         let connection = ConnectionModel(client: client, navidrome: navidrome, credentials: credentials)
+        let library = LibraryModel(client: client, navidrome: navidrome,
+                                   nativeFeaturesAvailable: {
+            await connection.nativeFeaturesAvailable()
+        })
 
         self.credentials = credentials
         self.client = client
         self.playback = playback
         self.nowPlaying = nowPlaying
         self.connection = connection
-        self.library = LibraryModel(client: client, navidrome: navidrome,
-                                    nativeFeaturesAvailable: { await connection.nativeFeaturesAvailable() })
+        self.library = library
         self.player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in
             // Best-effort: a failed scrobble should never surface in the UI.
@@ -164,6 +167,7 @@ final class AppModel {
         // scope it to the current server so artwork never mixes across servers.
         ArtworkCache.shared.clientBox = ClientBox(client)
         ArtworkCache.shared.setServer(baseURL: credentials.load()?.baseURL)
+        connection.setSongsInvalidationHandler { library.invalidateSongs() }
 
         // Bring back the last session's queue (paused; never interrupts).
         Task { await restorePlayQueue() }
