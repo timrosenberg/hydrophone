@@ -33,7 +33,8 @@ final class InnerTableView: NSTableView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let isCommandI = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
+        let isCommandI = modifiers == .command
             && event.charactersIgnoringModifiers?.lowercased() == "i"
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
             onReturn?()

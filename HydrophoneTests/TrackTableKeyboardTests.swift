@@ -16,11 +16,13 @@ struct TrackTableKeyboardTests {
         return view.subviews.lazy.compactMap { descendant(ofType: type, in: $0) }.first
     }
 
-    private func keyEvent(code: UInt16, characters: String) -> NSEvent {
+    private func keyEvent(
+        code: UInt16, characters: String, modifiers: NSEvent.ModifierFlags = []
+    ) -> NSEvent {
         NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
-            modifierFlags: [],
+            modifierFlags: modifiers,
             timestamp: 0,
             windowNumber: 0,
             context: nil,
@@ -56,6 +58,36 @@ struct TrackTableKeyboardTests {
 
         #expect(returnCount == 1)
         #expect(spaceCount == 0)
+    }
+
+    @Test(arguments: [false, true])
+    func commandIOpensInfoRegardlessOfCapsLock(capsLock: Bool) {
+        let table = InnerTableView()
+        var infoCount = 0
+        table.onGetInfo = { infoCount += 1 }
+
+        table.keyDown(with: keyEvent(
+            code: 34, characters: capsLock ? "I" : "i",
+            modifiers: capsLock ? [.command, .capsLock] : .command
+        ))
+
+        #expect(infoCount == 1)
+    }
+
+    @Test(arguments: [
+        NSEvent.ModifierFlags(), .capsLock,
+        [.command, .shift], [.command, .option], [.command, .control],
+        [.command, .capsLock, .shift], [.command, .capsLock, .option],
+        [.command, .capsLock, .control]
+    ])
+    func otherIModifiersDoNotOpenInfo(modifiers: NSEvent.ModifierFlags) {
+        let table = InnerTableView()
+        var infoCount = 0
+        table.onGetInfo = { infoCount += 1 }
+
+        table.keyDown(with: keyEvent(code: 34, characters: "i", modifiers: modifiers))
+
+        #expect(infoCount == 0)
     }
 
     @Test func swiftUIListRoutesSpaceToPlayback() {

@@ -32,7 +32,7 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts incl. focus-safe Space play/pause, restoration incl. per-view track columns and scroll offset, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. per-view track columns and scroll offset, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -58,6 +58,30 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## PR #79 follow-up: ⌘I with Caps Lock (2026-08-25)
+
+- Ignore only Caps Lock in the existing ⌘I modifier comparison. Other
+  modifier handling, selection rules, focus routing, and playback keys are
+  unchanged.
+- Extended `TrackTableKeyboardTests` with Caps Lock on/off and nonmatching
+  modifier coverage. The Caps Lock case failed before the fix with
+  `infoCount == 0` and passes afterward.
+- Verification: unsigned macOS build passes with zero compiler warnings;
+  full suite **251 test cases, 260 executions including parameters, 0 failures,
+  0 skipped** (`xcresulttool` summary); SwiftLint **0 violations**;
+  `git diff --check` clean. Xcode's AppIntents metadata tool emits its
+  missing-framework warning during test/signing builds; no compiler warnings.
+- Live-verified 2026-08-25 against Tim's saved real Navidrome server with a
+  separately staged app signed using the available local Developer ID
+  certificate (command-line override only; project signing unchanged).
+  Confirmed its running executable path and matching built-library SHA-256.
+  A selected track's Get Info sheet opened before and after toggling Caps
+  Lock; restored Caps Lock afterward. Multiple selection and search-field
+  focus stayed inert.
+  Playback was left paused. The compiled-module AppKit probe also passed
+  zero/multiple selection, disc headers, sorted-row mapping, and text-field
+  focus checks.
 
 ## Issue #77: ⌘I opens Get Info (2026-08-25)
 Get Info was reachable only from the track table's right-click context menu.
@@ -2869,8 +2893,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #72 passes (**246 executed cases,
-  0 failures, 0 skipped**, 2026-08-25); CI repeats the run on every push
+- ✅ `xcodebuild test` — full suite through #77 passes (**251 test cases,
+  260 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
+  CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations** (2026-08-25).
 
