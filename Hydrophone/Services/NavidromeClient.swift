@@ -245,7 +245,7 @@ actor NavidromeClient {
     private var inFlightSongIndexBuild: Task<NativeSongIndexSnapshot, Error>?
     private var inFlightSongIndexCredentials: ServerCredentials?
 
-    /// Every song in the library, with per-role `participants` credits and
+    /// Every non-missing song in the library, with per-role `participants` credits and
     /// raw `tags` — the data a later sub-issue needs to answer "songs by
     /// composer X" and "work/movement for song Y" without further network
     /// calls. Paginates `/api/song` concurrently via `paginatedGet` and
@@ -274,7 +274,7 @@ actor NavidromeClient {
         let build = Task<NativeSongIndexSnapshot, Error> {
             let query = PageQuery(
                 path: "song", sort: "id", order: "ASC",
-                extraQuery: [], credentials: creds
+                extraQuery: [URLQueryItem(name: "missing", value: "false")], credentials: creds
             )
             let records = try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
             return NativeSongIndexSnapshot(records: records)

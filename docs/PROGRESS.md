@@ -43,7 +43,8 @@ rights-cleared screenshots, and the recorded evidence package did it;
 store page linked from website + README) ·
 E4 ✅ (Navidrome composer roster + song lookup — #71; native-gated sidebar
 route and resizable composer master list — #72; composer track detail with
-play/shuffle/queue and a native-unavailable fallback — #73) ·
+play/shuffle/queue and a native-unavailable fallback — #73; song index excludes
+missing/deleted files — #86) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
@@ -60,6 +61,50 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #86: exclude missing files from the native song index (2026-08-26)
+
+- `songIndexSnapshot()` now adds `missing=false` to its `PageQuery`.
+  The existing pagination and 401 retry paths carry the filter through every
+  request, so the cached index and composer/work metadata consumers exclude
+  Navidrome records for missing/deleted files. Cache invalidation, credential
+  snapshots, sort order, concurrency, and Subsonic playback are unchanged.
+- Added a regression in `NavidromeSongIndexNetworkTests.swift`, an extension
+  of the existing serialized network suite. It checks the filter and page
+  boundaries on three pages plus a retried middle page, returning 1,001
+  fixture songs. The original implementation failed all four filter
+  assertions; the fix passed. Shared test helpers remain test-only.
+- The opt-in live song-index test now independently requests
+  `/api/song?_start=0&_end=1&missing=false` and compares its `X-Total-Count`
+  with the index length. `TEST_RUNNER_HYDROPHONE_*` successfully forwards
+  the opt-in environment into this toolchain's test runner; the live path
+  was observed executing, not merely reported as a no-op pass.
+- Final gate: unsigned build succeeds with zero warnings; full suite passes
+  **264 test cases, 273 executions including parameters, 0 failures/skips**
+  (canonical xcresult summary). Strict SwiftLint and `git diff --check` are
+  clean. The test build reports only the existing AppIntents extraction
+  notice (no AppIntents framework), not a compiler warning.
+- Live verification: **2026-08-26, demo.navidrome.org, Navidrome 0.63.2
+  (be10f89c)**. The production-client harness and the live test both returned
+  **501 indexed songs**, matching the independently requested filtered total;
+  a second index call retained all 501 cached songs. The server reported zero
+  missing songs, so this confirms live compatibility/counts, while the
+  hermetic request assertions prove the exclusion filter is actually sent.
+- Both focused opt-in live tests (song index and composer roster) pass with
+  nonzero execution times. Two broader five-test runs passed the index check
+  but hit HTTP 429 on the final composer-roster test after the rapid login
+  probes. The isolated two-test run passes both; no authentication or retry
+  behavior was changed to accommodate the public demo's throttling.
+- Signed-app check: the available local Developer ID identity was supplied
+  via build-command overrides; strict signature verification passed without
+  changing project signing settings. Settings → Connection → Use Demo Server
+  connected with native features available. After a connected relaunch,
+  Composers loaded its roster and the two 2 Mello tracks; “Outro” from
+  *Chrono Jigga* played with an advancing timer. Playback was paused and the
+  verification instance closed. Only in-memory demo credentials were used;
+  the saved connection was unchanged.
+- No UI, playback, authentication, generic pagination, or #20 rework is
+  included. API and testing contracts are synchronized in `02` and `08`.
 
 ## PR #87 review fixes: bounded artwork prefetch and geometry refresh (2026-08-26)
 
@@ -3070,6 +3115,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #86 (2026-08-26): unsigned build has zero warnings; full suite
+  passes **264 cases / 273 executions, 0 failures/skips**; strict SwiftLint
+  and `git diff --check` pass. The regression was verified failing before
+  the `missing=false` fix and passing afterward.
+- ✅ Issue #86 live (2026-08-26): demo Navidrome 0.63.2 index **501**, equal
+  to filtered `X-Total-Count`; cache retains 501. Focused index and composer
+  live tests pass. Signed-app composer tracks load and “Outro” plays with
+  an advancing timer. The broader probe-suite HTTP 429 is recorded above.
 - ✅ PR #87 local review fixes (2026-08-26): standard unsigned build succeeds
   with zero compiler warnings; SwiftLint and `git diff --check` pass with
   zero violations. Focused artwork tests pass (**12 cases, 0 failures/skips**).

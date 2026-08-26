@@ -16,13 +16,13 @@ import Foundation
 /// log resets, so they're forced to run one at a time.
 @Suite(.serialized)
 struct NavidromeClientNetworkTests {
-    private func makeSession() -> URLSession {
+    func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [NavidromeMockProtocol.self]
         return URLSession(configuration: config)
     }
 
-    private func creds(host: String = "https://music.example.com", secret: String = "sesame") -> ServerCredentials {
+    func creds(host: String = "https://music.example.com", secret: String = "sesame") -> ServerCredentials {
         ServerCredentials(baseURL: URL(string: host)!, username: "tim", secret: secret, authMethod: .tokenSalt)
     }
 
@@ -309,7 +309,7 @@ struct NavidromeClientNetworkTests {
     /// Builds a request handler serving `/auth/login` and any `/api/<resource>`
     /// page request with one artist per page (so pagination logic isn't
     /// exercised here — that's a separate concern from cache/retry behavior).
-    private static func makeHandler(
+    static func makeHandler(
         jwtExpiresIn: TimeInterval, alwaysUnauthorized: Bool = false, omitTotalCount: Bool = false
     ) -> @Sendable (URLRequest) -> NavidromeMockProtocol.Response {
         { request in

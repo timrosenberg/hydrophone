@@ -261,8 +261,11 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   rescan's retagged work/movement data is picked up on the next fetch too. No
   UI yet *displays* work/movement data (E5's remaining sub-issues), so this is
   presently unobservable outside a log line or breakpoint. See #26.
-- **Song index (#24):** `NavidromeClient.songIndex()` walks `/api/song` fully
-  via `paginatedGet` and caches the result (`[NativeSongRecord]`) in-actor for
+- **Song index (#24, #86):** `NavidromeClient.songIndex()` walks
+  `/api/song?missing=false` fully via `paginatedGet`, excluding records whose
+  files are missing/deleted. The filter is sent on every page and 401 retry;
+  pagination uses the filtered `X-Total-Count`. It caches the result
+  (`[NativeSongRecord]`) in-actor for
   the app session — no disk persistence, matching the M2 decision to drop the
   SwiftData cache. Cache hits and coalesced in-flight builds are scoped to an
   exact `ServerCredentials` snapshot; each build uses that snapshot for its
