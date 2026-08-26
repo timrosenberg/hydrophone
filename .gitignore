@@ -16,5 +16,8 @@ log.txt
 
 # Release pipeline output
 build/
+
+# Coverage instrumentation output from `swift test`
+*.profraw
 # Local marketing drafts — not for the public repo
 drafts/
