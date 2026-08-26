@@ -365,11 +365,6 @@ extension LibraryModel {
         (try? await client.object(.artist(id: id), as: Artist.self))?.album ?? []
     }
 
-    func songs(forGenre genre: String) async -> [Song] {
-        var songs: [Song] = await fetchList(.songsByGenre(genre, count: Self.pageSize, offset: 0))
-        await joinWorkInfo(into: &songs)
-        return songs
-    }
 }
 
 // MARK: - Discovery (artist info, radio mixes, album shuffle)

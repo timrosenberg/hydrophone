@@ -224,7 +224,7 @@ final class WorkInfoJoinMockProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let req = request
-        Task {
+        Task { @Sendable [self] in
             await Self.state.record(req)
             guard let response = await Self.state.respond(to: req), let url = req.url else {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))
