@@ -84,7 +84,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 255 test cases; 264 executions including parameters)
+## Current suite (Swift Testing, 263 test cases; 272 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -110,6 +110,17 @@ but with its own mock-protocol type (`ConnectionProbeMockProtocol`) so the two
 suites' shared static state can't race each other — this suite has to stub
 both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s native ones
 in the same test, since `ConnectionModel` drives both.
+
+The connection-probe and composer-song mock protocols explicitly mark their
+asynchronous `startLoading` task closures `@Sendable [self]`; the protocol
+types already conform to `@unchecked Sendable`, with shared mutable response
+state isolated in actors. This keeps the full suite compiling with Swift 6.3.3.
+
+`ArtworkCacheTests` uses its own ephemeral URLSession and temporary disk
+directory to verify visible requests are not queued behind speculative work,
+obsolete prefetch windows are replaced or cleared, shared visible loads are
+not cancelled, and cache reuse and measured-size selection remain correct.
+These deterministic tests do not replace the real-server artwork check.
 
 `ExpandedTrackColumnsTests` drives the real AppKit table-sort delegate path
 and verifies missing Date Added, Last Played, Plays, and Sample Rate values

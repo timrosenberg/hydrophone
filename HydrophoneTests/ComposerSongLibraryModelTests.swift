@@ -198,7 +198,7 @@ final class ComposerSongsMockProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let request = request
-        Task {
+        Task { @Sendable [self] in
             await Self.state.record(request)
             guard let response = await Self.state.respond(to: request), let url = request.url else {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))

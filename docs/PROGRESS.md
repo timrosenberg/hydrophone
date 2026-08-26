@@ -7,7 +7,7 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 - ✅ done & verified · 🚧 in progress · ⏳ deferred (tracked) · 🔬 spike pending
 
 ## Environment
-- Xcode 26.3, Swift 6.2.4, macOS 15 SDK. Swift 6 language mode (strict
+- Local verification: Xcode 26.6, Swift 6.3.3, macOS 26.5 SDK. Swift 6 language mode (strict
   concurrency) enabled on all targets.
 - Bundle identifier: `app.hydrophone`. App Sandbox + `network.client`
   entitlement; Hardened Runtime on.
@@ -48,8 +48,9 @@ E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
 work-header double-click all done) ·
-E7 🚧 (artwork prefetch review fixes implemented; full tests and signed live
-verification blocked locally — see the 2026-08-26 entry below)
+E7 🚧 (artwork prefetch review fixes implemented; build, full tests, lint,
+and local signing pass; live artwork verification blocked by demo-server
+cover-art timeouts — see the 2026-08-26 entry below)
 
 ## How to build / test
 ```sh
@@ -87,17 +88,27 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   canonical xcresult summary). Added coverage for visible demand, window
   replacement/clearing, visible in-flight joins, server changes, bounding,
   cache reuse, and measured-size/visible-ID selection. Only this test file
-  was compiled for the focused run because unrelated tests fail to compile.
-- Full gate: final unsigned build, full test run, and lint results recorded
-  in the Verification status block below. The full suite is blocked by
-  pre-existing Swift concurrency errors on Xcode 26.6; the same failure was
-  reproduced at the PR base before edits. A focused diagnostic additionally
-  exposed the same error in ComposerSongLibraryModelTests.swift:201.
-- Signed live verification: **blocked**. The normal build cannot find the
-  Developer ID Application certificate/private key for team `4HNWJ993V9`.
-  No signing settings were changed or protections bypassed. No real-server
-  scrolling result is claimed. Keep the PR draft; no push until the gate
-  blockers are addressed.
+  was compiled for the initial focused run; the full suite now passes too.
+- Full-suite compilation: two mock URLProtocol tasks in
+  `ComposerSongLibraryModelTests` and `ConnectionModelNativeFeaturesTests`
+  now declare `@Sendable [self]` explicitly. Both protocol types already
+  conform to `@unchecked Sendable` and keep shared state in actors. This
+  resolves the current compiler's sending-closure diagnostics without
+  excluding tests or changing their behavior. The PR base also reproduced
+  the compilation failure; no compiler-version change is assumed as its
+  cause. Full suite: **263 test cases, 272 executions including parameters,
+  0 failures, 0 skipped**, from the canonical xcresult summary.
+- Local signing: built with the available user Developer ID identity via
+  command-line overrides; strict code-signature verification passes.
+  Project signing settings are unchanged; no protections were bypassed.
+- Live attempt: **2026-08-26, demo.navidrome.org, Navidrome 0.63.2**. The
+  signed app used an ephemeral credential store and Settings → Connection
+  → Use Demo Server. Connection and album metadata succeeded, but covers
+  remained placeholders while scrolling. Independent authenticated
+  requests outside the app also timed out for three different covers at
+  160 px, 480 px, and original size (35-second timeout each). This does not
+  establish successful live artwork behavior. Keep the PR draft and retain
+  the local commits until a real-server artwork check passes.
 
 ## Issue #15: artwork prefetch + cache budget (E7, 2026-08-26)
 
@@ -3054,14 +3065,18 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
 - ✅ PR #87 local review fixes (2026-08-26): standard unsigned build succeeds
   with zero compiler warnings; SwiftLint and `git diff --check` pass with
   zero violations. Focused artwork tests pass (**12 cases, 0 failures/skips**).
-- 🚧 Full-suite verification is blocked on Xcode 26.6 by pre-existing
-  `passing closure as a 'sending' parameter` errors, including
-  `ConnectionModelNativeFeaturesTests.swift:286` and
-  `ComposerSongLibraryModelTests.swift:201`. The original PR head and base
-  already fail to compile; focused tests are not a full-suite pass.
-- 🚧 PR #87 signed live check blocked: missing Developer ID Application
-  certificate/private key for configured team `4HNWJ993V9`; no real-server
-  scrolling claim and no signing changes.
+- ✅ PR #87 full suite (2026-08-26): **263 test cases, 272 executions
+  including parameters, 0 failures, 0 skipped**. Explicit Sendable task
+  closures in two mock URLProtocol types resolve the compilation blockers.
+  The test build emits the AppIntents metadata-extraction tool notice
+  (no AppIntents framework); no compiler warnings.
+- ✅ PR #87 local signed build and strict signature verification pass using
+  the available user Developer ID identity via command-line overrides;
+  project signing settings are unchanged.
+- 🚧 PR #87 live artwork check: demo-server connection and metadata work,
+  but images remain placeholders. Three independent cover-art requests
+  also timed out after 35 seconds each. No successful live scrolling claim;
+  PR remains draft and local fixes are not pushed or merged.
 - Previous full-suite verification after #29: **255 test cases, 264
   executions including parameters, 0 failures/skips**, 2026-08-25. This is
   historical evidence, not verification of the PR #87 changes.
