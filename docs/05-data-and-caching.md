@@ -25,9 +25,23 @@ pixel size`:
   id. One trade-off: per-track embedded art that differs from the album
   cover is not shown (the album cover wins) — never fetch a cover that the
   album identity already has. Artist/playlist ids are their own identity.
-- **In-memory** `NSCache` (count-bounded) for the hot path, plus a per-identity
-  size index so a different-size request can show an already-loaded variant
-  instantly (no placeholder flash).
+- **In-memory** `NSCache` bounded by a byte budget (`totalCostLimit`, ~200 MB
+  of decoded pixels — a full-res hero and a grid thumbnail don't count the
+  same against it — plus a looser 1,000-entry `countLimit` backstop) for the
+  hot path, plus a per-identity size index so a different-size request can
+  show an already-loaded variant instantly (no placeholder flash).
+- **Viewport-ahead prefetch.** `prefetch(_:)` replaces a window of up to 24
+  `PrefetchRequest` values, sharing `image`'s cache/in-flight de-dup. One
+  worker submits at most one speculative load to the existing six-slot
+  network limiter, leaving capacity for visible artwork. Replacing the
+  window discards obsolete pending work; passing an empty window (leaving
+  Albums) or switching servers clears it. One active load may finish so a
+  visible view sharing that request is not cancelled.
+  `AlbumsView` derives the window after the furthest appearing cell and
+  refreshes it when visible IDs, the album list, or the measured tile size
+  change. It waits for a positive measurement and recomputes the shared
+  `ArtworkView.fetchPixels(forSize:)` quantum after layout/resizing, so a
+  transient initial size cannot leave the final window stale. See #15.
 - **On-disk** store under `Caches/<bundleId>/Artwork`, filenames are the SHA-256
   of the key; the original downloaded bytes (webp/jpeg) are written as-is.
   Because cover art is immutable, a disk hit is authoritative and kept

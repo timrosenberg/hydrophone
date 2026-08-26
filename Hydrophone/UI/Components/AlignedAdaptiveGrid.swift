@@ -10,6 +10,11 @@ import SwiftUI
 struct AlignedAdaptiveGrid<Content: View>: View {
     var tileMinimum: CGFloat
     var spacing: CGFloat
+    /// Reports the tile's current on-screen width as columns are recomputed,
+    /// so a caller can size an artwork prefetch to match what will actually
+    /// render instead of guessing from `tileMinimum` (the Albums grid's
+    /// viewport-ahead prefetch driver — see `AlbumsView`).
+    var tileWidth: Binding<CGFloat>?
     @ViewBuilder var content: () -> Content
 
     @State private var columnCount = 4
@@ -27,6 +32,8 @@ struct AlignedAdaptiveGrid<Content: View>: View {
             proxy.size.width
         } action: { width in
             columnCount = max(2, Int((width + spacing) / (tileMinimum + spacing)))
+            let columns = CGFloat(columnCount)
+            tileWidth?.wrappedValue = (width - (columns - 1) * spacing) / columns
         }
     }
 }

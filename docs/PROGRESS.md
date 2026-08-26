@@ -7,7 +7,7 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 - ✅ done & verified · 🚧 in progress · ⏳ deferred (tracked) · 🔬 spike pending
 
 ## Environment
-- Xcode 26.3, Swift 6.2.4, macOS 15 SDK. Swift 6 language mode (strict
+- Local verification: Xcode 26.6, Swift 6.3.3, macOS 26.5 SDK. Swift 6 language mode (strict
   concurrency) enabled on all targets.
 - Bundle identifier: `app.hydrophone`. App Sandbox + `network.client`
   entitlement; Hardened Runtime on.
@@ -47,7 +47,9 @@ play/shuffle/queue and a native-unavailable fallback — #73) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
-work-header double-click all done)
+work-header double-click all done) ·
+E7 ✅ (bounded artwork prefetch and cache budget; build, full tests, lint,
+and live artwork verification pass — see the 2026-08-26 entry below)
 
 ## How to build / test
 ```sh
@@ -58,6 +60,90 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## PR #87 review fixes: bounded artwork prefetch and geometry refresh (2026-08-26)
+
+- Continued the existing `copilot/epic-e7-artwork-performance` branch in its
+  matching worktree; the primary checkout remains on `main` unchanged.
+- Replaced per-cell fire-and-forget fetches with one replaceable window of
+  at most 24 requests and one speculative worker. Obsolete pending requests
+  are discarded on scroll, resize, leaving Albums, or server change. One
+  active request may finish so a visible caller sharing it is not cancelled;
+  speculative work cannot occupy all six network slots.
+- Albums tracks appearing IDs and derives its window after the furthest one.
+  It waits for measured geometry and refreshes on size/list/visibility changes.
+  The artist grid, cache identity, 200 MB budget, retries, and playback are
+  unchanged. Cache tests use an isolated URLSession and temporary disk store.
+- Regression evidence: the original cache delayed a newly visible image
+  behind 24 speculative requests (1.31 s with mocked 250 ms responses); the
+  fixed cache started it alongside the sole active prefetch (0.27 s).
+  A temporary harness hosting the actual AlbumsView showed the original's
+  final window stuck at 320 px at a 740-point view width; the fixed final
+  window uses 480 px after layout settles. The same rendered-view harness
+  also passes resize (640 px at 570 points), leaving Albums (empty window),
+  and returning (refilled measured window). These are controlled diagnostics,
+  not live-server verification.
+- Focused verification: all **12 ArtworkCacheTests** pass (0 failures/skips,
+  canonical xcresult summary). Added coverage for visible demand, window
+  replacement/clearing, visible in-flight joins, server changes, bounding,
+  cache reuse, and measured-size/visible-ID selection. Only this test file
+  was compiled for the initial focused run; the full suite now passes too.
+- Full-suite compilation: two mock URLProtocol tasks in
+  `ComposerSongLibraryModelTests` and `ConnectionModelNativeFeaturesTests`
+  now declare `@Sendable [self]` explicitly. Both protocol types already
+  conform to `@unchecked Sendable` and keep shared state in actors. This
+  resolves the current compiler's sending-closure diagnostics without
+  excluding tests or changing their behavior. The PR base also reproduced
+  the compilation failure; no compiler-version change is assumed as its
+  cause. Full suite: **263 test cases, 272 executions including parameters,
+  0 failures, 0 skipped**, from the canonical xcresult summary.
+- Local signing: built with the available user Developer ID identity via
+  command-line overrides; strict code-signature verification passes.
+  Project signing settings are unchanged; no protections were bypassed.
+- Live attempt: **2026-08-26, demo.navidrome.org, Navidrome 0.63.2**. The
+  signed app used an ephemeral credential store and Settings → Connection
+  → Use Demo Server. Connection and album metadata succeeded, but covers
+  remained placeholders while scrolling. Independent authenticated
+  requests outside the app also timed out for three different covers at
+  160 px, 480 px, and original size (35-second timeout each). This does not
+  establish successful live artwork behavior; the alternate real-server
+  check below resolves this initial verification blocker.
+- Completed live verification: **2026-08-26, user-authorized private
+  Navidrome 0.63.2 (be10f89c) server** (address and library details withheld).
+  The signed PR build used the existing saved connection without changing
+  credentials. Artwork remained loaded across multi-page scrolling,
+  pagination, window zoom/restore, opening an album and returning to the
+  grid. Album tracks loaded from the server, and a new artwork cache file
+  was written during the check. Existing artwork caches were retained;
+  this is a functional live check, not a cold-cache timing benchmark.
+  The test instance was closed after verification.
+
+## Issue #15: artwork prefetch + cache budget (E7, 2026-08-26)
+
+- `ArtworkCache.prefetch(coverArt:cacheKey:size:)` is a fire-and-forget
+  warmer sharing `image`'s cache/in-flight de-dup, so a prefetch that's
+  already cached or loading is a no-op. Raised the in-memory tier from a
+  400-entry `countLimit` to a byte-based budget (`totalCostLimit`, ~200 MB
+  of decoded pixels) plus a looser 1,000-entry backstop, so a large grid's
+  visible + prefetched range doesn't get evicted by count alone.
+- `AlignedAdaptiveGrid` now reports its actual on-screen tile width via an
+  optional `tileWidth: Binding<CGFloat>?` (unused by `ArtistDetailView`'s
+  grid, which is unchanged). `ArtworkView.fetchPixels(forSize:)` is now a
+  static helper shared by the view and the new prefetch driver, so a
+  prefetched size lands on the same cache entry the view goes on to
+  request instead of warming a variant nobody asks for.
+- `AlbumsView` drives a viewport-ahead prefetch from each cell's
+  `onAppear` (SwiftUI's lazy grid has no first-class prefetch hook): warms
+  the next 24 albums past the one that just scrolled into view, sized to
+  the grid's live tile width. `ArtistDetailView`'s smaller per-artist grid
+  is out of scope for this pass.
+- New tests: `prefetchIgnoresMissingCoverArt` (nil/empty coverArt is a
+  no-op, matching `image`'s guard) and `fetchPixelsQuantizesToA160PxGrid`
+  (the shared sizing helper's quantum boundaries).
+- Gate: **not run — cloud session, no Xcode/simulator/server available**
+  (see `docs/11-agent-workflow.md`'s cloud-session procedure). Build,
+  tests, SwiftLint, and live verification against a real server are
+  deferred to a local machine before merge; PR opened as a draft.
 
 ## Issue #29: restore Artists master-list scroll position (2026-08-25)
 
@@ -2984,19 +3070,28 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
-- ✅ `xcodebuild build` succeeds (Debug, arm64, macOS 15 target) with
-  **zero compiler warnings** (clean build; the former ~29-warning baseline was
-  eliminated 2026-07-07 — always-true casts collapsed via typed throws,
-  `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
-  boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite after #29 passes (**255 test cases,
-  264 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
-  CI repeats the run on every push
-  (`.github/workflows/tests.yml`).
-- ✅ `swiftlint` — **0 violations** (2026-08-25).
+- ✅ PR #87 local review fixes (2026-08-26): standard unsigned build succeeds
+  with zero compiler warnings; SwiftLint and `git diff --check` pass with
+  zero violations. Focused artwork tests pass (**12 cases, 0 failures/skips**).
+- ✅ PR #87 full suite (2026-08-26): **263 test cases, 272 executions
+  including parameters, 0 failures, 0 skipped**. Explicit Sendable task
+  closures in two mock URLProtocol types resolve the compilation blockers.
+  The test build emits the AppIntents metadata-extraction tool notice
+  (no AppIntents framework); no compiler warnings.
+- ✅ PR #87 local signed build and strict signature verification pass using
+  the available user Developer ID identity via command-line overrides;
+  project signing settings are unchanged.
+- ✅ PR #87 live artwork check (2026-08-26): signed PR build against the
+  user-authorized private Navidrome 0.63.2 server; scrolling, pagination,
+  resizing, album detail and Back retain artwork. Credentials unchanged;
+  existing caches retained. The earlier public demo attempt timed out and
+  is not counted as successful verification.
+- Previous full-suite verification after #29: **255 test cases, 264
+  executions including parameters, 0 failures/skips**, 2026-08-25. This is
+  historical evidence, not verification of the PR #87 changes.
 - ✅ Artists master-list scroll restoration — live demo-server Back/relaunch,
-  top-of-list, keyboard selection, and focused Space checks pass (2026-08-25;
-  details in the #29 entry above).
+  top-of-list, keyboard selection, and focused Space checks passed 2026-08-25
+  (details in the #29 entry above).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

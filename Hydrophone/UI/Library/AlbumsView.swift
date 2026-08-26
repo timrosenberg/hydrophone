@@ -13,6 +13,13 @@ struct AlbumsView: View {
     @AppStorage("albumsScrollID") private var storedScrollID = ""
     /// The restore has been consumed by a user scroll (see `scrollMemory`).
     @State private var scrollRestored = false
+    /// Zero means layout has not measured the grid yet; do not guess a size.
+    @State private var tileWidth: CGFloat = 0
+    @State private var visibleAlbumIDs: Set<Album.ID> = []
+
+    private var prefetchRequests: [ArtworkCache.PrefetchRequest] {
+        Self.artworkToPrefetch(albums: library.albums, visibleIDs: visibleAlbumIDs, tileWidth: tileWidth)
+    }
 
     private var scrollBinding: Binding<Album.ID?> {
         .scrollMemory(read: { storedScrollID }, write: { storedScrollID = $0 },
@@ -42,7 +49,7 @@ struct AlbumsView: View {
             .padding(.vertical, 8)
 
             ScrollView {
-                AlignedAdaptiveGrid(tileMinimum: 160, spacing: 20) {
+                AlignedAdaptiveGrid(tileMinimum: 160, spacing: 20, tileWidth: $tileWidth) {
                     ForEach(library.albums) { album in
                         Button { navigator.openAlbum(album) } label: {
                             AlbumGridCell(coverArt: album.coverArt,
@@ -56,6 +63,8 @@ struct AlbumsView: View {
                                 await library.loadMoreAlbums()
                             }
                         }
+                        .onAppear { visibleAlbumIDs.insert(album.id) }
+                        .onDisappear { visibleAlbumIDs.remove(album.id) }
                     }
                 }
                 .padding(20)
@@ -67,9 +76,28 @@ struct AlbumsView: View {
             .scrollPosition(id: scrollBinding, anchor: .top)
         }
         .navigationTitle("Albums")
+        .onChange(of: prefetchRequests, initial: true) { _, requests in
+            ArtworkCache.shared.prefetch(requests)
+        }
+        .onDisappear {
+            visibleAlbumIDs.removeAll()
+            ArtworkCache.shared.prefetch([])
+        }
         .task {
             await library.loadAlbumsIfNeeded()
             await library.loadGenresIfNeeded()   // feeds the filter menu
+        }
+    }
+
+    /// Derive one window from the furthest appearing cell. Measuring/resizing,
+    /// scrolling and pagination all change this value and replace pending work.
+    static func artworkToPrefetch(albums: [Album], visibleIDs: Set<Album.ID>,
+                                  tileWidth: CGFloat) -> [ArtworkCache.PrefetchRequest] {
+        guard tileWidth > 0,
+              let last = albums.lastIndex(where: { visibleIDs.contains($0.id) }) else { return [] }
+        let pixels = ArtworkView.fetchPixels(forSize: tileWidth)
+        return albums.dropFirst(last + 1).prefix(ArtworkCache.prefetchLimit).map {
+            .init(coverArt: $0.coverArt, cacheKey: $0.artworkKey, size: pixels)
         }
     }
 
