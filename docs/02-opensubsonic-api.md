@@ -104,7 +104,9 @@ otherwise; see `SubsonicClient.formPostRequest`).
 - `getArtist` — one artist's albums.
 - `getAlbum` — one album's songs.
 - `getGenres` — genre list (with counts).
-- `getSongsByGenre` — songs in a genre, with `count`/`offset` → pagination.
+- `getSongsByGenre` — songs in a genre. The column browser walks 500-song
+  `count`/`offset` pages until the first short page, then performs one WorkInfo
+  join over the assembled result.
 - `getRandomSongs` — backs the Songs view (Subsonic has no "all songs"
   endpoint; a fuller aggregation is a tracked deferral).
 - `getSong` — single-song endpoint, retained for independent metadata checks.
@@ -184,7 +186,10 @@ empty-state UI; transport errors to a retry affordance.
 
 ## Pagination strategy ✅
 
-- Page size constant for `getAlbumList2`, `getSongsByGenre`, `search3`.
+- `getSongsByGenre` is eager: the column browser needs the complete selected
+  genre for its Artist/Composer/Album panes, so `LibraryModel` walks 500-song
+  pages to the first short page before joining native WorkInfo metadata.
+- Page size constants remain explicit for `getAlbumList2` and `search3`.
 - Library views request the next page when the user scrolls near the end
   (`onAppear` of a trailing sentinel row).
 - Fetched pages accumulate **in-memory** in `LibraryModel`, which owns the

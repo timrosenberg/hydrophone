@@ -24,7 +24,7 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
-design; artwork cached on disk) ·
+design; artwork cached on disk; selected genres paginate to exhaustion) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -62,6 +62,34 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #83: paginate genre songs to exhaustion (2026-08-26)
+
+- `LibraryModel.songs(forGenre:)` now walks 500-song `getSongsByGenre` pages
+  until the first short page, preserving response order and applying the
+  existing native WorkInfo join once after the complete genre is assembled.
+  The broader unfiltered `allSongs()` work tracked by #20 remains out of scope.
+- Hermetic serialized URL-protocol tests cover a 1,003-song genre with exact
+  offsets `0`, `500`, and `1000`, plus a two-song genre that stops after one
+  request. Both regressions were observed failing against the former single
+  100-song request before the implementation passed them.
+- Independent read-only review found no critical or important findings. Two
+  minor suggestions would harden future tests around later-page WorkInfo
+  enrichment and rejecting an unexpected endpoint/genre; neither identified a
+  production defect in this issue's implementation.
+- Final local gate: unsigned build succeeds with zero compiler warnings; the
+  full suite passes **275 test cases / 291 executions including parameters,
+  0 failures/skips** (canonical xcresult summary). SwiftLint and
+  `git diff --check` pass. Xcode emits the existing AppIntents metadata
+  extraction notice, not a compiler warning.
+- Live verification: **2026-08-26, user-authorized private Navidrome 0.63.2
+  server (host redacted)**. Classical loaded exactly **7,384 tracks** in an
+  isolated signed Debug app, and the table scrolled through its final rows.
+  Temporary count instrumentation and the isolated app copy were removed;
+  credentials and saved connection settings were unchanged.
+- The OpenSubsonic and testing contracts now record the eager genre walk,
+  exact request coverage, and current suite totals. The remaining column-
+  browser limitation below is narrowed to the unfiltered all-songs sample.
 
 ## Issue #85: resolve composer songs without per-track requests (2026-08-26)
 
@@ -3152,17 +3180,12 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
 - ⏳ **Songs view uses `getRandomSongs`** (Subsonic has no "all songs"
   endpoint). Tracked for a fuller aggregation later (see
   `05-data-and-caching.md`).
-- ⏳ **Column browser results are incomplete without a song-fetch rework.**
-  There's no `getSongsByComposer` (or equivalent) endpoint, so every pane's
-  track results come from whatever's already loaded client-side: the
-  `getRandomSongs` 500-song sample when no genre is selected, or
-  `getSongsByGenre` capped at the first 100 songs (offset 0, unpaginated)
-  once one is. Artist/Album selection has always inherited this, but it's
-  most visible on Composer — picking one exact composer readily surfaces a
-  sample's gaps in a way broader Artist/Album browsing usually doesn't.
-  Fixing this for real needs a song-fetch strategy rework (pagination and/or
-  a server-side filter query), not a column-browser change — tracked
-  separately, not part of issue #4.
+- ⏳ **Unfiltered column-browser results remain a 500-song sample.** There's no
+  `getSongsByComposer` (or equivalent) endpoint, so before a genre is selected
+  every pane filters the `getRandomSongs` sample. Selecting a genre now walks
+  `getSongsByGenre` to exhaustion, so its Artist/Composer/Album panes cover the
+  complete genre. A full unfiltered library aggregation remains tracked by
+  #20, not issue #4.
 - ✅ ~~Playback is stubbed~~ — superseded: the real `AVAudioEngine` streaming +
   gapless engine landed in M3/M4 (`03-playback-engine.md`).
 - ⏳ Accessibility pass, state restoration, MAS packaging — per roadmap M7–M8.
@@ -3170,6 +3193,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #83 (2026-08-26): unsigned build has zero compiler warnings; full
+  suite **275 cases / 291 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. The 1,003-song and short-page request regressions
+  have red/green evidence.
+- ✅ Issue #83 live (2026-08-26): private Navidrome 0.63.2; Classical loaded
+  exactly **7,384 tracks** and scrolled through the table's final rows in an
+  isolated signed Debug app. Temporary instrumentation and app copy removed.
 - ✅ Issue #85 (2026-08-26): unsigned build has zero warnings; full suite
   **273 cases / 289 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Request/metadata regressions have red/green evidence.

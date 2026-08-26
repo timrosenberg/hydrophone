@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 273 test cases; 289 executions including parameters)
+## Current suite (Swift Testing, 275 test cases; 291 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -109,6 +109,7 @@ audio hardware.
 `TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
+`LibraryModelGenrePaginationTests` ·
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
@@ -122,6 +123,12 @@ matching Subsonic omission semantics, partial ReplayGain, invalid dates,
 unrepresentable durations, default MIME aliases, and composer subroles.
 The request and metadata regressions were observed failing before the
 corresponding fixes.
+
+`LibraryModelGenrePaginationTests` uses a serialized URL-protocol seam to
+verify that a 1,003-song genre requests exact `(count, offset)` pages `(500, 0)`,
+`(500, 500)`, and `(500, 1000)`, preserves order, and stops there. A separate
+two-song fixture verifies that a short first page makes exactly one request.
+Both regressions were observed failing against the former 100-song request.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and
@@ -142,10 +149,11 @@ suites' shared static state can't race each other — this suite has to stub
 both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s native ones
 in the same test, since `ConnectionModel` drives both.
 
-The connection-probe and composer-song mock protocols explicitly mark their
-asynchronous `startLoading` task closures `@Sendable [self]`; the protocol
-types already conform to `@unchecked Sendable`, with shared mutable response
-state isolated in actors. This keeps the full suite compiling with Swift 6.3.3.
+The connection-probe, composer-song, genre-pagination, and WorkInfo mock
+protocols explicitly mark their asynchronous `startLoading` task closures
+`@Sendable [self]`; the protocol types already conform to
+`@unchecked Sendable`, with shared mutable response state isolated in actors.
+This keeps the full suite compiling with Swift 6.3.3.
 
 `ArtworkCacheTests` uses its own ephemeral URLSession and temporary disk
 directory to verify visible requests are not queued behind speculative work,
