@@ -190,7 +190,8 @@ this is where the direct macOS competitors (EKO, Supersonic) compete.
 ### Tracked, unscheduled (revisit on demand)
 - ~~SwiftUI scroll-position persistence~~ — shipped 2026-07-18 for the
   Albums grid, Home, and artist detail via `scrollPosition(id:)` +
-  `@AppStorage`.
+  `@AppStorage`. Artists master-list restoration followed on 2026-08-25
+  (#29), using a native-list bridge with the same ID-based scroll memory.
 - **Cache genre songs / playlist detail in LibraryModel** so Back doesn't
   refetch with a spinner flash. S.
 - **Public share links** (`createShare`) — "Copy Share Link" context
