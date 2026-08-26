@@ -59,6 +59,29 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #77: ⌘I opens Get Info (2026-08-25)
+Get Info was reachable only from the track table's right-click context menu.
+Added ⌘I as a shortcut, matching Music.app.
+
+- Followed the existing ⏎/Space pattern rather than a menu-bar `CommandGroup`:
+  `InnerTableView.keyDown` (`TrackTableLifecycle.swift`) now also recognizes
+  ⌘I and calls a new `onGetInfo` closure, wired through `MusicTrackTable`'s
+  `Coordinator.getInfoSelected()` up to `TrackTableView`'s existing `infoSong`
+  sheet state — the same trigger the context menu's "Get Info" item already
+  uses. `getInfoSelected()` mirrors that item's single-selection-only
+  constraint (a no-op with zero or multiple rows selected).
+  Table-focus-scoped rather than global sidesteps needing SwiftUI
+  `@FocusedValue` plumbing to resolve "the selected row in whichever table
+  has focus" from a menu-bar command — ⏎/Space already don't appear in the
+  menu bar either, for the same reason.
+- `docs/04-ui-ux.md` updated with the shortcut.
+
+Verification: unsigned macOS build clean, zero compiler warnings; the full
+Swift Testing suite passes (249 executed cases, 0 failures); SwiftLint is
+clean. Live-verified 2026-08-25 against Tim's real Navidrome server:
+selecting a single track and pressing ⌘I opened its Get Info sheet, matching
+the context-menu item; confirmed inert with zero or multiple rows selected.
+
 ## Issue #73: composer track detail view (2026-08-25)
 Completes E4 (#12). Replaces `ComposersView`'s placeholder detail with the
 real composer track list, and covers the epic's last acceptance criterion:
