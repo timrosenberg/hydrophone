@@ -48,9 +48,8 @@ E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
 work-header double-click all done) ·
-E7 🚧 (artwork prefetch review fixes implemented; build, full tests, lint,
-and local signing pass; live artwork verification blocked by demo-server
-cover-art timeouts — see the 2026-08-26 entry below)
+E7 ✅ (bounded artwork prefetch and cache budget; build, full tests, lint,
+and live artwork verification pass — see the 2026-08-26 entry below)
 
 ## How to build / test
 ```sh
@@ -107,8 +106,17 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   remained placeholders while scrolling. Independent authenticated
   requests outside the app also timed out for three different covers at
   160 px, 480 px, and original size (35-second timeout each). This does not
-  establish successful live artwork behavior. Keep the PR draft and retain
-  the local commits until a real-server artwork check passes.
+  establish successful live artwork behavior; the alternate real-server
+  check below resolves this initial verification blocker.
+- Completed live verification: **2026-08-26, user-authorized private
+  Navidrome 0.63.2 (be10f89c) server** (address and library details withheld).
+  The signed PR build used the existing saved connection without changing
+  credentials. Artwork remained loaded across multi-page scrolling,
+  pagination, window zoom/restore, opening an album and returning to the
+  grid. Album tracks loaded from the server, and a new artwork cache file
+  was written during the check. Existing artwork caches were retained;
+  this is a functional live check, not a cold-cache timing benchmark.
+  The test instance was closed after verification.
 
 ## Issue #15: artwork prefetch + cache budget (E7, 2026-08-26)
 
@@ -3073,10 +3081,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
 - ✅ PR #87 local signed build and strict signature verification pass using
   the available user Developer ID identity via command-line overrides;
   project signing settings are unchanged.
-- 🚧 PR #87 live artwork check: demo-server connection and metadata work,
-  but images remain placeholders. Three independent cover-art requests
-  also timed out after 35 seconds each. No successful live scrolling claim;
-  PR remains draft and local fixes are not pushed or merged.
+- ✅ PR #87 live artwork check (2026-08-26): signed PR build against the
+  user-authorized private Navidrome 0.63.2 server; scrolling, pagination,
+  resizing, album detail and Back retain artwork. Credentials unchanged;
+  existing caches retained. The earlier public demo attempt timed out and
+  is not counted as successful verification.
 - Previous full-suite verification after #29: **255 test cases, 264
   executions including parameters, 0 failures/skips**, 2026-08-25. This is
   historical evidence, not verification of the PR #87 changes.
