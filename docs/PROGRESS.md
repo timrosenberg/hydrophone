@@ -59,6 +59,33 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #15: artwork prefetch + cache budget (E7, 2026-08-26)
+
+- `ArtworkCache.prefetch(coverArt:cacheKey:size:)` is a fire-and-forget
+  warmer sharing `image`'s cache/in-flight de-dup, so a prefetch that's
+  already cached or loading is a no-op. Raised the in-memory tier from a
+  400-entry `countLimit` to a byte-based budget (`totalCostLimit`, ~200 MB
+  of decoded pixels) plus a looser 1,000-entry backstop, so a large grid's
+  visible + prefetched range doesn't get evicted by count alone.
+- `AlignedAdaptiveGrid` now reports its actual on-screen tile width via an
+  optional `tileWidth: Binding<CGFloat>?` (unused by `ArtistDetailView`'s
+  grid, which is unchanged). `ArtworkView.fetchPixels(forSize:)` is now a
+  static helper shared by the view and the new prefetch driver, so a
+  prefetched size lands on the same cache entry the view goes on to
+  request instead of warming a variant nobody asks for.
+- `AlbumsView` drives a viewport-ahead prefetch from each cell's
+  `onAppear` (SwiftUI's lazy grid has no first-class prefetch hook): warms
+  the next 24 albums past the one that just scrolled into view, sized to
+  the grid's live tile width. `ArtistDetailView`'s smaller per-artist grid
+  is out of scope for this pass.
+- New tests: `prefetchIgnoresMissingCoverArt` (nil/empty coverArt is a
+  no-op, matching `image`'s guard) and `fetchPixelsQuantizesToA160PxGrid`
+  (the shared sizing helper's quantum boundaries).
+- Gate: **not run — cloud session, no Xcode/simulator/server available**
+  (see `docs/11-agent-workflow.md`'s cloud-session procedure). Build,
+  tests, SwiftLint, and live verification against a real server are
+  deferred to a local machine before merge; PR opened as a draft.
+
 ## Issue #29: restore Artists master-list scroll position (2026-08-25)
 
 - Artists now stores the top-visible artist ID separately from its selection

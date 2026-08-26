@@ -16,6 +16,20 @@ struct ArtworkCacheTests {
         #expect(ArtworkCache.shared.clientBox != nil)
     }
 
+    /// `prefetch` is the viewport-ahead warmer the albums grid drives from
+    /// `onAppear` (issue #15/E7) — it must guard the same nil/empty inputs as
+    /// `image(coverArt:cacheKey:size:)` rather than crash or spin up a
+    /// pointless fetch task.
+    @Test func prefetchIgnoresMissingCoverArt() async {
+        let cache = ArtworkCache.shared
+        cache.clientBox = nil
+        cache.prefetch(coverArt: nil, size: 320)
+        cache.prefetch(coverArt: "", size: 320)
+        // No task was scheduled, so there is nothing to await; a follow-up
+        // cache lookup for a made-up key must still miss.
+        #expect(cache.cachedVariant(key: "no-such-key") == nil)
+    }
+
     /// Songs of one album must share a cache identity (servers hand each song
     /// its own coverArt id for the same image), and that identity must match
     /// the album's — so the album page, hero and queue all reuse one download.
@@ -46,6 +60,17 @@ struct ArtworkCacheTests {
         #expect(ArtworkCache.retryDelay(from: response(["Retry-After": "900"])) == 30)  // clamp
         #expect(ArtworkCache.retryDelay(from: response([:])) == 2)                      // default
         #expect(ArtworkCache.retryDelay(from: response(["Retry-After": "soon"])) == 2)  // junk
+    }
+
+    /// The albums grid's prefetch driver (issue #15/E7) sizes its warm-up
+    /// fetch with this same helper `ArtworkView` uses for its own on-appear
+    /// fetch, so a prefetched size actually lands on the cache entry the view
+    /// goes on to request instead of warming a variant nobody asks for.
+    @Test func fetchPixelsQuantizesToA160PxGrid() {
+        #expect(ArtworkView.fetchPixels(forSize: 0) == 160)     // floor
+        #expect(ArtworkView.fetchPixels(forSize: 80) == 160)    // 80*2 = 160, exact
+        #expect(ArtworkView.fetchPixels(forSize: 160) == 320)   // 160*2 = 320, exact
+        #expect(ArtworkView.fetchPixels(forSize: 161) == 480)   // rounds up a quantum
     }
 
     @Test func limiterCapsConcurrencyAndRunsEveryBody() async {

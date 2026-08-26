@@ -25,9 +25,19 @@ pixel size`:
   id. One trade-off: per-track embedded art that differs from the album
   cover is not shown (the album cover wins) — never fetch a cover that the
   album identity already has. Artist/playlist ids are their own identity.
-- **In-memory** `NSCache` (count-bounded) for the hot path, plus a per-identity
-  size index so a different-size request can show an already-loaded variant
-  instantly (no placeholder flash).
+- **In-memory** `NSCache` bounded by a byte budget (`totalCostLimit`, ~200 MB
+  of decoded pixels — a full-res hero and a grid thumbnail don't count the
+  same against it — plus a looser 1,000-entry `countLimit` backstop) for the
+  hot path, plus a per-identity size index so a different-size request can
+  show an already-loaded variant instantly (no placeholder flash).
+- **Viewport-ahead prefetch.** `prefetch(coverArt:cacheKey:size:)` warms the
+  memory/disk tiers for artwork that isn't on screen yet — a fire-and-forget
+  call sharing `image`'s cache/in-flight de-dup. The Albums grid
+  (`AlbumsView`) drives this from each cell's `onAppear`, warming a bounded
+  window of albums past the one that just scrolled into view (SwiftUI's lazy
+  grid has no first-class prefetch hook) sized to the grid's actual on-screen
+  tile width, reported by `AlignedAdaptiveGrid`, so the warmed variant
+  matches what `ArtworkView` goes on to request. See issue #15 (E7).
 - **On-disk** store under `Caches/<bundleId>/Artwork`, filenames are the SHA-256
   of the key; the original downloaded bytes (webp/jpeg) are written as-is.
   Because cover art is immutable, a disk hit is authoritative and kept

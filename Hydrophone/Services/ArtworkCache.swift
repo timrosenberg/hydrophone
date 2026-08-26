@@ -43,8 +43,19 @@ final class ArtworkCache {
     /// share it directly (the cache is a singleton). See issue #4.
     private static let fetchLimiter = AsyncLimiter(limit: 6)
 
+    /// Byte budget for the in-memory tier, sized in decoded-pixel bytes (see
+    /// `cost(of:)`) rather than entry count alone: a handful of now-playing
+    /// heroes at full size shouldn't crowd out hundreds of grid thumbnails.
+    /// ~200 MB comfortably holds a large album grid's visible + prefetched
+    /// range without pinning excessive memory. See issue #15 (E7).
+    private static let memoryBudgetBytes = 200 * 1_024 * 1_024
+
     init() {
-        cache.countLimit = 400
+        // Count limit is a loose backstop; totalCostLimit (byte-based) does
+        // the real bounding so raising the visible+prefetch window doesn't
+        // silently blow the memory budget.
+        cache.countLimit = 1_000
+        cache.totalCostLimit = Self.memoryBudgetBytes
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         diskRoot = base
@@ -81,7 +92,7 @@ final class ArtworkCache {
             let image = await Self.load(id: id, identity: identity, size: size,
                                         client: client, dir: dir)
             if let self, let image {
-                self.cache.setObject(image, forKey: key as NSString)
+                self.cache.setObject(image, forKey: key as NSString, cost: Self.cost(of: image))
                 if !(self.sizesByID[identity]?.contains(size) ?? false) {
                     self.sizesByID[identity, default: []].append(size)
                 }
@@ -91,6 +102,17 @@ final class ArtworkCache {
         }
         inFlight[key] = task
         return await task.value
+    }
+
+    /// Warms the memory (and, transitively, disk) tier for artwork that
+    /// isn't on screen yet — a grid can call this for rows just past the
+    /// viewport so they're already decoded by the time they scroll into
+    /// view. Fire-and-forget: shares `image`'s cache/in-flight de-dup, so a
+    /// prefetch that's already cached or already loading is a no-op, and a
+    /// prefetch miss just falls back to the normal on-appear fetch.
+    func prefetch(coverArt id: String?, cacheKey: String? = nil, size: Int) {
+        guard let id, !id.isEmpty else { return }
+        Task { _ = await image(coverArt: id, cacheKey: cacheKey, size: size) }
     }
 
     /// Any in-memory variant for the cache identity (largest available), used
@@ -223,6 +245,16 @@ final class ArtworkCache {
               let seconds = TimeInterval(raw.trimmingCharacters(in: .whitespaces)),
               seconds > 0 else { return 2 }
         return min(seconds, 30)
+    }
+
+    /// Approximate decoded footprint (4 bytes/pixel, RGBA) so `totalCostLimit`
+    /// bounds actual memory rather than entry count — a full-res hero and a
+    /// grid thumbnail shouldn't count the same against the budget.
+    private nonisolated static func cost(of image: NSImage) -> Int {
+        let rep = image.representations.first
+        let width = rep?.pixelsWide ?? Int(image.size.width)
+        let height = rep?.pixelsHigh ?? Int(image.size.height)
+        return max(width, 0) * max(height, 0) * 4
     }
 
     private nonisolated static func filename(identity: String, size: Int) -> String {

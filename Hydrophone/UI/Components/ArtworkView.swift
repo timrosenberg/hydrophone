@@ -31,7 +31,13 @@ struct ArtworkView: View {
     /// Requested pixel size: displayed points × screen scale, rounded up to a
     /// 160px quantum so live resizes (the geometry-sized hero) reuse a handful
     /// of cache entries instead of fetching one variant per pixel.
-    private var fetchPixels: Int {
+    private var fetchPixels: Int { Self.fetchPixels(forSize: size) }
+
+    /// Shared with prefetch drivers (e.g. the albums grid's viewport-ahead
+    /// warmer) so a prefetched size actually matches what this view goes on
+    /// to request — otherwise the prefetch would warm a variant this view
+    /// never asks for.
+    static func fetchPixels(forSize size: CGFloat) -> Int {
         max(Int((size * 2 / 160).rounded(.up)) * 160, 160)
     }
 

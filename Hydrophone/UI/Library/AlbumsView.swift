@@ -13,6 +13,16 @@ struct AlbumsView: View {
     @AppStorage("albumsScrollID") private var storedScrollID = ""
     /// The restore has been consumed by a user scroll (see `scrollMemory`).
     @State private var scrollRestored = false
+    /// Current tile width, reported by `AlignedAdaptiveGrid` as columns are
+    /// recomputed — sizes the prefetch driver's fetches to match what
+    /// `ArtworkView` will actually request (see `prefetchArtwork(after:)`).
+    @State private var tileWidth: CGFloat = 160
+
+    /// How many albums past the one that just appeared to warm ahead of the
+    /// scroll. SwiftUI's lazy grid has no first-class prefetch hook, so this
+    /// rides the same near-edge `onAppear` used for pagination — bounded so a
+    /// fast scroll doesn't fan out far more fetches than the viewport needs.
+    private static let prefetchAhead = 24
 
     private var scrollBinding: Binding<Album.ID?> {
         .scrollMemory(read: { storedScrollID }, write: { storedScrollID = $0 },
@@ -42,8 +52,8 @@ struct AlbumsView: View {
             .padding(.vertical, 8)
 
             ScrollView {
-                AlignedAdaptiveGrid(tileMinimum: 160, spacing: 20) {
-                    ForEach(library.albums) { album in
+                AlignedAdaptiveGrid(tileMinimum: 160, spacing: 20, tileWidth: $tileWidth) {
+                    ForEach(Array(library.albums.enumerated()), id: \.element.id) { index, album in
                         Button { navigator.openAlbum(album) } label: {
                             AlbumGridCell(coverArt: album.coverArt,
                                           cacheKey: album.artworkKey,
@@ -56,6 +66,7 @@ struct AlbumsView: View {
                                 await library.loadMoreAlbums()
                             }
                         }
+                        .onAppear { prefetchArtwork(after: index) }
                     }
                 }
                 .padding(20)
@@ -70,6 +81,20 @@ struct AlbumsView: View {
         .task {
             await library.loadAlbumsIfNeeded()
             await library.loadGenresIfNeeded()   // feeds the filter menu
+        }
+    }
+
+    /// Warms artwork for the next `prefetchAhead` albums past the one that
+    /// just scrolled into view, sized to match the grid's actual tile width
+    /// so the fetch lands on the same cache entry `ArtworkView` will request.
+    private func prefetchArtwork(after index: Int) {
+        let albums = library.albums
+        let upperBound = min(index + 1 + Self.prefetchAhead, albums.count)
+        guard index + 1 < upperBound else { return }
+        let pixels = ArtworkView.fetchPixels(forSize: tileWidth)
+        for album in albums[(index + 1)..<upperBound] {
+            ArtworkCache.shared.prefetch(coverArt: album.coverArt, cacheKey: album.artworkKey,
+                                         size: pixels)
         }
     }
 
