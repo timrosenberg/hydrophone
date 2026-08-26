@@ -54,7 +54,7 @@ struct NavidromeLiveTests {
         #expect(!artists.isEmpty)
     }
 
-    /// Full library pull via `songIndex()` — proves the concurrent walk,
+    /// Non-missing library pull via `songIndex()` — proves the concurrent walk,
     /// tolerant decode of `participants`/`tags`, and in-session cache all
     /// work end to end against a real library. Elapsed time is printed, not
     /// asserted on (server-dependent; ~5-15s measured against a real
@@ -63,11 +63,28 @@ struct NavidromeLiveTests {
         guard let env = liveEnv() else { return }
         let sharedClient = client(env)
 
+        let token = try await sharedClient.login()
+        let credentials = ServerCredentials(
+            baseURL: env.host, username: env.user, secret: env.pass, authMethod: .tokenSalt
+        )
+        let countRequest = try await sharedClient.apiRequest(
+            path: "song", query: [
+                URLQueryItem(name: "_start", value: "0"),
+                URLQueryItem(name: "_end", value: "1"),
+                URLQueryItem(name: "missing", value: "false")
+            ], token: token, using: credentials
+        )
+        let (_, response) = try await URLSession.shared.data(for: countRequest)
+        let http = try #require(response as? HTTPURLResponse)
+        try #require(http.statusCode == 200)
+        let filteredTotal = try #require(http.value(forHTTPHeaderField: "X-Total-Count").flatMap(Int.init))
+
         let start = Date()
         let index = try await sharedClient.songIndex()
         let elapsed = Date().timeIntervalSince(start)
         print("songIndex(): \(index.count) songs in \(String(format: "%.1f", elapsed))s")
         #expect(!index.isEmpty)
+        #expect(index.count == filteredTotal)
 
         let cachedStart = Date()
         let cached = try await sharedClient.songIndex()

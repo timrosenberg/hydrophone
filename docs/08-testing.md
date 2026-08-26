@@ -61,8 +61,11 @@ audio hardware.
   forward the invoking shell's environment into the XCTest runner process on
   at least one dev machine — confirmed via a diagnostic assertion (the test
   process saw a handful of system-injected env vars, none of the
-  `HYDROPHONE_*` ones the shell had). Both opt-in suites silently no-op in
-  that case rather than fail, so a green `xcodebuild test` locally does **not**
+  `HYDROPHONE_*` ones the shell had). Prefixing these variables with
+  `TEST_RUNNER_` when invoking `xcodebuild` successfully forwards them to the
+  runner on the current toolchain (verified for `NavidromeLiveTests` on
+  2026-08-26). Both opt-in suites silently no-op without runner credentials
+  rather than fail, so a green `xcodebuild test` locally does **not**
   by itself prove the live paths ran — check the per-test duration (a
   near-zero duration means it skipped) or verify by compiling the client
   source standalone with `swiftc` (inherits the shell environment directly)
@@ -80,11 +83,17 @@ audio hardware.
   design — it stands in for one real server across a session), so they'd race
   each other under Swift Testing's default parallel execution.
 
+  The song-index regression for #86 checks the actual outgoing `missing=false`
+  query on the first page, two later pages, and a 401 retry. It verifies all
+  1,001 fixture records are returned across those pages. The opt-in live
+  song-index test also compares the result count with an independent
+  `/api/song?_start=0&_end=1&missing=false` response's `X-Total-Count`.
+
   The same serialized network seam covers `LibraryModel`'s composer roster:
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 263 test cases; 272 executions including parameters)
+## Current suite (Swift Testing, 264 test cases; 273 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
