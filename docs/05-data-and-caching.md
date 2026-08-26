@@ -30,14 +30,18 @@ pixel size`:
   same against it — plus a looser 1,000-entry `countLimit` backstop) for the
   hot path, plus a per-identity size index so a different-size request can
   show an already-loaded variant instantly (no placeholder flash).
-- **Viewport-ahead prefetch.** `prefetch(coverArt:cacheKey:size:)` warms the
-  memory/disk tiers for artwork that isn't on screen yet — a fire-and-forget
-  call sharing `image`'s cache/in-flight de-dup. The Albums grid
-  (`AlbumsView`) drives this from each cell's `onAppear`, warming a bounded
-  window of albums past the one that just scrolled into view (SwiftUI's lazy
-  grid has no first-class prefetch hook) sized to the grid's actual on-screen
-  tile width, reported by `AlignedAdaptiveGrid`, so the warmed variant
-  matches what `ArtworkView` goes on to request. See issue #15 (E7).
+- **Viewport-ahead prefetch.** `prefetch(_:)` replaces a window of up to 24
+  `PrefetchRequest` values, sharing `image`'s cache/in-flight de-dup. One
+  worker submits at most one speculative load to the existing six-slot
+  network limiter, leaving capacity for visible artwork. Replacing the
+  window discards obsolete pending work; passing an empty window (leaving
+  Albums) or switching servers clears it. One active load may finish so a
+  visible view sharing that request is not cancelled.
+  `AlbumsView` derives the window after the furthest appearing cell and
+  refreshes it when visible IDs, the album list, or the measured tile size
+  change. It waits for a positive measurement and recomputes the shared
+  `ArtworkView.fetchPixels(forSize:)` quantum after layout/resizing, so a
+  transient initial size cannot leave the final window stale. See #15.
 - **On-disk** store under `Caches/<bundleId>/Artwork`, filenames are the SHA-256
   of the key; the original downloaded bytes (webp/jpeg) are written as-is.
   Because cover art is immutable, a disk hit is authoritative and kept

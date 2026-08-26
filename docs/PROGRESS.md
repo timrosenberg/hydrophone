@@ -47,7 +47,9 @@ play/shuffle/queue and a native-unavailable fallback — #73) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
-work-header double-click all done)
+work-header double-click all done) ·
+E7 🚧 (artwork prefetch review fixes implemented; full tests and signed live
+verification blocked locally — see the 2026-08-26 entry below)
 
 ## How to build / test
 ```sh
@@ -58,6 +60,44 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## PR #87 review fixes: bounded artwork prefetch and geometry refresh (2026-08-26)
+
+- Continued the existing `copilot/epic-e7-artwork-performance` branch in its
+  matching worktree; the primary checkout remains on `main` unchanged.
+- Replaced per-cell fire-and-forget fetches with one replaceable window of
+  at most 24 requests and one speculative worker. Obsolete pending requests
+  are discarded on scroll, resize, leaving Albums, or server change. One
+  active request may finish so a visible caller sharing it is not cancelled;
+  speculative work cannot occupy all six network slots.
+- Albums tracks appearing IDs and derives its window after the furthest one.
+  It waits for measured geometry and refreshes on size/list/visibility changes.
+  The artist grid, cache identity, 200 MB budget, retries, and playback are
+  unchanged. Cache tests use an isolated URLSession and temporary disk store.
+- Regression evidence: the original cache delayed a newly visible image
+  behind 24 speculative requests (1.31 s with mocked 250 ms responses); the
+  fixed cache started it alongside the sole active prefetch (0.27 s).
+  A temporary harness hosting the actual AlbumsView showed the original's
+  final window stuck at 320 px at a 740-point view width; the fixed final
+  window uses 480 px after layout settles. The same rendered-view harness
+  also passes resize (640 px at 570 points), leaving Albums (empty window),
+  and returning (refilled measured window). These are controlled diagnostics,
+  not live-server verification.
+- Focused verification: all **12 ArtworkCacheTests** pass (0 failures/skips,
+  canonical xcresult summary). Added coverage for visible demand, window
+  replacement/clearing, visible in-flight joins, server changes, bounding,
+  cache reuse, and measured-size/visible-ID selection. Only this test file
+  was compiled for the focused run because unrelated tests fail to compile.
+- Full gate: final unsigned build, full test run, and lint results recorded
+  in the Verification status block below. The full suite is blocked by
+  pre-existing Swift concurrency errors on Xcode 26.6; the same failure was
+  reproduced at the PR base before edits. A focused diagnostic additionally
+  exposed the same error in ComposerSongLibraryModelTests.swift:201.
+- Signed live verification: **blocked**. The normal build cannot find the
+  Developer ID Application certificate/private key for team `4HNWJ993V9`.
+  No signing settings were changed or protections bypassed. No real-server
+  scrolling result is claimed. Keep the PR draft; no push until the gate
+  blockers are addressed.
 
 ## Issue #15: artwork prefetch + cache budget (E7, 2026-08-26)
 
@@ -3011,19 +3051,23 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
-- ✅ `xcodebuild build` succeeds (Debug, arm64, macOS 15 target) with
-  **zero compiler warnings** (clean build; the former ~29-warning baseline was
-  eliminated 2026-07-07 — always-true casts collapsed via typed throws,
-  `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
-  boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite after #29 passes (**255 test cases,
-  264 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
-  CI repeats the run on every push
-  (`.github/workflows/tests.yml`).
-- ✅ `swiftlint` — **0 violations** (2026-08-25).
+- ✅ PR #87 local review fixes (2026-08-26): standard unsigned build succeeds
+  with zero compiler warnings; SwiftLint and `git diff --check` pass with
+  zero violations. Focused artwork tests pass (**12 cases, 0 failures/skips**).
+- 🚧 Full-suite verification is blocked on Xcode 26.6 by pre-existing
+  `passing closure as a 'sending' parameter` errors, including
+  `ConnectionModelNativeFeaturesTests.swift:286` and
+  `ComposerSongLibraryModelTests.swift:201`. The original PR head and base
+  already fail to compile; focused tests are not a full-suite pass.
+- 🚧 PR #87 signed live check blocked: missing Developer ID Application
+  certificate/private key for configured team `4HNWJ993V9`; no real-server
+  scrolling claim and no signing changes.
+- Previous full-suite verification after #29: **255 test cases, 264
+  executions including parameters, 0 failures/skips**, 2026-08-25. This is
+  historical evidence, not verification of the PR #87 changes.
 - ✅ Artists master-list scroll restoration — live demo-server Back/relaunch,
-  top-of-list, keyboard selection, and focused Space checks pass (2026-08-25;
-  details in the #29 entry above).
+  top-of-list, keyboard selection, and focused Space checks passed 2026-08-25
+  (details in the #29 entry above).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

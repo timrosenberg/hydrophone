@@ -13,16 +13,13 @@ struct AlbumsView: View {
     @AppStorage("albumsScrollID") private var storedScrollID = ""
     /// The restore has been consumed by a user scroll (see `scrollMemory`).
     @State private var scrollRestored = false
-    /// Current tile width, reported by `AlignedAdaptiveGrid` as columns are
-    /// recomputed — sizes the prefetch driver's fetches to match what
-    /// `ArtworkView` will actually request (see `prefetchArtwork(after:)`).
-    @State private var tileWidth: CGFloat = 160
+    /// Zero means layout has not measured the grid yet; do not guess a size.
+    @State private var tileWidth: CGFloat = 0
+    @State private var visibleAlbumIDs: Set<Album.ID> = []
 
-    /// How many albums past the one that just appeared to warm ahead of the
-    /// scroll. SwiftUI's lazy grid has no first-class prefetch hook, so this
-    /// rides the same near-edge `onAppear` used for pagination — bounded so a
-    /// fast scroll doesn't fan out far more fetches than the viewport needs.
-    private static let prefetchAhead = 24
+    private var prefetchRequests: [ArtworkCache.PrefetchRequest] {
+        Self.artworkToPrefetch(albums: library.albums, visibleIDs: visibleAlbumIDs, tileWidth: tileWidth)
+    }
 
     private var scrollBinding: Binding<Album.ID?> {
         .scrollMemory(read: { storedScrollID }, write: { storedScrollID = $0 },
@@ -53,7 +50,7 @@ struct AlbumsView: View {
 
             ScrollView {
                 AlignedAdaptiveGrid(tileMinimum: 160, spacing: 20, tileWidth: $tileWidth) {
-                    ForEach(Array(library.albums.enumerated()), id: \.element.id) { index, album in
+                    ForEach(library.albums) { album in
                         Button { navigator.openAlbum(album) } label: {
                             AlbumGridCell(coverArt: album.coverArt,
                                           cacheKey: album.artworkKey,
@@ -66,7 +63,8 @@ struct AlbumsView: View {
                                 await library.loadMoreAlbums()
                             }
                         }
-                        .onAppear { prefetchArtwork(after: index) }
+                        .onAppear { visibleAlbumIDs.insert(album.id) }
+                        .onDisappear { visibleAlbumIDs.remove(album.id) }
                     }
                 }
                 .padding(20)
@@ -78,23 +76,28 @@ struct AlbumsView: View {
             .scrollPosition(id: scrollBinding, anchor: .top)
         }
         .navigationTitle("Albums")
+        .onChange(of: prefetchRequests, initial: true) { _, requests in
+            ArtworkCache.shared.prefetch(requests)
+        }
+        .onDisappear {
+            visibleAlbumIDs.removeAll()
+            ArtworkCache.shared.prefetch([])
+        }
         .task {
             await library.loadAlbumsIfNeeded()
             await library.loadGenresIfNeeded()   // feeds the filter menu
         }
     }
 
-    /// Warms artwork for the next `prefetchAhead` albums past the one that
-    /// just scrolled into view, sized to match the grid's actual tile width
-    /// so the fetch lands on the same cache entry `ArtworkView` will request.
-    private func prefetchArtwork(after index: Int) {
-        let albums = library.albums
-        let upperBound = min(index + 1 + Self.prefetchAhead, albums.count)
-        guard index + 1 < upperBound else { return }
+    /// Derive one window from the furthest appearing cell. Measuring/resizing,
+    /// scrolling and pagination all change this value and replace pending work.
+    static func artworkToPrefetch(albums: [Album], visibleIDs: Set<Album.ID>,
+                                  tileWidth: CGFloat) -> [ArtworkCache.PrefetchRequest] {
+        guard tileWidth > 0,
+              let last = albums.lastIndex(where: { visibleIDs.contains($0.id) }) else { return [] }
         let pixels = ArtworkView.fetchPixels(forSize: tileWidth)
-        for album in albums[(index + 1)..<upperBound] {
-            ArtworkCache.shared.prefetch(coverArt: album.coverArt, cacheKey: album.artworkKey,
-                                         size: pixels)
+        return albums.dropFirst(last + 1).prefix(ArtworkCache.prefetchLimit).map {
+            .init(coverArt: $0.coverArt, cacheKey: $0.artworkKey, size: pixels)
         }
     }
 
