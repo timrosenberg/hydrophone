@@ -107,10 +107,9 @@ otherwise; see `SubsonicClient.formPostRequest`).
 - `getSongsByGenre` — songs in a genre, with `count`/`offset` → pagination.
 - `getRandomSongs` — backs the Songs view (Subsonic has no "all songs"
   endpoint; a fuller aggregation is a tracked deferral).
-- `getSong` — resolves the ids from Navidrome's native composer-song lookup
-  into complete `Song` values for track-table and playback consumers. Fetches
-  are best-effort, preserve composer order, and are capped at six concurrent
-  requests before work/movement metadata is joined.
+- `getSong` — single-song endpoint, retained for independent metadata checks.
+  Composer resolution no longer calls it: cached native rows map directly
+  into `Song` values (#85), preserving source order and the work/movement join.
 
 ### Discovery (added 2026-07-18, M10)
 - `getArtistInfo2` — artist bio + similar artists (server metadata agent,
@@ -274,10 +273,28 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   `invalidateSongIndex()` clears the cache and retires any in-flight build for
   a future rebuild (e.g. after a library scan; the trigger itself isn't wired
   up yet).
-  `NativeSongRecord` carries `id`/`title`, `participants`
-  (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw `tags`
-  (`[String: [String]]`) — kept separate from `Song` (`SubsonicModels.swift`),
-  the playback pipeline's model.
+  `NativeSongRecord` carries optional row metadata as well as `id`/`title`,
+  `participants` (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw
+  `tags` (`[String: [String]]`). It stays separate from `Song`
+  (`SubsonicModels.swift`), the playback pipeline's model.
+- **Playable composer rows (#85):** `LibraryModel.songs(forComposer:)` maps
+  the existing cached composer-filtered records directly to `Song`; there is
+  no per-track `getSong` request or second library cache. Native fractional
+  duration is truncated to seconds, `trackNumber`/`sampleRate` map to
+  `track`/`samplingRate`, and composer credits retain Navidrome's bullet join
+  and optional subroles. The mapping preserves album artist, genre(s),
+  comment/groupings, sort title, dates/play count, and all four ReplayGain
+  values. Zero/empty fields omitted by Subsonic remain nil, preserving Info
+  labels and nil-last column sorting; sample rate retains its wire zero value.
+  Optional invalid timestamps become nil without losing the index.
+  `coverArt` uses the song id accepted by `getCoverArt`, while `artworkKey`
+  still shares the cache by album id. Native favorite annotations seed the
+  row; loaded favorites and optimistic overrides take precedence, including
+  Get Info's direct `Song.starred` read. MIME labels follow Navidrome's
+  [default format map](https://github.com/navidrome/navidrome/blob/v0.63.2/resources/mime_types.yaml),
+  not macOS aliases; unknown/custom formats retain the suffix without an
+  inferred MIME label. Streaming, cache invalidation, and the existing
+  `missing=false` filter are unchanged.
 - **Work/movement join onto `Song` (#45, epic #13):** `NavidromeClient`
   exposes `workMetadata(songId:)` (#25, one song) and
   `workInfo(forSongIds:)` (#45, many songs at once) against the same reusable

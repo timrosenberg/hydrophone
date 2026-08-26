@@ -44,7 +44,8 @@ store page linked from website + README) ·
 E4 ✅ (Navidrome composer roster + song lookup — #71; native-gated sidebar
 route and resizable composer master list — #72; composer track detail with
 play/shuffle/queue and a native-unavailable fallback — #73; song index excludes
-missing/deleted files — #86) ·
+missing/deleted files — #86; cached native rows resolve directly to playable
+songs with no per-track requests — #85) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
 Title-column movement text under a work header, #53 spacer row, and #55
@@ -61,6 +62,60 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #85: resolve composer songs without per-track requests (2026-08-26)
+
+- `LibraryModel.songs(forComposer:)` maps the existing cached native records
+  directly to `Song`, removing the six-way `getSong` fan-out. Composer
+  filtering, source order, `missing=false`, cache invalidation, and the
+  existing WorkInfo join are unchanged. No second library cache or #81
+  dependency was introduced.
+- Expanded optional native metadata covers table, playback, and Get Info
+  fields, including fractional duration, composer subroles, ReplayGain,
+  dates, genre/grouping, and sort title. Zero/empty values follow Subsonic
+  omission semantics; malformed optional dates cannot discard the index.
+  MIME labels match Navidrome's default map instead of macOS aliases.
+  The legacy song-id artwork identity fetches the same bytes as the
+  reference `getSong.coverArt`; album-id cache sharing is retained.
+- Native star annotations seed rows, with loaded favorites and optimistic
+  overrides taking precedence, including Get Info's direct star flag.
+- Regression tests cover 600 songs over two native pages, repeat-cache
+  reads, zero `getSong` calls even when that endpoint fails, metadata/work
+  parity, favorite overrides, sparse/zero fields, malformed dates, format
+  aliases, and partial ReplayGain. Request and metadata regressions were
+  observed failing before their fixes. Independent read-only review found
+  no remaining actionable findings.
+- Final local gate: unsigned build succeeds with zero warnings; the full
+  suite passes **273 test cases / 289 executions including parameters,
+  0 failures/skips** (canonical xcresult summary). SwiftLint and
+  `git diff --check` pass. Test compilation emits the existing AppIntents
+  extraction notice, not a compiler warning. The opt-in live test also ran
+  separately and passed; its ordinary no-op is not counted as live evidence.
+- Live verification: **2026-08-26, user-authorized private Navidrome 0.63.2
+  server (host redacted)**. Bach returned **596** rows and Beethoven
+  **514**, each with **zero resolution `getSong` calls**. Three independent
+  reference rows per composer matched metadata and artwork bytes. Cold
+  Bach load, including the full native-index walk, took **44.873 s**;
+  cached Bach took about **12 ms**, Beethoven's first mapped load **29 ms**,
+  and cached Beethoven about **11 ms**. The cold index cost is not fixed
+  or hidden by this change.
+- Exact signed-app UI check: both lists displayed titles, albums, artists,
+  durations and quality. Bach's Get Info showed the actual cover, composer,
+  year/track/disc, format, bitrate, size, and a favorite surviving reload.
+  The temporary favorite was restored and independently confirmed unstarred
+  on the server. Bach's first fugue played with the timer advancing from
+  **0:18 to 0:30**; Beethoven's first variation played from **0:06 to 0:14**.
+  Playback was paused and the verification app closed. Local Developer ID
+  command-line overrides and strict signature verification were used;
+  project signing settings and saved credentials were unchanged.
+- Earlier verification attempts: simultaneous cold UI/test index walks
+  encountered a server timeout; the final isolated live run passed. One
+  initial Beethoven playback attempt aborted in the unchanged
+  `PlaybackService.currentSampleTime()` / `AVAudioPlayerNode` path; after
+  relaunch the same mapped track and Bach played successfully. That
+  intermittent engine failure is recorded, not diagnosed or fixed here.
+- API/testing contracts (`02`, `08`) are synchronized. No UI, engine,
+  authentication, pagination, or broader #20/#81 work is included.
 
 ## Issue #86: exclude missing files from the native song index (2026-08-26)
 
@@ -3115,6 +3170,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #85 (2026-08-26): unsigned build has zero warnings; full suite
+  **273 cases / 289 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Request/metadata regressions have red/green evidence.
+- ✅ Issue #85 live (2026-08-26): private Navidrome 0.63.2; Bach **596** and
+  Beethoven **514**, zero resolution `getSong` calls, reference metadata and
+  artwork-byte parity, and cached repeat loads around **11–12 ms**. Signed
+  UI playback, Info, and favorite restoration pass. The cold-index timeout
+  and initial intermittent engine abort are recorded in the entry above.
 - ✅ Issue #86 (2026-08-26): unsigned build has zero warnings; full suite
   passes **264 cases / 273 executions, 0 failures/skips**; strict SwiftLint
   and `git diff --check` pass. The regression was verified failing before
