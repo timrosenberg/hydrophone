@@ -14,17 +14,12 @@ struct TrackInfoView: View {
                             size: 88, cornerRadius: 8)
                     .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(song.title)
-                        .font(.title3.weight(.bold))
-                        .lineLimit(2)
-                    Text(song.artist ?? "—")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    SelectableText(text: song.title, font: .boldSystemFont(ofSize: 15),
+                                    maximumNumberOfLines: 2)
+                    SelectableText(text: song.artist ?? "—", color: .secondaryLabelColor)
                     if let album = song.album, !album.isEmpty {
-                        Text(album)
-                            .font(.callout)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                        SelectableText(text: album, font: .systemFont(ofSize: 12),
+                                        color: .tertiaryLabelColor)
                     }
                 }
                 Spacer(minLength: 0)
@@ -33,28 +28,32 @@ struct TrackInfoView: View {
 
             Form {
                 if let genre = song.displayGenre {
-                    LabeledContent("Genre", value: genre)
+                    LabeledContent("Genre") { SelectableText(text: genre) }
                 }
                 if let composer = song.nonEmptyDisplayComposer {
-                    LabeledContent("Composer", value: composer)
+                    LabeledContent("Composer") { SelectableText(text: composer) }
                 }
                 if let year = song.year {
-                    LabeledContent("Year", value: String(year))
+                    LabeledContent("Year") { SelectableText(text: String(year)) }
                 }
                 if let track = song.track {
-                    LabeledContent("Track", value: song.discNumber.map { "\(track) on disc \($0)" }
-                        ?? String(track))
+                    LabeledContent("Track") {
+                        SelectableText(text: song.discNumber.map { "\(track) on disc \($0)" }
+                            ?? String(track))
+                    }
                 }
-                LabeledContent("Time", value: formatTime(song.duration))
+                LabeledContent("Time") { SelectableText(text: formatTime(song.duration)) }
                 if let format = format {
-                    LabeledContent("Format", value: format)
+                    LabeledContent("Format") { SelectableText(text: format) }
                 }
                 if let bitRate = song.bitRate {
-                    LabeledContent("Bit Rate", value: "\(bitRate) kbps")
+                    LabeledContent("Bit Rate") { SelectableText(text: "\(bitRate) kbps") }
                 }
                 if let size = song.size {
-                    LabeledContent("Size", value: ByteCountFormatter.string(
-                        fromByteCount: Int64(size), countStyle: .file))
+                    LabeledContent("Size") {
+                        SelectableText(text: ByteCountFormatter.string(
+                            fromByteCount: Int64(size), countStyle: .file))
+                    }
                 }
                 if song.isStarred {
                     LabeledContent("Favorite", value: "★")
@@ -70,7 +69,7 @@ struct TrackInfoView: View {
             }
             .padding(16)
         }
-        .frame(width: 400)
+        .frame(width: 460)
     }
 
     /// "MP3 (audio/mpeg)"-style format line from the suffix + content type.
