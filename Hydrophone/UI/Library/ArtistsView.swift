@@ -12,6 +12,15 @@ struct ArtistsView: View {
     /// album — Back must land on the same artist. Doubles as cross-launch
     /// restoration (the app-wide @AppStorage pattern, docs/06).
     @AppStorage("artistsSelectedID") private var selectedID: Artist.ID?
+    @AppStorage("artistsListScrollID") private var storedScrollID = ""
+    @State private var scrollRestored = false
+
+    private var scrollBinding: Binding<Artist.ID?> {
+        .scrollMemory(read: { storedScrollID }, write: { storedScrollID = $0 },
+                      consumed: $scrollRestored,
+                      topIDs: { Set(library.artists.prefix(1).map(\.id)) })
+    }
+
     /// User-resizable Artists list width (via the grab strip on its trailing
     /// edge), persisted across launches — mirrors RootView's
     /// nowPlayingPanelWidth pattern.
@@ -51,6 +60,7 @@ struct ArtistsView: View {
             .listStyle(.plain)
             .playPauseOnSpace()
             .background(ListSelectionHighlightDisabler())
+            .background(ListScrollMemory(ids: library.artists.map(\.id), position: scrollBinding))
             .frame(width: listWidth)
             .overlay(alignment: .trailing) {
                 PanelResizeHandle(width: $listWidth, range: Self.listWidthRange, anchoredEdge: .leading)

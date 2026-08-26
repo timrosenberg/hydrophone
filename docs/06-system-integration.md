@@ -60,6 +60,12 @@ via a `NowPlayingCenter` service so system state can never disagree with the UI.
   `@AppStorage`/UserDefaults (app-wide on purpose — restores even when the
   system's window-restoration setting is off). Playlists are exempt from
   sort/scroll persistence (stored order is the reorder surface).
+- The Artists master list persists its top-visible artist ID separately
+  (`artistsListScrollID`), restoring once after the list loads on Back or
+  relaunch. It uses the same one-shot `Binding.scrollMemory` contract as the
+  album grids through a native-list bridge; it does not change artist
+  selection or the per-artist album-grid memory. Missing IDs are harmless,
+  and the first artist restores at the top.
 - Not persisted: column visibility/widths.
 - Full-screen and Stage Manager come free with standard scenes.
 

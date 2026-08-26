@@ -284,6 +284,12 @@ who prefer a plain table can hide it.
   parameter since this list is anchored to the leading edge of the window
   (grows on a rightward drag) rather than the trailing edge (grows on a
   leftward drag).
+  The artist list remembers its top-visible artist ID independently of the
+  selected artist and the right-hand album grid. Back and relaunch restore
+  it once after rows load; the first row stays at the top and a removed ID
+  is ignored. `ListScrollMemory` bridges the native List's backing table to
+  `Binding.scrollMemory` because `scrollPosition(id:)` does not track this
+  macOS List. Native selection, keyboard handling, and resizing are unchanged.
 - ⌘F focuses search.
 
 ## Menus & keyboard shortcuts ✅ (as implemented)

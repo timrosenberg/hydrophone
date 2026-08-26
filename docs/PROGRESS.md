@@ -32,7 +32,7 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. per-view track columns and scroll offset, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. per-view track columns, scroll offset, and Artists master-list position, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -58,6 +58,41 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #29: restore Artists master-list scroll position (2026-08-25)
+
+- Artists now stores the top-visible artist ID separately from its selection
+  (`artistsListScrollID`). Back and relaunch restore once after rows load;
+  first-row memory stays at the top and removed IDs are ignored. Later
+  scrolling updates memory without snapping back to the restored row.
+- Reused `Binding.scrollMemory` unchanged. A small `ListScrollMemory`
+  representable observes/restores the native List's backing table because
+  the issue's suggested `scrollPosition(id:)` wiring does not report or
+  restore its rows on macOS 26.6.2. Native selection, keyboard handling,
+  context menus, resize handling, and the right album grid are unchanged.
+- Four rendered native-list regressions cover recreation, free scrolling,
+  selection preservation, asynchronous loading, first/missing saved IDs,
+  returning to the top, and insertion before the saved artist. All four
+  fail when the bridge is replaced with the suggested SwiftUI modifier.
+- Gate: build **passes with zero warnings**; full suite **255 test cases,
+  264 executions including parameters, 0 failures, 0 skipped** (canonical
+  `xcresulttool` totals); SwiftLint **0 violations**; `git diff --check`
+  clean. The test build emits the existing AppIntents metadata-extraction
+  tool notice (no AppIntents framework); no compiler warnings.
+- Live: **2026-08-25, demo.navidrome.org, Navidrome 0.63.2**, isolated local
+  verification copy with an ephemeral credential store. With Various
+  Artists selected and Binaerpilot at the top-visible row, opened NCS:
+  Infinity and returned: the artist row/selection and the independently
+  scrolled album grid restored. Quit/relaunch, reconnect, and reload also
+  restored the saved row. Returning the list to the top survived another
+  album/Back cycle. Arrow selection and letter type-select worked; started
+  Back On Earth's **Brighten** and Space in the focused artist list paused
+  playback. The user's configured connection and playback queue were not
+  changed by the isolated verification copy.
+- Independent read-only implementation review found no actionable issues.
+  Other-list audit only: column-browser and Composer master lists also lack
+  explicit scroll memory; no changes here. Playlist track scroll persistence
+  remains deliberately excluded by the existing stored-order contract.
 
 ## PR #79: refresh after Get Info text-selection merge (2026-08-25)
 
@@ -2954,11 +2989,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite after PR #79 refresh passes (**251 test cases,
-  260 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
+- ✅ `xcodebuild test` — full suite after #29 passes (**255 test cases,
+  264 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
   CI repeats the run on every push
   (`.github/workflows/tests.yml`).
 - ✅ `swiftlint` — **0 violations** (2026-08-25).
+- ✅ Artists master-list scroll restoration — live demo-server Back/relaunch,
+  top-of-list, keyboard selection, and focused Space checks pass (2026-08-25;
+  details in the #29 entry above).
 
 ### Live verification — 2026-06-22, against Navidrome 0.62.0 (real server)
 Validated the networking + decode path end-to-end (opt-in `LiveDecodeTests`,

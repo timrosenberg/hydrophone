@@ -84,7 +84,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 251 test cases; 260 executions including parameters)
+## Current suite (Swift Testing, 255 test cases; 264 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -100,7 +100,7 @@ audio hardware.
 `TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
-`SidebarSelectionTests` ·
+`SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
@@ -124,6 +124,13 @@ transitions, including edits made while native columns are hidden.
 shortcut: ⌘I works with Caps Lock on or off, while plain I and additional
 Shift/Option/Control modifiers do not invoke Get Info. The Caps Lock case
 was verified failing before the modifier-filter fix and passing afterward.
+
+`ListScrollMemoryTests` hosts a real SwiftUI List/AppKit table to cover saved
+row restoration after recreation, continued scrolling without snap-back,
+unchanged selection, delayed row loading, first/missing saved IDs, returning
+to the top, and row insertions before the saved artist. All four tests fail
+when the native bridge is replaced with `scrollPosition(id:)`, which does
+not report/restore this List's rows on the verified macOS runtime.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 
