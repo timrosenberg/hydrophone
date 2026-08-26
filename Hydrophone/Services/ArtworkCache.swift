@@ -249,11 +249,16 @@ final class ArtworkCache {
 
     /// Approximate decoded footprint (4 bytes/pixel, RGBA) so `totalCostLimit`
     /// bounds actual memory rather than entry count — a full-res hero and a
-    /// grid thumbnail shouldn't count the same against the budget.
+    /// grid thumbnail shouldn't count the same against the budget. Falls back
+    /// to the image's point size when the representation reports no pixel
+    /// dimensions (`pixelsWide`/`pixelsHigh` read 0, not nil, for a rep that
+    /// genuinely lacks them — an unguarded `??` would never catch that).
     private nonisolated static func cost(of image: NSImage) -> Int {
         let rep = image.representations.first
-        let width = rep?.pixelsWide ?? Int(image.size.width)
-        let height = rep?.pixelsHigh ?? Int(image.size.height)
+        let repWidth = rep?.pixelsWide ?? 0
+        let repHeight = rep?.pixelsHigh ?? 0
+        let width = repWidth > 0 ? repWidth : Int(image.size.width)
+        let height = repHeight > 0 ? repHeight : Int(image.size.height)
         return max(width, 0) * max(height, 0) * 4
     }
 

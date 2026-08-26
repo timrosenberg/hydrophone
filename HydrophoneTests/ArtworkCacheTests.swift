@@ -67,10 +67,11 @@ struct ArtworkCacheTests {
     /// fetch, so a prefetched size actually lands on the cache entry the view
     /// goes on to request instead of warming a variant nobody asks for.
     @Test func fetchPixelsQuantizesToA160PxGrid() {
-        #expect(ArtworkView.fetchPixels(forSize: 0) == 160)     // floor
-        #expect(ArtworkView.fetchPixels(forSize: 80) == 160)    // 80*2 = 160, exact
-        #expect(ArtworkView.fetchPixels(forSize: 160) == 320)   // 160*2 = 320, exact
-        #expect(ArtworkView.fetchPixels(forSize: 161) == 480)   // rounds up a quantum
+        #expect(ArtworkView.fetchPixels(forSize: 0) == 160)     // clamped to the floor
+        #expect(ArtworkView.fetchPixels(forSize: 80) == 160)    // 80*2 = 160: exact 1st quantum
+        #expect(ArtworkView.fetchPixels(forSize: 81) == 320)    // 81*2 = 162: just over → 2nd quantum
+        #expect(ArtworkView.fetchPixels(forSize: 160) == 320)   // 160*2 = 320: exact 2nd quantum
+        #expect(ArtworkView.fetchPixels(forSize: 161) == 480)   // 161*2 = 322: just over → 3rd quantum
     }
 
     @Test func limiterCapsConcurrencyAndRunsEveryBody() async {
