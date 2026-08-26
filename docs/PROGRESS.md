@@ -59,6 +59,25 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## PR #79: refresh after Get Info text-selection merge (2026-08-25)
+
+- Merged `origin/main` at `b17b28f` into the PR branch without rebasing.
+  Resolved the sole conflict in this log by retaining both branches' entries
+  verbatim. No application code was edited during conflict resolution.
+- Reverified the combined branch: unsigned macOS build passes with zero
+  compiler warnings; **251 test cases, 260 executions including parameters,
+  0 failures, 0 skipped** (`xcresulttool` summary); SwiftLint **0 violations**;
+  `git diff --check` clean. Xcode still emits the previously documented
+  AppIntents missing-framework metadata warning.
+- Live-verified 2026-08-25 against Tim's saved real Navidrome server using a
+  separately staged Debug app signed with the available local Developer ID
+  certificate (command-line overrides only). Verified the executable path,
+  signature, and matching built-library SHA-256. A selected track opened the
+  wider Get Info sheet with artwork and metadata, both before and after
+  toggling Caps Lock. Multiple selection and search-field focus remained
+  inert. Restored Caps Lock, closed the temporary app, and reopened the
+  original app; playback remained paused.
+
 ## PR #79 follow-up: ⌘I with Caps Lock (2026-08-25)
 
 - Ignore only Caps Lock in the existing ⌘I modifier comparison. Other
@@ -105,6 +124,48 @@ Swift Testing suite passes (249 executed cases, 0 failures); SwiftLint is
 clean. Live-verified 2026-08-25 against Tim's real Navidrome server:
 selecting a single track and pressing ⌘I opened its Get Info sheet, matching
 the context-menu item; confirmed inert with zero or multiple rows selected.
+
+## Issue #44: selectable text in the Get Info sheet (2026-08-25)
+`TrackInfoView`'s title/artist/album header and every metadata row (genre,
+composer, year, track, time, format, bit rate, size) were plain SwiftUI
+`Text`/`LabeledContent`, with no way to select or copy a value out of the
+sheet.
+
+- First pass added `.textSelection(.enabled)` to the header `VStack` and the
+  `Form`, per the issue's suggested fix direction. Live testing surfaced two
+  problems that fix couldn't clear: no I-beam cursor over selectable text,
+  and — after adding an `.onHover`-driven cursor — click-drag selection was
+  still flaky, most likely `Form`'s own gesture handling fighting SwiftUI's
+  text-selection drag.
+- Replaced that with `SelectableText`, a small `NSViewRepresentable` around a
+  non-editable, selectable `NSTextField` (the standard "selectable label"
+  recipe) — the same "drop to AppKit where SwiftUI can't deliver reliable
+  behavior" pattern `MusicTrackTable` already uses for the track list. Native
+  `NSTextField` selection gives a correct I-beam cursor, reliable
+  click-drag, and a right-click Copy menu for free. The decorative "★"
+  favorite marker stays plain, unselectable text, per the issue's note.
+  `LabeledContent`'s own row label (e.g. "Genre") stays plain text too — only
+  the value is selectable, matching Finder/Music's Get Info panels.
+- `SelectableText` initially starved the header's `ArtworkView` of its layout
+  space and left long titles clipped instead of wrapping: an
+  `NSViewRepresentable` with no `sizeThatFits` override reports its full
+  unconstrained intrinsic width regardless of what SwiftUI's `HStack` can
+  actually offer it. Implementing `sizeThatFits(_:nsView:context:)` to
+  negotiate size against the proposed width fixed both — the artwork square
+  reappeared and a long title now wraps onto its 2 allotted lines
+  (`maximumNumberOfLines`) instead of overflowing.
+- Widened the sheet 400pt → 460pt (Tim's call, to give long titles more room
+  before wrapping).
+
+Verification: unsigned macOS build clean, zero compiler warnings; the full
+Swift Testing suite passes (249 executed cases, 0 failures); SwiftLint is
+clean. Live-verified 2026-08-25 against Tim's real Navidrome server, iterating
+through three rounds of his feedback: click-drag selection of the title,
+artist, album, and metadata values (Genre, Format) confirmed reliable and
+copyable; a long title ("Sonata No. 3 in F-sharp minor, Op. 23: I.
+Dramatico") wraps onto two lines with the artwork square correctly
+positioned alongside it; the wider 460pt sheet and header alignment confirmed
+looking right.
 
 ## Issue #73: composer track detail view (2026-08-25)
 Completes E4 (#12). Replaces `ComposersView`'s placeholder detail with the
@@ -2893,7 +2954,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   eliminated 2026-07-07 — always-true casts collapsed via typed throws,
   `MusicTrackTable.Coordinator` made `@MainActor`, converter input flags
   boxed, date decoding moved to Sendable `Date.ISO8601FormatStyle`).
-- ✅ `xcodebuild test` — full suite through #77 passes (**251 test cases,
+- ✅ `xcodebuild test` — full suite after PR #79 refresh passes (**251 test cases,
   260 executions including parameters, 0 failures, 0 skipped**, 2026-08-25);
   CI repeats the run on every push
   (`.github/workflows/tests.yml`).
