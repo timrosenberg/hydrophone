@@ -16,6 +16,8 @@ final class InnerTableView: NSTableView {
     var contextMenuProvider: ((IndexSet) -> NSMenu?)?
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// ⌘I, mirroring the context menu's "Get Info" item (#77).
+    var onGetInfo: (() -> Void)?
     /// Disc headers are not selectable; programmatic selection must skip them
     /// (`selectRowIndexes` bypasses the shouldSelect delegate).
     var selectableRow: ((Int) -> Bool)?
@@ -31,10 +33,15 @@ final class InnerTableView: NSTableView {
     }
 
     override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
+        let isCommandI = modifiers == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "i"
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
             onReturn?()
         } else if event.keyCode == 49 { // Space
             onSpace?()
+        } else if isCommandI {
+            onGetInfo?()
         } else {
             super.keyDown(with: event)
         }
@@ -58,6 +65,7 @@ extension MusicTrackTable {
         table.selectableRow = { context.coordinator.trackIndex(atRow: $0) != nil }
         table.onReturn = { context.coordinator.playSelected() }
         table.onSpace = { context.coordinator.parent.onSpace() }
+        table.onGetInfo = { context.coordinator.getInfoSelected() }
         table.setDraggingSourceOperationMask([.copy], forLocal: true)
         addColumns(to: table)
         context.coordinator.lastNativeFeaturesAvailable = nativeFeaturesAvailable

@@ -60,7 +60,8 @@ struct TrackTableView: View {
             onPlayNext: { song in player.playNext([song]) },
             onEnqueue: { songs in player.enqueue(songs) },
             onToggleFavorite: { song in toggleStar([song.id], star: !library.isStarred(song)) },
-            makeMenu: { displayed, indices in buildMenu(displayed, indices) }
+            makeMenu: { displayed, indices in buildMenu(displayed, indices) },
+            onGetInfo: { song in infoSong = song }
         )
         .sheet(item: $infoSong) { song in
             TrackInfoView(song: song)

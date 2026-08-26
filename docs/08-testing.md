@@ -84,7 +84,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 250 executed cases)
+## Current suite (Swift Testing, 251 test cases; 260 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -119,6 +119,11 @@ remain last in both ascending and descending order.
 native-feature picker gating, value/fallback rendering, ascending/descending
 sorting, and saved native-column filtering/restoration across capability
 transitions, including edits made while native columns are hidden.
+
+`TrackTableKeyboardTests` covers Return/Enter, Space, and the #77 Get Info
+shortcut: ⌘I works with Caps Lock on or off, while plain I and additional
+Shift/Option/Control modifiers do not invoke Get Info. The Caps Lock case
+was verified failing before the modifier-filter fix and passing afterward.
 
 ## UI tests (XCUITest) ⏳ (target not yet created)
 

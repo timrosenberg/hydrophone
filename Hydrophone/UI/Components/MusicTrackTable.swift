@@ -112,6 +112,9 @@ struct MusicTrackTable: NSViewRepresentable {
     var onEnqueue: ([Song]) -> Void = { _ in }  // ⌥-double-click a work header: add to Up Next
     var onToggleFavorite: (Song) -> Void
     var makeMenu: ([Song], IndexSet) -> NSMenu?  // displayed order + selected indices
+    /// ⌘I with exactly one row selected — mirrors the context menu's "Get
+    /// Info" item, which is single-selection-only (#77).
+    var onGetInfo: (Song) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -323,6 +326,12 @@ struct MusicTrackTable: NSViewRepresentable {
             guard let row = table?.selectedRowIndexes.min(),
                   let index = trackIndex(atRow: row) else { return }
             parent.onPlay(displayed, index)
+        }
+
+        func getInfoSelected() {
+            guard let selected = table?.selectedRowIndexes, selected.count == 1,
+                  let row = selected.first, let index = trackIndex(atRow: row) else { return }
+            parent.onGetInfo(displayed[index])
         }
     }
 }

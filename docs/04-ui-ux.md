@@ -158,7 +158,9 @@ rendered visibly washed out.
   **⌥-double-click queues it next**.
 - Context menu: Play, Play Next, Add to Up Next, Add to Playlist ▸ (incl. New
   Playlist…), Add/Remove Favorites, Get Info (read-only sheet — tag editing is
-  post-v1), Go to Album / Go to Artist (single selection); playlist mode adds
+  post-v1; also ⌘I, table-focus-scoped like ⏎/Space rather than a menu-bar
+  command, with Caps Lock ignored and only with exactly one row selected —
+  #77), Go to Album / Go to Artist (single selection); playlist mode adds
   Move to Top/Up/Down/Bottom + Remove from Playlist. A single selected track
   with native Work metadata also gets a submenu titled with the Work: **Play
   Work** starts at movement 1 and **Add Work to Up Next** queues the complete
