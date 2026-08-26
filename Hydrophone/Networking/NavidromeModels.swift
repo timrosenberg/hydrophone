@@ -73,14 +73,43 @@ struct NavidromeLoginResponse: Decodable, Sendable {
 }
 
 /// One `/api/song` entry: the native, undocumented shape carrying per-role
-/// `participants` credits and raw `tags` (work/movement among others) that
-/// Subsonic's `Song` model has no room for. Deliberately separate from
+/// `participants` credits, raw `tags`, and metadata used to map composer
+/// results directly to playable `Song` values. Deliberately separate from
 /// `Song` (`Networking/SubsonicModels.swift`), which is the playback
 /// pipeline's model — see #24, epic #11. Every field beyond `id` is decoded
 /// tolerantly: a missing key here is normal, not an error.
 struct NativeSongRecord: Identifiable, Sendable, Decodable {
     let id: String
     var title: String?
+    var artist: String?
+    var artistId: String?
+    var album: String?
+    var albumId: String?
+    var albumArtist: String?
+    var duration: Double?
+    var trackNumber: Int?
+    var discNumber: Int?
+    var year: Int?
+    var genre: String?
+    var genres: [GenreRef]?
+    var bitRate: Int?
+    var sampleRate: Int?
+    var suffix: String?
+    var size: Int?
+    var comment: String?
+    var sortTitle: String?
+    var orderTitle: String?
+    var playCount: Int?
+    // Keep native timestamps as strings so an absent/invalid optional date
+    // cannot prevent the entire cached index from decoding.
+    var createdAt: String?
+    var playDate: String?
+    var starred: Bool?
+    var starredAt: String?
+    var rgTrackGain: Double?
+    var rgAlbumGain: Double?
+    var rgTrackPeak: Double?
+    var rgAlbumPeak: Double?
     var participants: Participants?
     var tags: [String: [String]]?
 
@@ -93,6 +122,7 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
     struct Credit: Sendable, Decodable {
         let id: String
         let name: String
+        var subRole: String?
     }
 }
 

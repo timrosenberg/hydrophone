@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 264 test cases; 273 executions including parameters)
+## Current suite (Swift Testing, 273 test cases; 289 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -109,8 +109,30 @@ audio hardware.
 `TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
+`NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
+
+`LibraryModelComposerSongsTests` covers native-to-`Song` metadata parity,
+work joins and source ordering, a 600-song/two-page composer with zero
+`getSong` calls across repeat loads, independence from single-song endpoint
+failures, and current favorite timestamps overriding stale native records.
+`NativeSongMappingTests` covers sparse records, native zero/empty values
+matching Subsonic omission semantics, partial ReplayGain, invalid dates,
+unrepresentable durations, default MIME aliases, and composer subroles.
+The request and metadata regressions were observed failing before the
+corresponding fixes.
+
+`ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
+the three connection variables above, and a library with 500+ Bach and
+Beethoven tracks. It counts the actual resolution requests, checks a cached
+repeat, then makes separate verification-only `getSong` requests for three
+rows per composer to compare metadata and artwork bytes (not merely an
+HTTP-200 placeholder). It logs counts, timings, and mismatch field names,
+not credentials or track ids; failed cache comparisons do not dump rows.
+Run this suite serially (`-parallel-testing-enabled NO`), without a second
+app doing a cold index walk; a no-op without its opt-in environment is not
+live evidence.
 
 `ConnectionModelNativeFeaturesTests` covers #26's native-feature-detection
 probe and its scan → song-index-invalidation hook. Same seam as

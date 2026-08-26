@@ -44,14 +44,104 @@ struct LibraryModelComposerSongsTests {
         #expect(songs[1].work == nil)
     }
 
-    @Test func dropsAnIndividualFailedSongFetch() async throws {
+    @Test func nativeSongsDoNotDependOnIndividualSongEndpoint() async throws {
         await ComposerSongsMockProtocol.reset()
         await ComposerSongsMockProtocol.setHandler(Self.makeHandler(failedSongIDs: ["song-a"]))
         let library = makeLibrary()
 
         let songs = await library.songs(forComposer: "composer-1")
 
-        #expect(songs.map(\.id) == ["song-b"])
+        #expect(songs.map(\.id) == ["song-b", "song-a"])
+        #expect(await ComposerSongsMockProtocol.count(pathSuffix: "/rest/getSong.view") == 0)
+    }
+
+    @Test func largeComposerUsesOnlyCachedNativePages() async throws {
+        await ComposerSongsMockProtocol.reset()
+        let handler = Self.makeHandler()
+        await ComposerSongsMockProtocol.setHandler { request in
+            guard request.url?.path.hasSuffix("/api/song") == true else { return handler(request) }
+            let start = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "_start" }?.value.flatMap(Int.init) ?? 0
+            let rows = (start..<min(start + 500, 600)).map { index in
+                """
+                {"id":"large-\(index)","title":"Track \(index)","duration":123.9,
+                 "participants":{"composer":[{"id":"large-composer","name":"Composer"}]}}
+                """
+            }
+            return .init(status: 200, headers: ["X-Total-Count": "600"],
+                         body: Data("[\(rows.joined(separator: ","))]".utf8))
+        }
+        let library = makeLibrary()
+
+        let first = await library.songs(forComposer: "large-composer")
+        let cached = await library.songs(forComposer: "large-composer")
+
+        #expect(first.count == 600)
+        #expect(first.first?.id == "large-0")
+        #expect(first.last?.id == "large-599")
+        #expect(first.first?.duration == 123)
+        #expect(cached == first)
+        #expect(await ComposerSongsMockProtocol.count(pathSuffix: "/api/song") == 2)
+        #expect(await ComposerSongsMockProtocol.count(pathSuffix: "/rest/getSong.view") == 0)
+    }
+
+    @Test func preservesMetadataForInfoArtworkAndPlayback() async throws {
+        await ComposerSongsMockProtocol.reset()
+        await ComposerSongsMockProtocol.setHandler(Self.makeHandler())
+        let songs = await makeLibrary().songs(forComposer: "composer-1")
+        let song = try #require(songs.first)
+
+        #expect(song.artist == "Orchestra B")
+        #expect(song.artistId == "artist-b")
+        #expect(song.album == "Symphony No. 1")
+        #expect(song.albumId == "album-1")
+        #expect(song.coverArt == "song-b")
+        #expect(song.artworkKey == "album:album-1")
+        #expect(song.qualityLabel == "FLAC")
+        #expect(song.contentType == "audio/flac")
+        #expect(song.track == 2)
+        #expect(song.discNumber == 1)
+        #expect(song.year == 1999)
+        #expect(song.size == 42_000_000)
+        #expect(song.displayGenre == "Classical")
+        #expect(song.genres?.map(\.name) == ["Classical", "Orchestral"])
+        #expect(song.displayComposer == "Brahms • Clara Schumann")
+        #expect(song.displayAlbumArtist == "Orchestra B • Conductor")
+        #expect(song.comment == "Recorded live")
+        #expect(song.groupings == ["Romantic", "Symphonies"])
+        #expect(song.samplingRate == 96_000)
+        #expect(song.sortName == "Symphony movement")
+        #expect(song.playCount == 7)
+        #expect(song.created == Date(timeIntervalSince1970: 1_735_689_600))
+        #expect(song.played == Date(timeIntervalSince1970: 1_735_776_000))
+        #expect(song.starred == Date(timeIntervalSince1970: 1_735_862_400))
+        #expect(song.replayGain == ReplayGainInfo(trackGain: -3.5, albumGain: -5,
+                                                 trackPeak: 0.95, albumPeak: 0.99))
+    }
+
+    @Test func currentFavoritesOverrideCachedNativeAnnotations() async throws {
+        await ComposerSongsMockProtocol.reset()
+        let handler = Self.makeHandler()
+        await ComposerSongsMockProtocol.setHandler { request in
+            if request.url?.path.hasSuffix("/rest/getStarred2.view") == true {
+                let body = """
+                {"subsonic-response":{"status":"ok","version":"1.16.1","starred2":{
+                  "song":[{"id":"song-a","title":"First Movement","starred":"2025-01-04T00:00:00Z"}]}}}
+                """
+                return .init(status: 200, headers: [:], body: Data(body.utf8))
+            }
+            return handler(request)
+        }
+        let library = makeLibrary()
+        _ = await library.songs(forComposer: "composer-1")
+        await library.loadStarredIfNeeded()
+        let songs = await library.songs(forComposer: "composer-1")
+
+        #expect(songs.map(\.isStarred) == [false, true])
+        #expect(songs.map { library.isStarred($0) } == [false, true])
+        #expect(songs.last?.starred == Date(timeIntervalSince1970: 1_735_948_800))
+        #expect(await ComposerSongsMockProtocol.count(pathSuffix: "/api/song") == 1)
+        #expect(await ComposerSongsMockProtocol.count(pathSuffix: "/rest/getSong.view") == 0)
     }
 
     @Test func nativeLookupFailureReturnsEmptyWithoutSubsonicSongCalls() async throws {
@@ -96,11 +186,20 @@ struct LibraryModelComposerSongsTests {
     ) -> ComposerSongsMockProtocol.Response {
         guard status == 200 else { return .init(status: status, headers: [:], body: Data()) }
         let body = """
-        [{"id":"song-b","title":"Native B",
-          "participants":{"composer":[{"id":"composer-1","name":"Brahms"}]},
+        [{"id":"song-b","title":"Second Movement","artist":"Orchestra B","artistId":"artist-b",
+          "album":"Symphony No. 1","albumId":"album-1","albumArtist":"Orchestra B • Conductor",
+          "duration":301.75,"bitRate":1411,"suffix":"flac","sampleRate":96000,
+          "trackNumber":2,"discNumber":1,"year":1999,"size":42000000,"genre":"Classical",
+          "genres":[{"id":"genre-1","name":"Classical"},{"id":"genre-2","name":"Orchestral"}],
+          "comment":"Recorded live","orderTitle":"second movement","sortTitle":"Symphony movement",
+          "playCount":7,"createdAt":"2025-01-01T00:00:00Z","playDate":"2025-01-02T00:00:00.000Z",
+          "starred":true,"starredAt":"2025-01-03T00:00:00Z",
+          "rgTrackGain":-3.5,"rgAlbumGain":-5,"rgTrackPeak":0.95,"rgAlbumPeak":0.99,
+          "participants":{"composer":[{"id":"composer-1","name":"Brahms"},
+                                       {"id":"composer-2","name":"Clara Schumann"}]},
           "tags":{"work":["Symphony No. 1"],"movementname":["Andante sostenuto"],
-                  "movement":["2"],"movementtotal":["4"]}},
-         {"id":"song-a","title":"Native A",
+                  "movement":["2"],"movementtotal":["4"],"grouping":["Romantic","Symphonies"]}},
+         {"id":"song-a","title":"First Movement","duration":245,"bitRate":320,"suffix":"mp3",
           "participants":{"composer":[{"id":"composer-1","name":"Brahms"}]}}]
         """
         return .init(status: 200,
