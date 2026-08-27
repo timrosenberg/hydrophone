@@ -111,6 +111,7 @@ audio hardware.
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
 `SubsonicAllSongsTests` ·
+`TrackTableLargeLibraryTests` · `ColumnBrowserSelectionTests` ·
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
@@ -136,7 +137,23 @@ Both regressions were observed failing against the former 100-song request.
 bounded concurrent later pages, no gaps/duplicate ids, credential snapshots,
 coalesced and cached calls, explicit and generation-safe invalidation, stale
 `LibraryModel` completions, scan invalidation, repeated-page progress guards,
-and random-sample fallback for rejected, empty, or later-failing walks.
+random-sample fallback for rejected, empty, or later-failing walks, and
+first-page/partial-library publication before delayed later pages finish, and
+retrying after both a later page and the random fallback fail.
+
+`TrackTableLargeLibraryTests` renders the real AppKit-backed track table with
+14,082 synthetic songs and covers the Title-ascending first-visit default,
+saved-sort precedence, deterministic equal-title ordering, progress UI, and a
+deep saved scroll offset that waits through partial rows before restoring.
+Regressions cover user-scroll cancellation of a pending restore (gesture/
+scroller and legacy mouse notifications), plus selected-song/playback identity
+through incoming sorted pages and final Work metadata enrichment.
+
+`ColumnBrowserSelectionTests` renders the shared column-browser pane and
+sends a complete AppKit mouse-down/up click to each All row. It verifies
+that an existing selection clears and another item remains selectable.
+The original nil-tag implementation was observed failing the reset assertion;
+the concrete empty-string tag passes.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and

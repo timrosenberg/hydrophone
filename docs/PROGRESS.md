@@ -24,7 +24,9 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
-design; artwork cached on disk; Songs and selected genres paginate to exhaustion) ·
+design; artwork cached on disk; Songs and selected genres paginate to exhaustion;
+incremental Songs, stable default sorting, and deep scroll restoration confirmed;
+final #82 review-fix live recheck pending server recovery) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -62,6 +64,60 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #82: incremental full-library Songs browsing (2026-08-26) — final live recheck pending
+
+- The complete `allSongs()` walk now publishes its first page and ordered
+  later pages into `LibraryModel` while keeping the loading state active.
+  Songs and the unfiltered column browser render partial rows with a live
+  loaded-song count; native WorkInfo enrichment remains one final pass.
+- First-visit Songs/browser sorting defaults to locale-aware Title ascending,
+  with song-id tie-breaking. A saved user sort still wins. Deep scroll restore
+  waits until enough rows arrive instead of clamping permanently to page one.
+  User scrolling cancels a pending restore, and selected songs stay selected
+  through new pages and final metadata-driven reordering. Failed partial loads
+  remain retryable on the next visit.
+  Shuffle All's separate fresh random-batch request remains unchanged.
+- Tim approved including the column-browser All-row bug found during live
+  testing. All Genres/Artists/Albums/Composers now use a concrete empty-string
+  selection tag, so clicking All clears the filter through the existing
+  cascade. Returning to All Genres clears any in-flight genre loading state.
+- Rendered AppKit tests cover 14,082-row sorting, saved-sort precedence,
+  deterministic equal titles, deep incremental scroll restoration, progress
+  UI, All-row clicks, failed-partial retries, selection/playback identity, and
+  user-scroll cancellation. The reset-click test fails with the original nil
+  tags and passes with the fix; other item selections remain functional.
+- Local verification: unsigned build succeeds with **zero warnings**; full
+  suite **303 cases / 323 executions including parameters, 0 failures/skips**
+  (canonical xcresult summary). SwiftLint reports **0 violations** and
+  `git diff --check` passes.
+  An earlier full run aborted in `ArtworkCache.fetch`/URLSession; the focused
+  table suite and subsequent complete suite passed. No unrelated artwork code
+  was changed.
+- Earlier live verification, **2026-08-26, authorized private Navidrome
+  0.63.2 server (host redacted)**: the isolated branch app rendered its first
+  500 rows while loading, progressed to **14,128 songs**, and dismissed the
+  count after the final metadata join. The flat table rendered Title-ascending
+  rows. Mid-load resident memory was approximately **362 MiB**.
+- Tim subsequently confirmed, **2026-08-26 on the same private Navidrome
+  server**, the column-browser reset test and the deep-scroll
+  restoration test: after scrolling roughly three-quarters down and relaunching,
+  the completed library restores roughly the same position without snapping
+  back after further scrolling. These confirmations resolve those two pending
+  checks following the rebuilt app's earlier connection timeouts.
+- Tim also confirmed that Title, Artist, and Album header sorting remains
+  responsive across the full library, and two Shuffle All runs produce fresh
+  mixes without changing the visible Songs list. No view cap was needed.
+- Final pre-PR review added partial-failure retry, selection-identity, and
+  pending-scroll-cancellation safeguards, all with failing-then-passing
+  regression coverage. The final isolated app's live recheck is **blocked**:
+  startup and a subsequent Test Connection returned **HTTP 502** from the same
+  server on 2026-08-26. Earlier user confirmations remain valid evidence for
+  their tested build; the post-review build still needs a successful live
+  recheck. **No PR opened.**
+- Project signing and saved connection settings are unchanged;
+  the isolated local test copy uses ad-hoc signing with the app's existing
+  sandbox/network entitlements because no Developer ID identity is available.
 
 ## Issue #81: load the complete song library (2026-08-26)
 
@@ -3267,6 +3323,17 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #82 local (2026-08-26): unsigned build has zero warnings; full suite
+  **303 cases / 323 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Incremental loading, large-table/scroll behavior,
+  and All-row reset clicks have automated coverage.
+- ✅ Issue #82 earlier live (2026-08-26): incremental rows/count and 14,128-song completion observed;
+  Tim confirmed column-browser reset and deep-scroll/relaunch restoration with
+  no snap-back, responsive Title/Artist/Album sorting, and fresh Shuffle All
+  mixes without altering the visible Songs list.
+- ⏳ Issue #82 final live recheck (2026-08-26): post-review safeguards pass
+  regression tests, but startup and Test Connection return HTTP 502 from the
+  private server. PR remains unopened until this check can complete.
 - ✅ Issue #81 (2026-08-26): unsigned build has zero compiler warnings; full
   suite **291 cases / 307 executions, 0 failures/skips**;
   SwiftLint and `git diff --check` pass. Paging, cache, invalidation, fallback,
