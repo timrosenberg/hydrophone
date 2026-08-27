@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import Foundation
 import Observation
 import os
@@ -9,7 +8,7 @@ import os
 /// the client and holds results in memory.
 @MainActor
 @Observable
-final class LibraryModel { // swiftlint:disable:this type_body_length
+final class LibraryModel {
     enum Load<T: Sendable>: Sendable {
         case idle
         case loading
@@ -40,9 +39,11 @@ final class LibraryModel { // swiftlint:disable:this type_body_length
 
     private(set) var genres: [Genre] = []
 
-    private(set) var songs: [Song] = []
-    private(set) var songsState: Load<Void> = .idle
-    private var songsGeneration = 0
+    // Internal setter (not private): load/invalidate logic lives in
+    // LibraryModel+Songs.swift.
+    var songs: [Song] = []
+    var songsState: Load<Void> = .idle
+    var songsGeneration = 0
 
     private(set) var starredSongs: [Song] = []
     private(set) var starredAlbums: [Album] = []
@@ -166,7 +167,8 @@ final class LibraryModel { // swiftlint:disable:this type_body_length
         }
     }
 
-    private static let log = Logger(subsystem: "app.hydrophone", category: "library")
+    // Internal (not private): also used by LibraryModel+Songs.swift.
+    static let log = Logger(subsystem: "app.hydrophone", category: "library")
 
     func changeAlbumSort(to type: String) async {
         albumSortType = type
@@ -214,33 +216,7 @@ final class LibraryModel { // swiftlint:disable:this type_body_length
         }
     }
 
-    // MARK: - Songs
-
-    /// Drops the rendered song snapshot so the next Songs-view load rebuilds
-    /// it from the client's credential-bound full-library cache.
-    func invalidateSongs() {
-        songsGeneration += 1
-        songs = []
-        songsState = .idle
-    }
-
-    func loadSongsIfNeeded() async {
-        guard songs.isEmpty else { return }
-        if case .loading = songsState { return }
-        let generation = songsGeneration
-        songsState = .loading
-        do {
-            var fetched = try await client.allSongs()
-            await joinWorkInfo(into: &fetched)
-            guard generation == songsGeneration else { return }
-            songs = fetched
-            songsState = .loaded(())
-        } catch {
-            guard generation == songsGeneration else { return }
-            songsState = .failed(error.userMessage)
-            Self.log.error("song load failed: \(error.userMessage)")
-        }
-    }
+    // MARK: - Songs (load/invalidate lifecycle in LibraryModel+Songs.swift)
 
     /// A fresh random batch for whole-library shuffle (Shuffle All). Distinct
     /// from the Songs sample above so the visible list isn't disturbed.

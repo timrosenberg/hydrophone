@@ -4,21 +4,22 @@ import CryptoKit
 /// Actor that performs all OpenSubsonic HTTP. Builds authenticated requests,
 /// decodes the response envelope, and maps failures to `SubsonicError`.
 /// See docs/01-architecture.md and docs/02-opensubsonic-api.md.
-actor SubsonicClient { // swiftlint:disable:this type_body_length
+actor SubsonicClient {
     /// Protocol version we advertise. 1.16.1 is broadly supported.
     static let protocolVersion = "1.16.1"
     static let clientName = "Hydrophone"
-    private static let allSongsPageLimiter = AsyncLimiter(limit: 6)
 
-    private let credentials: CredentialStore
+    // Internal (not private): the complete-library load lives in
+    // SubsonicClient+AllSongs.swift.
+    let credentials: CredentialStore
     private let session: URLSession
     private let decoder: JSONDecoder
 
-    private var cachedAllSongs: [Song]?
-    private var cachedAllSongsCredentials: ServerCredentials?
-    private var inFlightAllSongs: Task<[Song], Error>?
-    private var inFlightAllSongsCredentials: ServerCredentials?
-    private var allSongsGeneration = 0
+    // Internal (not private): the complete-library cache lives in
+    // SubsonicClient+AllSongs.swift.
+    var cachedAllSongs: (songs: [Song], credentials: ServerCredentials)?
+    var inFlightAllSongs: (task: Task<AllSongsOutcome, Error>, credentials: ServerCredentials)?
+    var allSongsGeneration = 0
 
     /// Whether the current server supports the OpenSubsonic `formPost`
     /// extension, resolved lazily on the first flagged endpoint and cached
@@ -72,128 +73,6 @@ actor SubsonicClient { // swiftlint:disable:this type_body_length
         try await sendStatus(.ping)
     }
 
-    /// Returns every song exposed by the server's empty-query `search3`
-    /// implementation, walking fixed-size pages to exhaustion. The completed
-    /// result is cached for the exact credentials that produced it.
-    func allSongs() async throws(SubsonicError) -> [Song] {
-        guard let creds = credentials.load() else { throw .notConfigured }
-        if cachedAllSongsCredentials == creds, let cachedAllSongs { return cachedAllSongs }
-        if inFlightAllSongsCredentials == creds, let inFlightAllSongs {
-            return try await allSongsResult(from: inFlightAllSongs)
-        }
-
-        allSongsGeneration += 1
-        let generation = allSongsGeneration
-        let task = Task<[Song], Error> { try await self.buildAllSongs(using: creds) }
-        inFlightAllSongs = task
-        inFlightAllSongsCredentials = creds
-
-        do {
-            let songs = try await task.value
-            if allSongsGeneration == generation {
-                cachedAllSongs = songs
-                cachedAllSongsCredentials = creds
-                inFlightAllSongs = nil
-                inFlightAllSongsCredentials = nil
-            }
-            return songs
-        } catch {
-            if allSongsGeneration == generation {
-                inFlightAllSongs = nil
-                inFlightAllSongsCredentials = nil
-            }
-            throw error as? SubsonicError ?? .transport(error.localizedDescription)
-        }
-    }
-
-    /// Retires both completed and in-flight snapshots. An already-awaiting
-    /// caller may still receive its result, but that stale completion cannot
-    /// repopulate the cache because its generation no longer matches.
-    func invalidateAllSongs() {
-        allSongsGeneration += 1
-        cachedAllSongs = nil
-        cachedAllSongsCredentials = nil
-        inFlightAllSongs = nil
-        inFlightAllSongsCredentials = nil
-    }
-
-    private func allSongsResult(from task: Task<[Song], Error>) async throws(SubsonicError) -> [Song] {
-        do {
-            return try await task.value
-        } catch {
-            throw error as? SubsonicError ?? .transport(error.localizedDescription)
-        }
-    }
-
-    private func buildAllSongs(using creds: ServerCredentials) async throws(SubsonicError) -> [Song] {
-        do {
-            return try await walkAllSongs(using: creds)
-        } catch {
-            return try await list(.randomSongs(size: 500), using: creds, of: Song.self)
-        }
-    }
-
-    // The walk keeps its probe, bounded fan-out, ordering, and progress guard
-    // together so their pagination invariants stay visible in one place.
-    // swiftlint:disable:next function_body_length
-    private func walkAllSongs(using creds: ServerCredentials) async throws(SubsonicError) -> [Song] {
-        let pageSize = 500
-        let first = try await object(
-            .allSongs(count: pageSize, offset: 0), using: creds,
-            as: SearchContent.self
-        ).song ?? []
-        if first.isEmpty {
-            return try await list(.randomSongs(size: pageSize), using: creds, of: Song.self)
-        }
-        guard first.count == pageSize else { return first }
-
-        var songs = first
-        var seenIDs = Set(first.map(\.id))
-        guard seenIDs.count == first.count else {
-            throw .decoding("search3 pagination returned duplicate song ids")
-        }
-        var nextOffset = pageSize
-        while true {
-            let offsets = (0..<6).map { nextOffset + ($0 * pageSize) }
-            let pages = await withTaskGroup(
-                of: (Int, Result<[Song], SubsonicError>).self
-            ) { group in
-                for offset in offsets {
-                    group.addTask {
-                        await Self.allSongsPageLimiter.run {
-                            do {
-                                let page = try await self.object(
-                                    .allSongs(count: pageSize, offset: offset),
-                                    using: creds,
-                                    as: SearchContent.self
-                                ).song ?? []
-                                return (offset, .success(page))
-                            } catch {
-                                return (offset, .failure(
-                                    error as? SubsonicError ?? .transport(error.localizedDescription)
-                                ))
-                            }
-                        }
-                    }
-                }
-                var results: [(Int, Result<[Song], SubsonicError>)] = []
-                for await result in group { results.append(result) }
-                return results.sorted { $0.0 < $1.0 }
-            }
-            for (_, result) in pages {
-                let page = try result.get()
-                let pageIDs = Set(page.map(\.id))
-                guard pageIDs.count == page.count, seenIDs.isDisjoint(with: pageIDs) else {
-                    throw .decoding("search3 pagination did not advance")
-                }
-                songs.append(contentsOf: page)
-                seenIDs.formUnion(pageIDs)
-                if page.count < pageSize { return songs }
-            }
-            nextOffset += pageSize * offsets.count
-        }
-    }
-
     /// Test a candidate set of credentials without persisting them. Used by the
     /// Settings "Test Connection" button.
     func testConnection(_ candidate: ServerCredentials) async throws(SubsonicError) -> ServerInfo {
@@ -234,7 +113,10 @@ actor SubsonicClient { // swiftlint:disable:this type_body_length
         return try await perform(endpoint, using: creds)
     }
 
-    private func perform<Body: Decodable & Sendable>(
+    // Internal (not private): also used by SubsonicClient+AllSongs.swift,
+    // which must pin every page of a walk to one credential snapshot rather
+    // than reloading `credentials` per request.
+    func perform<Body: Decodable & Sendable>(
         _ endpoint: Endpoint, using creds: ServerCredentials
     ) async throws(SubsonicError) -> SubsonicResponseWrapper<Body> {
         if endpoint.usesFormPost, await supportsFormPost(using: creds) {
@@ -244,13 +126,13 @@ actor SubsonicClient { // swiftlint:disable:this type_body_length
         return try await execute(try buildRequest(for: endpoint, using: creds), method: endpoint.method)
     }
 
-    private func list<Element: SubsonicListElement>(
+    func list<Element: SubsonicListElement>(
         _ endpoint: Endpoint, using creds: ServerCredentials, of _: Element.Type
     ) async throws(SubsonicError) -> [Element] {
         try await send(endpoint, using: creds, as: ListBody<Element>.self).items
     }
 
-    private func object<Payload: Decodable & Sendable>(
+    func object<Payload: Decodable & Sendable>(
         _ endpoint: Endpoint, using creds: ServerCredentials, as _: Payload.Type
     ) async throws(SubsonicError) -> Payload {
         try await send(endpoint, using: creds, as: ObjectBody<Payload>.self).value

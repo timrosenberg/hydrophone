@@ -93,6 +93,55 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   WorkInfo join took **50.1 seconds**, and real rows rendered in Songs.
   Temporary count-only instrumentation was removed; credentials, playback,
   saved connection settings, and project signing settings were unchanged.
+- **Follow-up `/code-review` pass on the open PR** found four correctness
+  issues and split both oversized types into extension files:
+  - A walk failure at any offset fell back to `getRandomSongs`, but
+    `allSongs()` cached that fallback as the verified complete library, so a
+    transient mid-walk failure could strand later callers on a stale random
+    sample until an unrelated invalidation. `buildAllSongs` now tags its
+    result `isComplete`; only a walk that reached exhaustion is cached — a
+    fallback is still returned but leaves the cache empty so the next call
+    retries the full walk. The existing fallback-triggers-on-any-failure
+    tests (`laterPageFailureFallsBackToTheExistingRandomSample`,
+    `repeatedFullPageFallsBackWithoutAnUnboundedWalk`) still pass unchanged.
+  - The short-first-page fast path skipped the duplicate-id guard the
+    multi-page path applies; a buggy server returning fewer than 500 songs
+    with a repeated id would have shipped duplicate rows instead of tripping
+    the decoding-error fallback. The guard now runs before either return.
+  - `AppModel`'s `setSongsInvalidationHandler` closure captured `library`
+    strongly while `library`'s own init closure captured `connection`,
+    forming a two-way retain cycle inconsistent with the `[weak player]`
+    pattern used lines later in the same initializer. Now `[weak library]`.
+  - `SubsonicClient` and `LibraryModel` had each grown past the
+    `type_body_length`/`file_length` warning thresholds and suppressed the
+    lint instead of splitting, unlike `PlayerModel`'s established
+    `+RemoteCommands`/`+Scrobbling`/`+PlayQueue` precedent. The all-songs
+    walk moved to `SubsonicClient+AllSongs.swift` (also consolidating the
+    5-property cache into two credential-tagged tuples) and the Songs
+    load/invalidate lifecycle moved to `LibraryModel+Songs.swift`; both
+    suppressions are gone and SwiftLint is clean without them.
+  - Not changed: the fixed 6-way concurrent page fan-out (search3 has no
+    total-count header to size batches against, unlike `paginatedGet`'s
+    `X-Total-Count` walk) and the duplication between the two actors'
+    hand-rolled `withTaskGroup` pagination loops — both are real but
+    lower-priority, and reworking either risks the already-verified request
+    counts the hermetic tests pin.
+  - Local gate re-run after the fixes: build clean (zero warnings), full
+    suite still **291 test cases / 307 executions, 0 failures**, SwiftLint
+    **0 violations in 122 files** (previously 120, now +2 for the new
+    extension files), `git diff --check` clean.
+  - **Live verification not repeated for this pass.** The env-gated live
+    tests (`NavidromeLiveTests`, `LiveDecodeTests`, `ComposerSongLiveTests`)
+    require `HYDROPHONE_HOST/USER/PASS`, which this shell session has set,
+    but `xcodebuild test` does not propagate them to the spawned test
+    process here — confirmed by a throwaway gated test that recorded
+    `HOST=nil` inside the process before being deleted — so those suites'
+    "passed" results in this pass were silent no-ops, not real network
+    contact. There is no GUI-automation path available in this session to
+    repeat the original manual isolated-app check. The golden path is
+    unchanged code-wise (same request shape, same `AllSongsOutcome.songs`
+    returned on success) and is covered by the hermetic suite above, but a
+    real-server check of Songs loading before merge is still owed.
 
 ## Issue #83: paginate genre songs to exhaustion (2026-08-26)
 

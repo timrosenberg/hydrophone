@@ -167,7 +167,7 @@ final class AppModel {
         // scope it to the current server so artwork never mixes across servers.
         ArtworkCache.shared.clientBox = ClientBox(client)
         ArtworkCache.shared.setServer(baseURL: credentials.load()?.baseURL)
-        connection.setSongsInvalidationHandler { library.invalidateSongs() }
+        connection.setSongsInvalidationHandler { [weak library] in library?.invalidateSongs() }
 
         // Bring back the last session's queue (paused; never interrupts).
         Task { await restorePlayQueue() }
