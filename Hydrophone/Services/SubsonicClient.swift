@@ -9,9 +9,17 @@ actor SubsonicClient {
     static let protocolVersion = "1.16.1"
     static let clientName = "Hydrophone"
 
-    private let credentials: CredentialStore
+    // Internal (not private): the complete-library load lives in
+    // SubsonicClient+AllSongs.swift.
+    let credentials: CredentialStore
     private let session: URLSession
     private let decoder: JSONDecoder
+
+    // Internal (not private): the complete-library cache lives in
+    // SubsonicClient+AllSongs.swift.
+    var cachedAllSongs: (songs: [Song], credentials: ServerCredentials)?
+    var inFlightAllSongs: (task: Task<AllSongsOutcome, Error>, credentials: ServerCredentials)?
+    var allSongsGeneration = 0
 
     /// Whether the current server supports the OpenSubsonic `formPost`
     /// extension, resolved lazily on the first flagged endpoint and cached
@@ -102,11 +110,42 @@ actor SubsonicClient {
         _ endpoint: Endpoint
     ) async throws(SubsonicError) -> SubsonicResponseWrapper<Body> {
         guard let creds = credentials.load() else { throw SubsonicError.notConfigured }
+        return try await perform(endpoint, using: creds)
+    }
+
+    // Internal (not private): also used by SubsonicClient+AllSongs.swift,
+    // which must pin every page of a walk to one credential snapshot rather
+    // than reloading `credentials` per request.
+    func perform<Body: Decodable & Sendable>(
+        _ endpoint: Endpoint, using creds: ServerCredentials
+    ) async throws(SubsonicError) -> SubsonicResponseWrapper<Body> {
         if endpoint.usesFormPost, await supportsFormPost(using: creds) {
             return try await execute(try formPostRequest(for: endpoint, using: creds),
                                      method: endpoint.method)
         }
         return try await execute(try buildRequest(for: endpoint, using: creds), method: endpoint.method)
+    }
+
+    func list<Element: SubsonicListElement>(
+        _ endpoint: Endpoint, using creds: ServerCredentials, of _: Element.Type
+    ) async throws(SubsonicError) -> [Element] {
+        try await send(endpoint, using: creds, as: ListBody<Element>.self).items
+    }
+
+    func object<Payload: Decodable & Sendable>(
+        _ endpoint: Endpoint, using creds: ServerCredentials, as _: Payload.Type
+    ) async throws(SubsonicError) -> Payload {
+        try await send(endpoint, using: creds, as: ObjectBody<Payload>.self).value
+    }
+
+    private func send<Body: Decodable & Sendable>(
+        _ endpoint: Endpoint, using creds: ServerCredentials, as _: Body.Type
+    ) async throws(SubsonicError) -> Body {
+        let wrapper: SubsonicResponseWrapper<Body> = try await perform(endpoint, using: creds)
+        guard let body = wrapper.response.body else {
+            throw SubsonicError.decoding("missing body for \(endpoint.method)")
+        }
+        return body
     }
 
     private func supportsFormPost(using creds: ServerCredentials) async -> Bool {

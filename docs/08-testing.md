@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 275 test cases; 291 executions including parameters)
+## Current suite (Swift Testing, 291 test cases; 307 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -110,6 +110,7 @@ audio hardware.
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
+`SubsonicAllSongsTests` ·
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
@@ -129,6 +130,13 @@ verify that a 1,003-song genre requests exact `(count, offset)` pages `(500, 0)`
 `(500, 500)`, and `(500, 1000)`, preserves order, and stops there. A separate
 two-song fixture verifies that a short first page makes exactly one request.
 Both regressions were observed failing against the former 100-song request.
+
+`SubsonicAllSongsTests` drives real Subsonic envelopes through a serialized
+`URLProtocol` seam. It covers exact page exhaustion and response ordering,
+bounded concurrent later pages, no gaps/duplicate ids, credential snapshots,
+coalesced and cached calls, explicit and generation-safe invalidation, stale
+`LibraryModel` completions, scan invalidation, repeated-page progress guards,
+and random-sample fallback for rejected, empty, or later-failing walks.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and

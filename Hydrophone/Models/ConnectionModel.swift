@@ -75,6 +75,7 @@ final class ConnectionModel {
     private let client: SubsonicClient
     private let navidrome: NavidromeClient
     private let credentials: CredentialStore
+    @ObservationIgnored private var songsInvalidationHandler: @MainActor () -> Void = {}
 
     init(client: SubsonicClient, navidrome: NavidromeClient, credentials: CredentialStore) {
         self.client = client
@@ -97,6 +98,17 @@ final class ConnectionModel {
     }
 
     var isConfigured: Bool { credentials.load() != nil }
+
+    /// Composition-root hook that clears the visible Songs snapshot whenever
+    /// the credentials or server library behind it changes.
+    func setSongsInvalidationHandler(_ handler: @escaping @MainActor () -> Void) {
+        songsInvalidationHandler = handler
+    }
+
+    private func invalidateSongs() async {
+        await client.invalidateAllSongs()
+        songsInvalidationHandler()
+    }
 
     /// Build credentials from the current form, or nil if the form is invalid.
     private func formCredentials() -> ServerCredentials? {
@@ -133,9 +145,11 @@ final class ConnectionModel {
 
     /// Test then persist the credentials to the Keychain on success.
     func saveAndConnect() async {
+        let previousCredentials = credentials.load()
         guard let (candidate, info) = await verifyForm() else { return }
         do {
             try credentials.save(candidate)
+            if previousCredentials != candidate { await invalidateSongs() }
             persistTranscodePrefs()
             // Re-scope the artwork cache to the (possibly new) server.
             ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
@@ -199,6 +213,8 @@ final class ConnectionModel {
 
     func disconnect() {
         try? credentials.clear()
+        songsInvalidationHandler()
+        Task { await client.invalidateAllSongs() }
         ArtworkCache.shared.setServer(baseURL: nil)
         state = .unconfigured
         nativeFeaturesState = .unknown
@@ -219,6 +235,7 @@ final class ConnectionModel {
             let count = status.count.map { " — \($0) items" } ?? ""
             scanMessage = (status.scanning ? "Scanning" : "Scan finished") + count
             await navidrome.invalidateSongIndex()
+            await invalidateSongs()
         } catch {
             scanMessage = error.userMessage
         }

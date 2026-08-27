@@ -146,16 +146,35 @@ struct ConnectionModelNativeFeaturesTests {
         #expect(model.nativeFeaturesState == .available)
     }
 
+    @Test func changedSavedCredentialsInvalidateSongsSnapshot() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
+        let (model, _) = makeModel(creds())
+        var invalidations = 0
+        model.setSongsInvalidationHandler { invalidations += 1 }
+        model.serverAddress = "https://second.example.com"
+        model.username = "other"
+        model.secret = "different"
+        model.authMethod = .apiKey
+
+        await model.saveAndConnect()
+
+        #expect(invalidations == 1)
+    }
+
     @Test func disconnectResetsNativeFeaturesStateToUnknown() async {
         await ConnectionProbeMockProtocol.reset()
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
         let (model, _) = makeModel(creds())
+        var invalidations = 0
+        model.setSongsInvalidationHandler { invalidations += 1 }
         await model.refresh()
         #expect(model.nativeFeaturesState == .available)
 
         model.disconnect()
 
         #expect(model.nativeFeaturesState == .unknown)
+        #expect(invalidations == 1)
     }
 
     // MARK: - Scan → song-index invalidation (#24 hook)

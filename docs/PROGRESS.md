@@ -24,7 +24,7 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
-design; artwork cached on disk; selected genres paginate to exhaustion) ·
+design; artwork cached on disk; Songs and selected genres paginate to exhaustion) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -62,6 +62,86 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #81: load the complete song library (2026-08-26)
+
+- The Songs view and unfiltered column browser now consume the ecosystem's
+  empty-query `search3` all-songs primitive instead of a 500-song random
+  sample. A 500-song probe is followed by six-at-a-time bounded page fetches;
+  results return in offset order and stop at the first short page.
+- The full result is coalesced and cached for one exact credential snapshot.
+  Credential changes, disconnects, and successful library scans invalidate
+  both the client cache and visible `LibraryModel` snapshot. Generation checks
+  prevent retired client or model loads from publishing stale completions.
+- Servers that reject the empty query, return no songs, fail on a later page,
+  repeat ids, or ignore offsets fall back to the existing bounded
+  `getRandomSongs` sample. Shuffle Library remains independently random.
+- Hermetic tests cover endpoint parameters, page exhaustion/order,
+  concurrency, cache reuse/coalescing, credential isolation, explicit/scan
+  invalidation, stale-completion races, no-progress protection, and every
+  fallback path. The former random-only load, stale model completion, and
+  repeated-page regressions were each observed failing before their fixes.
+- Independent read-only review found the stale `LibraryModel` completion and
+  repeated-page loop risks; both findings were fixed and regression-tested.
+- Final local gate: unsigned build succeeds with zero compiler warnings; the
+  full suite passes **291 test cases / 307 executions
+  including parameters, 0 failures/skips** (canonical xcresult summary).
+  SwiftLint and `git diff --check` pass.
+- Live verification: **2026-08-26, user-authorized private Navidrome 0.63.2
+  server (host redacted)**. An isolated signed branch app loaded **14,082
+  songs with 14,082 unique ids**; the complete walk plus the unchanged native
+  WorkInfo join took **50.1 seconds**, and real rows rendered in Songs.
+  Temporary count-only instrumentation was removed; credentials, playback,
+  saved connection settings, and project signing settings were unchanged.
+- **Follow-up `/code-review` pass on the open PR** found four correctness
+  issues and split both oversized types into extension files:
+  - A walk failure at any offset fell back to `getRandomSongs`, but
+    `allSongs()` cached that fallback as the verified complete library, so a
+    transient mid-walk failure could strand later callers on a stale random
+    sample until an unrelated invalidation. `buildAllSongs` now tags its
+    result `isComplete`; only a walk that reached exhaustion is cached — a
+    fallback is still returned but leaves the cache empty so the next call
+    retries the full walk. The existing fallback-triggers-on-any-failure
+    tests (`laterPageFailureFallsBackToTheExistingRandomSample`,
+    `repeatedFullPageFallsBackWithoutAnUnboundedWalk`) still pass unchanged.
+  - The short-first-page fast path skipped the duplicate-id guard the
+    multi-page path applies; a buggy server returning fewer than 500 songs
+    with a repeated id would have shipped duplicate rows instead of tripping
+    the decoding-error fallback. The guard now runs before either return.
+  - `AppModel`'s `setSongsInvalidationHandler` closure captured `library`
+    strongly while `library`'s own init closure captured `connection`,
+    forming a two-way retain cycle inconsistent with the `[weak player]`
+    pattern used lines later in the same initializer. Now `[weak library]`.
+  - `SubsonicClient` and `LibraryModel` had each grown past the
+    `type_body_length`/`file_length` warning thresholds and suppressed the
+    lint instead of splitting, unlike `PlayerModel`'s established
+    `+RemoteCommands`/`+Scrobbling`/`+PlayQueue` precedent. The all-songs
+    walk moved to `SubsonicClient+AllSongs.swift` (also consolidating the
+    5-property cache into two credential-tagged tuples) and the Songs
+    load/invalidate lifecycle moved to `LibraryModel+Songs.swift`; both
+    suppressions are gone and SwiftLint is clean without them.
+  - Not changed: the fixed 6-way concurrent page fan-out (search3 has no
+    total-count header to size batches against, unlike `paginatedGet`'s
+    `X-Total-Count` walk) and the duplication between the two actors'
+    hand-rolled `withTaskGroup` pagination loops — both are real but
+    lower-priority, and reworking either risks the already-verified request
+    counts the hermetic tests pin.
+  - Local gate re-run after the fixes: build clean (zero warnings), full
+    suite still **291 test cases / 307 executions, 0 failures**, SwiftLint
+    **0 violations in 122 files** (previously 120, now +2 for the new
+    extension files), `git diff --check` clean.
+  - **Live verification not repeated for this pass.** The env-gated live
+    tests (`NavidromeLiveTests`, `LiveDecodeTests`, `ComposerSongLiveTests`)
+    require `HYDROPHONE_HOST/USER/PASS`, which this shell session has set,
+    but `xcodebuild test` does not propagate them to the spawned test
+    process here — confirmed by a throwaway gated test that recorded
+    `HOST=nil` inside the process before being deleted — so those suites'
+    "passed" results in this pass were silent no-ops, not real network
+    contact. There is no GUI-automation path available in this session to
+    repeat the original manual isolated-app check. The golden path is
+    unchanged code-wise (same request shape, same `AllSongsOutcome.songs`
+    returned on success) and is covered by the hermetic suite above, but a
+    real-server check of Songs loading before merge is still owed.
 
 ## Issue #83: paginate genre songs to exhaustion (2026-08-26)
 
@@ -3177,15 +3257,9 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   inherits).
 
 ## Known limitations / deferrals
-- ⏳ **Songs view uses `getRandomSongs`** (Subsonic has no "all songs"
-  endpoint). Tracked for a fuller aggregation later (see
-  `05-data-and-caching.md`).
-- ⏳ **Unfiltered column-browser results remain a 500-song sample.** There's no
-  `getSongsByComposer` (or equivalent) endpoint, so before a genre is selected
-  every pane filters the `getRandomSongs` sample. Selecting a genre now walks
-  `getSongsByGenre` to exhaustion, so its Artist/Composer/Album panes cover the
-  complete genre. A full unfiltered library aggregation remains tracked by
-  #20, not issue #4.
+- ✅ **Songs and the unfiltered column browser use the complete library.**
+  Empty-query `search3` now supplies the eager all-songs walk; incompatible
+  servers retain the bounded `getRandomSongs` fallback (#81).
 - ✅ ~~Playback is stubbed~~ — superseded: the real `AVAudioEngine` streaming +
   gapless engine landed in M3/M4 (`03-playback-engine.md`).
 - ⏳ Accessibility pass, state restoration, MAS packaging — per roadmap M7–M8.
@@ -3193,6 +3267,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #81 (2026-08-26): unsigned build has zero compiler warnings; full
+  suite **291 cases / 307 executions, 0 failures/skips**;
+  SwiftLint and `git diff --check` pass. Paging, cache, invalidation, fallback,
+  stale-completion, and no-progress regressions have red/green evidence.
+- ✅ Issue #81 live (2026-08-26): private Navidrome 0.63.2; isolated signed
+  branch app loaded **14,082 songs / 14,082 unique ids**, rendered real rows,
+  and completed the all-songs walk plus WorkInfo join in **50.1 seconds**.
 - ✅ Issue #83 (2026-08-26): unsigned build has zero compiler warnings; full
   suite **275 cases / 291 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. The 1,003-song and short-page request regressions

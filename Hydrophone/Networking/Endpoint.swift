@@ -85,10 +85,21 @@ struct Endpoint: Sendable {
 
     static let artists = Endpoint("getArtists")
 
-    /// Subsonic has no "all songs" endpoint; the Songs view uses a random
-    /// sample for now (see docs/05-data-and-caching.md, known limitation).
     static func randomSongs(size: Int) -> Endpoint {
         Endpoint("getRandomSongs") { query("size", size) }
+    }
+
+    /// Empty-query `search3` is the ecosystem's de-facto all-songs primitive.
+    /// Artist and album results are disabled because this walk consumes only
+    /// complete Song rows.
+    static func allSongs(count: Int, offset: Int) -> Endpoint {
+        Endpoint("search3") {
+            query("query", "")
+            query("songCount", count)
+            query("songOffset", offset)
+            query("albumCount", 0)
+            query("artistCount", 0)
+        }
     }
 
     static func artist(id: String) -> Endpoint {

@@ -107,8 +107,15 @@ otherwise; see `SubsonicClient.formPostRequest`).
 - `getSongsByGenre` — songs in a genre. The column browser walks 500-song
   `count`/`offset` pages until the first short page, then performs one WorkInfo
   join over the assembled result.
-- `getRandomSongs` — backs the Songs view (Subsonic has no "all songs"
-  endpoint; a fuller aggregation is a tracked deferral).
+- `search3` with an empty query, `artistCount=0`, and `albumCount=0` — the
+  ecosystem's de-facto all-songs primitive. `SubsonicClient.allSongs()` probes
+  one 500-song page, then walks later pages with bounded six-request
+  concurrency until the first short page. The ordered result is cached for the
+  exact credential snapshot; credential changes, disconnects, and successful
+  library scans retire both client and visible-library snapshots.
+- `getRandomSongs` — compatibility fallback when empty-query `search3` fails,
+  returns no songs on a nonempty server, or fails to advance; it remains the
+  fresh source for Shuffle Library.
 - `getSong` — single-song endpoint, retained for independent metadata checks.
   Composer resolution no longer calls it: cached native rows map directly
   into `Song` values (#85), preserving source order and the work/movement join.
@@ -129,7 +136,8 @@ otherwise; see `SubsonicClient.formPostRequest`).
 
 ### Search
 - `search3` — unified search with `query`, and per-type
-  `artistCount/albumCount/songCount` + `*Offset` → pagination.
+  `artistCount/albumCount/songCount` + `*Offset` → pagination. The empty-query,
+  songs-only form also supplies the complete Songs/column-browser library.
 
 ### Playlists
 - `getPlaylists` — the user's playlists.
@@ -189,6 +197,11 @@ empty-state UI; transport errors to a retry affordance.
 - `getSongsByGenre` is eager: the column browser needs the complete selected
   genre for its Artist/Composer/Album panes, so `LibraryModel` walks 500-song
   pages to the first short page before joining native WorkInfo metadata.
+- Empty-query `search3` is eager for the same reason. One probe determines
+  support; subsequent 500-song pages run with a six-request limiter, are
+  restored to offset order, and stop at the first short page. Duplicate ids or
+  a repeated full page are treated as lack of progress and trigger the bounded
+  random-sample fallback instead of looping indefinitely.
 - Page size constants remain explicit for `getAlbumList2` and `search3`.
 - Library views request the next page when the user scrolls near the end
   (`onAppear` of a trailing sentinel row).

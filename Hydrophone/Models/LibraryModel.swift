@@ -39,8 +39,11 @@ final class LibraryModel {
 
     private(set) var genres: [Genre] = []
 
-    private(set) var songs: [Song] = []
-    private(set) var songsState: Load<Void> = .idle
+    // Internal setter (not private): load/invalidate logic lives in
+    // LibraryModel+Songs.swift.
+    var songs: [Song] = []
+    var songsState: Load<Void> = .idle
+    var songsGeneration = 0
 
     private(set) var starredSongs: [Song] = []
     private(set) var starredAlbums: [Album] = []
@@ -92,6 +95,7 @@ final class LibraryModel {
         composers = []
         composersState = .idle
         genres = []
+        invalidateSongs()
         starredSongs = []
         starredAlbums = []
         starredSongIDs = []
@@ -163,7 +167,8 @@ final class LibraryModel {
         }
     }
 
-    private static let log = Logger(subsystem: "app.hydrophone", category: "library")
+    // Internal (not private): also used by LibraryModel+Songs.swift.
+    static let log = Logger(subsystem: "app.hydrophone", category: "library")
 
     func changeAlbumSort(to type: String) async {
         albumSortType = type
@@ -211,17 +216,7 @@ final class LibraryModel {
         }
     }
 
-    // MARK: - Songs (random sample — see endpoint note)
-
-    func loadSongsIfNeeded() async {
-        guard songs.isEmpty else { return }
-        if case .loading = songsState { return }
-        await load("song", into: \.songsState) { () async throws(SubsonicError) in
-            var fetched = try await client.list(.randomSongs(size: 500), of: Song.self)
-            await joinWorkInfo(into: &fetched)
-            songs = fetched
-        }
-    }
+    // MARK: - Songs (load/invalidate lifecycle in LibraryModel+Songs.swift)
 
     /// A fresh random batch for whole-library shuffle (Shuffle All). Distinct
     /// from the Songs sample above so the visible list isn't disturbed.
