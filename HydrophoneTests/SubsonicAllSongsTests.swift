@@ -7,7 +7,7 @@ import Testing
 /// so assertions exercise the client rather than a pagination test double.
 @Suite(.serialized)
 struct SubsonicAllSongsTests {
-    private func makeClient() -> (client: SubsonicClient, store: InMemoryCredentialStore) {
+    func makeClient() -> (client: SubsonicClient, store: InMemoryCredentialStore) {
         let credentials = ServerCredentials(
             baseURL: URL(string: "https://music.example.com")!,
             username: "tim",
@@ -246,9 +246,10 @@ struct SubsonicAllSongsTests {
         #expect(library.songs.isEmpty)
         if case .idle = library.songsState {} else { Issue.record("Expected idle songs state") }
     }
+
 }
 
-private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
+final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
     enum SearchBehavior: Sendable, Equatable {
         case supported
         case reject
@@ -263,6 +264,7 @@ private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
         var searchBehavior: SearchBehavior
         var rejectAtOffset: Int?
         var randomSongCount: Int
+        var rejectRandom: Bool
     }
 
     private actor State {
@@ -274,6 +276,7 @@ private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
         var maximumActiveRequests = 0
         var searchBehavior: SearchBehavior = .supported
         var randomSongCount = 0
+        var rejectRandom = false
         var rejectAtOffset: Int?
         var paths: [String] = []
         var hosts: [String] = []
@@ -285,6 +288,7 @@ private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
             searchBehavior = configuration.searchBehavior
             rejectAtOffset = configuration.rejectAtOffset
             randomSongCount = configuration.randomSongCount
+            rejectRandom = configuration.rejectRandom
             offsets = []
             activeRequests = 0
             maximumActiveRequests = 0
@@ -343,6 +347,7 @@ private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
         }
 
         private func randomResponse() -> Data {
+            if rejectRandom { return failedResponse(message: "Random request rejected") }
             let rows = (0..<randomSongCount).map { index in
                 #"{"id":"random-\#(index)","title":"Random \#(index)"}"#
             }
@@ -380,14 +385,15 @@ private final class AllSongsMockProtocol: URLProtocol, @unchecked Sendable {
                       firstPageDelay: Duration = .zero,
                       searchBehavior: SearchBehavior = .supported,
                       rejectAtOffset: Int? = nil,
-                      randomSongCount: Int = 0) async {
+                      randomSongCount: Int = 0, rejectRandom: Bool = false) async {
         await state.reset(Configuration(
             songCount: songCount,
             responseDelay: responseDelay,
             firstPageDelay: firstPageDelay,
             searchBehavior: searchBehavior,
             rejectAtOffset: rejectAtOffset,
-            randomSongCount: randomSongCount
+            randomSongCount: randomSongCount,
+            rejectRandom: rejectRandom
         ))
     }
     static func requestedOffsets() async -> [Int] { await state.offsets.sorted() }

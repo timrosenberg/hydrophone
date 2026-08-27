@@ -15,9 +15,14 @@ struct TrackTableView: View {
     /// When set, the table's sort key/direction and customizable column
     /// preferences persist under this view-kind name (e.g. "songs", "favorites").
     var sortAutosaveKey: String?
+    /// Applied only when this view kind has no persisted user sort.
+    var defaultSortKey: String?
     /// When set, the scroll offset persists too — only for views whose content
     /// is stable across launches (see `MusicTrackTable.scrollAutosaveKey`).
     var scrollAutosaveKey: String?
+    /// Whether rows are still arriving incrementally; used to defer a deep
+    /// scroll restore until the table is tall enough.
+    var contentIsLoading: Bool = false
     var onRemoveFromPlaylist: ((IndexSet) -> Void)?
     var onMovePlaylist: ((IndexSet, Int) -> Void)?
     /// Disc → subtitle; non-nil opts into disc group headers on multi-disc
@@ -46,7 +51,9 @@ struct TrackTableView: View {
             tracks: tracks,
             sortable: !isPlaylist,
             sortAutosaveKey: sortAutosaveKey,
+            defaultSortKey: defaultSortKey,
             scrollAutosaveKey: isPlaylist ? nil : scrollAutosaveKey,
+            contentIsLoading: contentIsLoading,
             columns: columns,
             columnsCustomizable: columnsCustomizable,
             nativeFeaturesAvailable: connection.nativeFeaturesState == .available,

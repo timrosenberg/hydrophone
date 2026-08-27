@@ -71,11 +71,18 @@ struct MusicTrackTable: NSViewRepresentable {
     /// When set, the sort key/direction persist to UserDefaults under this
     /// name and are restored on creation (one slot per view kind).
     var sortAutosaveKey: String?
+    /// Applied only when no persisted sort exists. Songs uses Title ascending
+    /// so a first visit never inherits the server's arbitrary row order.
+    var defaultSortKey: String?
     /// When set, the scroll offset persists under this name and is restored
     /// once the first rows arrive. Only for views whose content is stable
     /// across launches (Songs/Favorites/browser) — content-specific views
     /// (album detail, search) would restore a stranger's offset.
     var scrollAutosaveKey: String?
+    /// A deep saved offset may exceed an incremental snapshot's current
+    /// height. While loading, restoration waits for enough rows instead of
+    /// permanently clamping to the partial table.
+    var contentIsLoading: Bool = false
     /// Content columns to show, in order. Caller decides explicitly — the
     /// default/fallback list when nothing's persisted yet (or customization
     /// is off).
@@ -126,6 +133,8 @@ struct MusicTrackTable: NSViewRepresentable {
         var parent: MusicTrackTable
         weak var table: NSTableView?
         var updatingSelection = false
+        var pendingSelection: Set<Int>?
+        var pendingSelectionSave: DispatchWorkItem?
         /// Set while makeNSView applies the persisted sort, so the delegate
         /// callback doesn't clear the selection binding mid view-update.
         var restoringSort = false
@@ -207,12 +216,17 @@ struct MusicTrackTable: NSViewRepresentable {
         private func sortedTracks() -> [Song] {
             guard let key = sortKey else { return parent.tracks }
             let asc = ascending
+            if key == "title" { return titleSortedTracks(ascending: asc) }
+            return nonTitleSortedTracks(for: key, ascending: asc)
+        }
+
+        private func nonTitleSortedTracks(for key: String, ascending: Bool) -> [Song] {
             func text(_ lhs: String?, _ rhs: String?) -> Bool {
                 (lhs ?? "").localizedCaseInsensitiveCompare(rhs ?? "") == .orderedAscending
             }
             return parent.tracks.sorted { lhs, rhs in
                 if let result = pickerOnlyColumnOrderedBefore(
-                    id: key, lhs: lhs, rhs: rhs, ascending: asc
+                    id: key, lhs: lhs, rhs: rhs, ascending: ascending
                 ) {
                     return result
                 }
@@ -229,7 +243,17 @@ struct MusicTrackTable: NSViewRepresentable {
                 case "time": result = (lhs.duration ?? 0) < (rhs.duration ?? 0)
                 default: result = text(lhs.title, rhs.title)
                 }
-                return asc ? result : !result
+                return ascending ? result : !result
+            }
+        }
+
+        private func titleSortedTracks(ascending: Bool) -> [Song] {
+            return parent.tracks.sorted { lhs, rhs in
+                let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+                let order = titleOrder == .orderedSame
+                    ? lhs.id.localizedStandardCompare(rhs.id)
+                    : titleOrder
+                return ascending ? order == .orderedAscending : order == .orderedDescending
             }
         }
 
@@ -258,6 +282,8 @@ struct MusicTrackTable: NSViewRepresentable {
             signature = [] // force rebuild
             reloadIfNeeded()
             guard !restoringSort else { return }
+            pendingSelectionSave?.cancel()
+            pendingSelection = nil
             parent.selection = []
             tableView.deselectAll(nil)
         }
@@ -301,6 +327,8 @@ struct MusicTrackTable: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updatingSelection, let table else { return }
+            pendingSelectionSave?.cancel()
+            pendingSelection = nil
             parent.selection = Set(table.selectedRowIndexes.compactMap { trackIndex(atRow: $0) })
         }
 
