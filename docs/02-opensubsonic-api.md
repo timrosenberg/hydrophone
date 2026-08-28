@@ -112,7 +112,10 @@ otherwise; see `SubsonicClient.formPostRequest`).
   one 500-song page, then walks later pages with bounded six-request
   concurrency until the first short page. The ordered result is cached for the
   exact credential snapshot; credential changes, disconnects, and successful
-  library scans retire both client and visible-library snapshots.
+  library scans retire both client and visible-library snapshots. Each
+  assembled offset-ordered batch is also published as a visible partial
+  snapshot; the one-time native WorkInfo join still runs only after the walk
+  completes.
 - `getRandomSongs` — compatibility fallback when empty-query `search3` fails,
   returns no songs on a nonempty server, or fails to advance; it remains the
   fresh source for Shuffle Library.
@@ -201,7 +204,8 @@ empty-state UI; transport errors to a retry affordance.
   support; subsequent 500-song pages run with a six-request limiter, are
   restored to offset order, and stop at the first short page. Duplicate ids or
   a repeated full page are treated as lack of progress and trigger the bounded
-  random-sample fallback instead of looping indefinitely.
+  random-sample fallback instead of looping indefinitely. The first page and
+  each ordered batch render incrementally while the eager walk continues.
 - Page size constants remain explicit for `getAlbumList2` and `search3`.
 - Library views request the next page when the user scrolls near the end
   (`onAppear` of a trailing sentinel row).

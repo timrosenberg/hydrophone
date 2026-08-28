@@ -82,8 +82,9 @@ extension MusicTrackTable {
             context.coordinator.observeColumnChanges(of: table)
         }
 
-        // Restore a persisted sort — only for a column that still exists.
-        if sortable, let descriptor = context.coordinator.persistedSortDescriptor(),
+        // Restore the user's sort, or apply this view's first-visit default —
+        // only when that column still exists.
+        if sortable, let descriptor = context.coordinator.initialSortDescriptor(),
            table.tableColumns.contains(where: { $0.identifier.rawValue == descriptor.key }) {
             context.coordinator.restoringSort = true
             table.sortDescriptors = [descriptor]
@@ -143,11 +144,10 @@ extension MusicTrackTable {
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
-        context.coordinator.parent = self
         guard let table = scroll.documentView as? InnerTableView else { return }
+        let selection = context.coordinator.updateTracks(from: self)
         table.contextMenuProvider = { context.coordinator.menuForSelection($0) }
         context.coordinator.reconcileNativeColumnsIfNeeded(in: table)
-        context.coordinator.reloadIfNeeded()
         context.coordinator.restoreScrollIfReady(scroll)
 
         let want = context.coordinator.tableRows(

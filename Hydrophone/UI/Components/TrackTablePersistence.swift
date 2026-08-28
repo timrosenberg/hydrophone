@@ -18,6 +18,11 @@ extension MusicTrackTable.Coordinator {
         return NSSortDescriptor(key: String(parts[0]), ascending: parts[1] == "asc")
     }
 
+    func initialSortDescriptor() -> NSSortDescriptor? {
+        if let persisted = persistedSortDescriptor() { return persisted }
+        return parent.defaultSortKey.map { NSSortDescriptor(key: $0, ascending: true) }
+    }
+
     func persistSort(key sortKey: String?, ascending: Bool) {
         guard let key = sortDefaultsKey else { return }
         if let sortKey {
@@ -43,6 +48,19 @@ extension MusicTrackTable.Coordinator {
         NotificationCenter.default.addObserver(self, selector: #selector(scrollBoundsChanged(_:)),
                                                name: NSView.boundsDidChangeNotification,
                                                object: scroll.contentView)
+        for name in [NSScrollView.willStartLiveScrollNotification, NSScrollView.didLiveScrollNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(userScrolled(_:)),
+                                                   name: name, object: scroll)
+        }
+    }
+
+    /// Live-scroll notifications identify user intent; plain bounds changes
+    /// also occur during layout and must not consume a pending deep restore.
+    @objc private func userScrolled(_ note: Notification) {
+        guard let scroll = note.object as? NSScrollView else { return }
+        scrollRestored = true
+        scrollBoundsChanged(Notification(name: NSView.boundsDidChangeNotification,
+                                         object: scroll.contentView))
     }
 
     /// Debounced save of the scroll offset. Saving only starts after the
@@ -57,17 +75,20 @@ extension MusicTrackTable.Coordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
-    /// Restore the persisted offset once, as soon as the first rows arrive
-    /// (content loads async, so creation time is too early). Clamped to the
-    /// current content height — a deeper offset than the loaded pages allow
-    /// degrades to the last valid position rather than jumping later.
+    /// Restore the persisted offset once rows arrive. A deep offset waits
+    /// through partial snapshots; after loading finishes, a genuinely stale
+    /// offset clamps to the final table height.
     func restoreScrollIfReady(_ scroll: NSScrollView) {
         guard let key = scrollDefaultsKey, !scrollRestored, !displayed.isEmpty,
               let doc = scroll.documentView else { return }
-        scrollRestored = true
         let saved = UserDefaults.standard.double(forKey: key)
-        guard saved > 0 else { return }
+        guard saved > 0 else {
+            scrollRestored = true
+            return
+        }
         let maxOffset = max(doc.bounds.height - scroll.contentView.bounds.height, 0)
+        guard !parent.contentIsLoading || saved <= maxOffset else { return }
+        scrollRestored = true
         scroll.contentView.scroll(to: NSPoint(x: 0, y: min(saved, maxOffset)))
         scroll.reflectScrolledClipView(scroll.contentView)
     }

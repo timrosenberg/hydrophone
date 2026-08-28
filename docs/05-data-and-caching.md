@@ -97,7 +97,12 @@ Notes:
 
 - Library lists (`getAlbumList2`, `getSongsByGenre`, `search3`) fetch in pages
   and accumulate **in-memory** in `LibraryModel`.
-- Views trigger the next page near the scroll end (trailing sentinel row).
+- Album grids trigger the next page near the scroll end (trailing sentinel
+  row). Genre and all-songs walks fetch eagerly to exhaustion because their
+  column-browser facets require the complete set; the all-songs walk publishes
+  ordered partial snapshots after its first page and each later batch.
+  A failed partial load keeps its usable rows but may retry on the next visit;
+  nonempty partial data is not treated as a completed load.
 - `LibraryModel` owns the offset bookkeeping and exhaustion detection; state
   is refetched per session (network-required by design).
 

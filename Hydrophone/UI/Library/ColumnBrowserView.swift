@@ -23,45 +23,50 @@ struct ColumnBrowserView: View {
     private var selectedAlbum: String? { storedAlbum.isEmpty ? nil : storedAlbum }
     private var selectedComposer: String? { storedComposer.isEmpty ? nil : storedComposer }
 
-    private var genreSelection: Binding<String?> {
+    private var genreSelection: Binding<String> {
         Binding(
-            get: { selectedGenre },
+            get: { storedGenre },
             set: { genre in
-                storedGenre = genre ?? ""
+                storedGenre = genre
                 storedArtist = ""
                 storedAlbum = ""
                 storedComposer = ""
-                Task { await loadGenre(genre) }
+                Task { await loadGenre(genre.isEmpty ? nil : genre) }
             })
     }
 
-    private var artistSelection: Binding<String?> {
+    private var artistSelection: Binding<String> {
         Binding(
-            get: { selectedArtist },
+            get: { storedArtist },
             set: { artist in
-                storedArtist = artist ?? ""
+                storedArtist = artist
                 storedAlbum = ""
                 storedComposer = ""
             })
     }
 
-    private var albumSelection: Binding<String?> {
+    private var albumSelection: Binding<String> {
         Binding(
-            get: { selectedAlbum },
+            get: { storedAlbum },
             set: { album in
-                storedAlbum = album ?? ""
+                storedAlbum = album
                 storedComposer = ""
             })
     }
 
-    private var composerSelection: Binding<String?> {
-        Binding(get: { selectedComposer }, set: { storedComposer = $0 ?? "" })
+    private var composerSelection: Binding<String> {
+        Binding(get: { storedComposer }, set: { storedComposer = $0 })
     }
 
-    /// With no genre selected, browse the all-songs sample; otherwise the genre's
-    /// songs. (Subsonic has no "all songs" endpoint, so the base is a sample.)
+    /// With no genre selected, browse the complete song library; otherwise
+    /// use the genre-specific paginated result.
     private var baseSongs: [Song] {
         selectedGenre == nil ? library.songs : songs
+    }
+
+    private var librarySongsAreLoading: Bool {
+        if case .loading = library.songsState { return true }
+        return false
     }
 
     private var artists: [String] {
@@ -123,7 +128,9 @@ struct ColumnBrowserView: View {
                 TrackTableView(tracks: filteredTracks,
                                columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
                                sortAutosaveKey: "browser",
+                               defaultSortKey: "title",
                                scrollAutosaveKey: "browser",
+                               contentIsLoading: selectedGenre == nil && librarySongsAreLoading,
                                columnsCustomizable: true)
             }
         }
@@ -140,33 +147,12 @@ struct ColumnBrowserView: View {
 
     @ViewBuilder
     private func pane(title: String, items: [String],
-                      selection: Binding<String?>, allLabel: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Styled to match the track table's header row below (same type,
-            // height and hairline), so the browser reads as one table system.
-            Text(title)
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .frame(height: 24, alignment: .leading)
-            Divider()
-            // Separator-free rows: the track table below draws no row rules,
-            // so the panes shouldn't either.
-            List(selection: selection) {
-                Text(allLabel).tag(String?.none)
-                    .listRowSeparator(.hidden)
-                ForEach(items, id: \.self) { item in
-                    Text(item).tag(String?.some(item))
-                        .listRowSeparator(.hidden)
-                }
-            }
-            .listStyle(.plain)
-            .playPauseOnSpace()
-        }
-        .frame(maxWidth: .infinity)
+                      selection: Binding<String>, allLabel: String) -> some View {
+        ColumnBrowserPane(title: title, items: items, selection: selection, allLabel: allLabel)
     }
 
     private func loadGenre(_ genre: String?) async {
-        guard let genre else { songs = []; return }
+        guard let genre else { songs = []; isLoading = false; return }
         isLoading = true
         let fetched = await library.songs(forGenre: genre)
         // The Binding-setter Task isn't cancelled by a newer selection —
@@ -179,5 +165,42 @@ struct ColumnBrowserView: View {
 
     private func uniqueSorted(_ values: [String]) -> [String] {
         Array(Set(values)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+}
+
+/// One selectable pane in the column browser. Kept as a separate view so the
+/// AppKit-backed `List` selection behavior can be exercised without building
+/// the rest of the app environment.
+struct ColumnBrowserPane: View {
+    let title: String
+    let items: [String]
+    @Binding var selection: String
+    let allLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Styled to match the track table's header row below (same type,
+            // height and hairline), so the browser reads as one table system.
+            Text(title)
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 24, alignment: .leading)
+            Divider()
+            // Separator-free rows: the track table below draws no row rules,
+            // so the panes shouldn't either.
+            // "All" must be a concrete selectable value: nil means no row
+            // selection to List, so a nil-tagged reset row ignores clicks.
+            List(selection: $selection) {
+                Text(allLabel).tag("")
+                    .listRowSeparator(.hidden)
+                ForEach(items, id: \.self) { item in
+                    Text(item).tag(item)
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
+            .playPauseOnSpace()
+        }
+        .frame(maxWidth: .infinity)
     }
 }

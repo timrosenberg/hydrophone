@@ -22,7 +22,9 @@ extension SubsonicClient {
     /// a fallback result (see `buildAllSongs`) is returned as-is but left
     /// uncached so a transient failure can't strand future callers on a
     /// stale random sample (see PR #97 review).
-    func allSongs() async throws(SubsonicError) -> [Song] {
+    func allSongs(
+        onProgress: (@Sendable ([Song]) async -> Void)? = nil
+    ) async throws(SubsonicError) -> [Song] {
         guard let creds = credentials.load() else { throw .notConfigured }
         if let cachedAllSongs, cachedAllSongs.credentials == creds { return cachedAllSongs.songs }
         if let inFlightAllSongs, inFlightAllSongs.credentials == creds {
@@ -31,7 +33,9 @@ extension SubsonicClient {
 
         allSongsGeneration += 1
         let generation = allSongsGeneration
-        let task = Task<AllSongsOutcome, Error> { try await self.buildAllSongs(using: creds) }
+        let task = Task<AllSongsOutcome, Error> {
+            try await self.buildAllSongs(using: creds, onProgress: onProgress)
+        }
         inFlightAllSongs = (task, creds)
 
         do {
@@ -70,24 +74,58 @@ extension SubsonicClient {
 
     /// Walks the library and falls back to the existing random-sample
     /// behavior when the server rejects or cannot safely paginate an empty
-    /// search (including a failure partway through the walk, e.g. a server
-    /// that ignores offsets — see `repeatedFullPageFallsBackWithoutAnUnboundedWalk`).
-    /// The fallback is marked incomplete so `allSongs()` won't cache it as
-    /// the verified library.
-    private func buildAllSongs(using creds: ServerCredentials) async throws(SubsonicError) -> AllSongsOutcome {
+    /// search before any page has reached the caller (including an
+    /// immediate failure, e.g. a server that ignores offsets on page one —
+    /// see `repeatedFullPageFallsBackWithoutAnUnboundedWalk`). The fallback
+    /// is marked incomplete so `allSongs()` won't cache it as the verified
+    /// library.
+    ///
+    /// If the walk instead fails *after* already publishing progress via
+    /// `onProgress`, the caller may already be showing those real songs —
+    /// silently replacing them with an unrelated random sample would look
+    /// like data loss, so the original error is propagated instead and the
+    /// caller keeps its last good partial snapshot (see PR #98 review).
+    private func buildAllSongs(
+        using creds: ServerCredentials,
+        onProgress: (@Sendable ([Song]) async -> Void)?
+    ) async throws(SubsonicError) -> AllSongsOutcome {
+        let marker = onProgress.map { _ in ProgressMarker() }
+        let trackedProgress: (@Sendable ([Song]) async -> Void)?
+        if let onProgress, let marker {
+            trackedProgress = { songs in
+                await marker.markPublished()
+                await onProgress(songs)
+            }
+        } else {
+            trackedProgress = nil
+        }
         do {
-            let songs = try await walkAllSongs(using: creds)
+            let songs = try await walkAllSongs(using: creds, onProgress: trackedProgress)
             return AllSongsOutcome(songs: songs, isComplete: true)
         } catch {
+            if let marker, await marker.published {
+                throw error
+            }
             let songs = try await list(.randomSongs(size: Self.allSongsPageSize), using: creds, of: Song.self)
             return AllSongsOutcome(songs: songs, isComplete: false)
         }
     }
 
+    /// Records whether the walk has published at least one page, so
+    /// `buildAllSongs` can tell a fresh failure apart from one that would
+    /// clobber progress a caller already rendered.
+    private actor ProgressMarker {
+        private(set) var published = false
+        func markPublished() { published = true }
+    }
+
     // The walk keeps its probe, bounded fan-out, ordering, and progress guard
     // together so their pagination invariants stay visible in one place.
     // swiftlint:disable:next function_body_length
-    private func walkAllSongs(using creds: ServerCredentials) async throws(SubsonicError) -> [Song] {
+    private func walkAllSongs(
+        using creds: ServerCredentials,
+        onProgress: (@Sendable ([Song]) async -> Void)?
+    ) async throws(SubsonicError) -> [Song] {
         let pageSize = Self.allSongsPageSize
         let first = try await object(
             .allSongs(count: pageSize, offset: 0), using: creds,
@@ -103,6 +141,7 @@ extension SubsonicClient {
         guard seenIDs.count == first.count else {
             throw .decoding("search3 pagination returned duplicate song ids")
         }
+        await publishAllSongsProgress(first, afterAppending: first, onProgress: onProgress)
         guard first.count == pageSize else { return first }
 
         var songs = first
@@ -142,9 +181,19 @@ extension SubsonicClient {
                 }
                 songs.append(contentsOf: page)
                 seenIDs.formUnion(pageIDs)
+                await publishAllSongsProgress(songs, afterAppending: page, onProgress: onProgress)
                 if page.count < pageSize { return songs }
             }
             nextOffset += pageSize * offsets.count
         }
+    }
+
+    private func publishAllSongsProgress(
+        _ songs: [Song],
+        afterAppending page: [Song],
+        onProgress: (@Sendable ([Song]) async -> Void)?
+    ) async {
+        guard !page.isEmpty, let onProgress else { return }
+        await onProgress(songs)
     }
 }

@@ -24,7 +24,12 @@ workflow.)
   app-wide, so they restore regardless of the system's window-restoration
   setting). Scroll position persists too for the stable library views
   (Songs/Favorites/browser; content-specific views like album detail
-  deliberately don't). All six `TrackTableView` contexts opt into
+  deliberately don't). A deep Songs/browser offset waits while the complete
+  library is arriving rather than clamping to the first partial page. User
+  scrolling cancels a pending restore; layout-only changes do not. During
+  loading, selection follows song identity through page insertions and final
+  metadata-driven sorting. All six
+  `TrackTableView` contexts opt into
   `columnsCustomizable` (#38), so column **visibility, order, and width** persist
   the same way (`TrackColumnPreferences`, `trackColumns.*`/
   `trackColumnWidth.*`) — see the Track table section below. See `06`.
@@ -109,6 +114,9 @@ rendered visibly washed out.
 - AppKit-backed **`MusicTrackTable`** (via the `TrackTableView` wrapper — see
   the M5 notes in `PROGRESS.md`) with click-to-sort columns: Title, Artist,
   Album, Genre, Quality, Time, plus the now-playing speaker and ★ columns.
+  Songs and the column browser default to locale-aware Title ascending when
+  no saved user sort exists; equal titles use song id as a deterministic
+  tie-break. A saved sort always wins on later launches.
   Per-view column sets, expandable to 8 more (Album Artist, Comments,
   Grouping, Date Added, Last Played, Plays, Sample Rate, Sort Title — E2),
   plus native-only Work, Movement Name, and Movement columns. Work and
@@ -177,7 +185,14 @@ Above the track table, a horizontal multi-pane browser filtering
 Composer pane). Selecting in a left pane narrows the panes to its right and
 the track table below. Implemented as adjacent selectable lists; selections
 are part of restorable view state. Toggleable (View menu / shortcut) so users
-who prefer a plain table can hide it.
+who prefer a plain table can hide it. The unfiltered browser and flat Songs
+table render the first 500 songs immediately, remain usable while later
+pages arrive, and show an activity indicator with the published song count.
+Each pane's **All Genres / All Artists / All Albums / All Composers** row
+clears that pane's filter and the existing downstream selection cascade.
+The reset row uses the persisted empty-string sentinel as a concrete list
+tag; `nil` is reserved by SwiftUI for no selection and cannot act as a reset
+row. Returning to All Genres also dismisses an in-flight genre loader.
 
 ## Now Playing panel (Up Next / play queue) ✅
 

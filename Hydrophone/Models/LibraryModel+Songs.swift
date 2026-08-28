@@ -13,12 +13,18 @@ extension LibraryModel {
     }
 
     func loadSongsIfNeeded() async {
-        guard songs.isEmpty else { return }
         if case .loading = songsState { return }
+        if case .failed = songsState {
+            // Partial rows remain usable, but must not prevent a fresh attempt.
+        } else if !songs.isEmpty {
+            return
+        }
         let generation = songsGeneration
         songsState = .loading
         do {
-            var fetched = try await client.allSongs()
+            var fetched = try await client.allSongs { [weak self] partial in
+                await self?.publishPartialSongs(partial, generation: generation)
+            }
             await joinWorkInfo(into: &fetched)
             guard generation == songsGeneration else { return }
             songs = fetched
@@ -28,5 +34,13 @@ extension LibraryModel {
             songsState = .failed(error.userMessage)
             Self.log.error("song load failed: \(error.userMessage)")
         }
+    }
+
+    /// Publishes raw Subsonic pages while the complete walk is still in
+    /// flight. Work/movement enrichment remains a single final pass so the
+    /// native metadata join is never repeated for every partial snapshot.
+    private func publishPartialSongs(_ partial: [Song], generation: Int) {
+        guard generation == songsGeneration else { return }
+        songs = partial
     }
 }
