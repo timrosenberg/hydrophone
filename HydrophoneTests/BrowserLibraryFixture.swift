@@ -22,16 +22,6 @@ final class BrowserLibraryFixture {
             Self.isBrowserPreference($0.key)
         }
         standardBrowserPreferences.keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
-        // Use the existing fresh-start harness so this required environment
-        // object never reads the user's Keychain or restores a server queue.
-        let previous = ProcessInfo.processInfo.environment["HYDROPHONE_SCREENSHOT_FRESH"]
-        setenv("HYDROPHONE_SCREENSHOT_FRESH", "1", 1)
-        app = AppModel()
-        if let previous {
-            setenv("HYDROPHONE_SCREENSHOT_FRESH", previous, 1)
-        } else {
-            unsetenv("HYDROPHONE_SCREENSHOT_FRESH")
-        }
         defaults = UserDefaults(suiteName: suite)!
         let store = InMemoryCredentialStore(ServerCredentials(
             baseURL: URL(string: "https://browser.example.com")!, username: "test",
@@ -44,6 +34,8 @@ final class BrowserLibraryFixture {
         let native = NavidromeClient(credentials: store, session: session)
         library = LibraryModel(client: client, navidrome: native, nativeFeaturesAvailable: { false })
         connection = ConnectionModel(client: client, navidrome: native, credentials: store)
+        app = AppModel(credentials: store, client: client, playback: PlaybackService(client: client),
+                       connection: connection, library: library, player: player)
         window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1_100, height: 600),
                           styleMask: .borderless, backing: .buffered, defer: false)
         Self.retainedWindows.append(window)

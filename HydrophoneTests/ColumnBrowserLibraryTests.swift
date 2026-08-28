@@ -6,6 +6,13 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ColumnBrowserLibraryTests {
+    @Test func browserFixtureDoesNotReplaceSharedArtworkClient() {
+        let original = ArtworkCache.shared.clientBox
+        let fixture = BrowserLibraryFixture()
+        defer { fixture.close() }
+        #expect(ArtworkCache.shared.clientBox === original)
+    }
+
     // Catches returning to a sampled base or deriving panes only from page one.
     @Test func completeLibraryIncludesLateArtistsAlbumsAndAllComposerTracks() async throws {
         await BrowserLibraryProtocol.state.reset()
