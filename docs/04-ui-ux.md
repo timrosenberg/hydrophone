@@ -193,6 +193,12 @@ clears that pane's filter and the existing downstream selection cascade.
 The reset row uses the persisted empty-string sentinel as a concrete list
 tag; `nil` is reserved by SwiftUI for no selection and cannot act as a reset
 row. Returning to All Genres also dismisses an in-flight genre loader.
+The unfiltered panes derive from the complete `allSongs()` snapshot as pages
+arrive; selected genres use the fully paginated `songs(forGenre:)` result.
+Genre responses must match both the selected genre and the newest request
+generation, so a slow A → B → A sequence cannot replace the second A result
+with the first. Cascades remain in binding setters so restoring saved pane
+selections does not clear downstream selections.
 
 ## Now Playing panel (Up Next / play queue) ✅
 

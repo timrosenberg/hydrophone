@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 291 test cases; 307 executions including parameters)
+## Current suite (Swift Testing, 311 test cases; 331 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -111,7 +111,7 @@ audio hardware.
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
 `SubsonicAllSongsTests` ·
-`TrackTableLargeLibraryTests` · `ColumnBrowserSelectionTests` ·
+`TrackTableLargeLibraryTests` · `ColumnBrowserSelectionTests` · `ColumnBrowserLibraryTests` ·
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
@@ -154,6 +154,28 @@ sends a complete AppKit mouse-down/up click to each All row. It verifies
 that an existing selection clears and another item remains selectable.
 The original nil-tag implementation was observed failing the reset assertion;
 the concrete empty-string tag passes.
+
+`ColumnBrowserLibraryTests` hosts the complete browser against a hermetic HTTP
+fixture: 1,003 songs with an artist/album/composer absent from the first 500
+rows, a 503-track composer, real cascading pane clicks, restored genre and
+downstream selections after view recreation, delayed A → B → A responses,
+and All Genres during an outstanding request. The stale-A regression failed
+with the original genre-name-only guard and passes with the request generation
+guard. A 14,082-song rendered fixture records initial-render and composer-click
+timings without a machine-dependent CI timing assertion. Its selection defaults
+are isolated, and standard browser table preferences are saved and restored.
+An injected `AppModel` graph supplies the required environment without changing
+process environment variables, configuring shared artwork/media services, or
+restoring a server queue. A regression verifies that constructing the fixture
+does not replace the shared artwork client. Normal launch still performs the
+same startup wiring through `AppModel`'s convenience initializer.
+
+Artwork-test fixtures drain their cache work before invalidating the URL
+session and removing temporary files. Teardown stops holding both current
+and newly arriving protocol requests, drops its cache ownership, and awaits
+release by active workers. This fixes the reproduced full-suite crash from
+an artwork retry creating a task in an already-invalidated session; production
+artwork scheduling remains unchanged.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and

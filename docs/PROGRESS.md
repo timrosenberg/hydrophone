@@ -27,6 +27,8 @@ M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
 design; artwork cached on disk; Songs and selected genres paginate to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
 final #82 review-fix live recheck passed on 2026-08-28) ·
+Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
+guard verified at full-library size; isolated browser and artwork fixtures) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -64,6 +66,44 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #84: complete-library column browser (2026-08-28) ✅
+
+- The merged #81/#82/#83 work already supplies the browser with complete
+  unfiltered songs and fully paginated genres. No API, playback, or filtering
+  semantics were changed here.
+- Added rendered browser coverage for metadata appearing after page one,
+  a 503-track composer, real selection cascades, persisted selections after
+  view recreation, All Genres during loading, and 14,082-song interaction.
+- Reproduced an A → B → A race: the old A response overwrote the newer A
+  result because `loadGenre` compared only the selected name. A view-local
+  request generation now guards publication as well. The regression failed
+  before the fix and passed after it.
+- Synthetic Debug measurements on this Mac: initial browser render about
+  0.29–0.31 seconds; composer click about 0.11 seconds (including AppKit
+  rendering and the test polling interval). No pane cache was justified by
+  these measurements or the responsive full-library live interaction.
+- With Tim's approval, added an injected `AppModel` initializer so the browser
+  fixture does not configure shared artwork/media state or restore a server
+  queue. Normal app startup retains its existing wiring. A regression failed
+  before this isolation fix and passes afterward. The fixture saves/restores
+  browser preferences and cancels deferred scroll/column-width writes.
+- Also with Tim's approval, fixed existing artwork-test teardown: reproducing
+  the full-suite crash with all new browser tests excluded confirmed that an
+  artwork retry could create a task after its session was invalidated. Fixtures
+  now release held requests and drain cache work before session invalidation.
+  Production artwork scheduling remains unchanged.
+- Verified: unsigned build succeeds with zero compiler warnings; full suite
+  passes **311 cases / 331 executions, zero failures or skips**; SwiftLint has
+  zero violations and `git diff --check` passes. Focused browser coverage is
+  7 cases / 10 executions including the existing parameterized selection test.
+- Live verification (2026-08-28, configured private Navidrome server): a
+  separately signed, isolated app loaded **14,117 songs**. Full-library Bach
+  filtering, genre resets, Classical → Jazz → Classical, and artist/album
+  filtering rendered responsive, matching rows. Relaunch restored the selected
+  genre, artist, album, and composer with matching album tracks after loading.
+  No playback or queue actions were performed; project signing settings and
+  the user's running app were left unchanged.
 
 ## Issue #82 PR review follow-up: fallback no longer clobbers published progress (2026-08-28) ✅
 
@@ -3370,6 +3410,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #84 (2026-08-28): unsigned build has zero compiler warnings; full
+  suite **311 cases / 331 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Rendered regressions cover complete panes, hundreds
+  of composer tracks, cascades/restoration, and stale genre requests. Live on
+  the configured private Navidrome server: 14,117 songs loaded, responsive
+  filters and genre roundtrip, saved pane selections restored after relaunch.
+  Browser dependency isolation and artwork-test teardown blockers are resolved.
 - ✅ Issue #82 local (2026-08-28): unsigned build has zero compiler warnings
   (only the non-compiler AppIntents extraction notice); full suite
   **303 cases / 323 executions, 0 failures/skips**; SwiftLint and

@@ -74,62 +74,73 @@ struct ArtworkCacheTests {
     }
 
     @Test func visibleArtworkBypassesPendingPrefetches() async throws {
-        let fixture = ArtworkFixture()
-        defer { fixture.finish() }
-        fixture.cache.prefetch((0..<24).map { request("held-\($0)") })
-        try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
-        let visible = Task { await fixture.cache.image(coverArt: "visible", size: 480) }
-        try await waitUntil { ArtworkMockProtocol.state.ids.contains("visible") }
-        #expect(await visible.value != nil)
-        #expect(ArtworkMockProtocol.state.ids == ["held-0", "visible"])
+        try await withFixture { fixture in
+            fixture.cache.prefetch((0..<24).map { request("held-\($0)") })
+            try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
+            let visible = Task { await fixture.cache.image(coverArt: "visible", size: 480) }
+            try await waitUntil { ArtworkMockProtocol.state.ids.contains("visible") }
+            #expect(await visible.value != nil)
+            #expect(ArtworkMockProtocol.state.ids == ["held-0", "visible"])
+        }
     }
 
     @Test func replacingWindowDropsObsoletePendingArtwork() async throws {
-        let fixture = ArtworkFixture()
-        defer { fixture.finish() }
-        fixture.cache.prefetch((0..<24).map { request("held-\($0)") })
-        try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
-        fixture.cache.prefetch([request("replacement")])
-        ArtworkMockProtocol.state.completeHeld()
-        try await waitUntil { fixture.cache.cachedVariant(key: "replacement") != nil }
-        #expect(ArtworkMockProtocol.state.ids == ["held-0", "replacement"])
+        try await withFixture { fixture in
+            fixture.cache.prefetch((0..<24).map { request("held-\($0)") })
+            try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
+            fixture.cache.prefetch([request("replacement")])
+            ArtworkMockProtocol.state.completeHeld()
+            try await waitUntil { fixture.cache.cachedVariant(key: "replacement") != nil }
+            #expect(ArtworkMockProtocol.state.ids == ["held-0", "replacement"])
+        }
     }
 
     @Test func clearingWindowStopsPendingArtworkWithoutCancellingVisibleJoin() async throws {
-        let fixture = ArtworkFixture()
-        defer { fixture.finish() }
-        fixture.cache.prefetch([request("held-0"), request("obsolete")])
-        try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
-        let visible = Task { await fixture.cache.image(coverArt: "held-0", size: 480) }
-        fixture.cache.prefetch([])
-        ArtworkMockProtocol.state.completeHeld()
-        #expect(await visible.value != nil)
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(ArtworkMockProtocol.state.ids == ["held-0"])
+        try await withFixture { fixture in
+            fixture.cache.prefetch([request("held-0"), request("obsolete")])
+            try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
+            let visible = Task { await fixture.cache.image(coverArt: "held-0", size: 480) }
+            fixture.cache.prefetch([])
+            ArtworkMockProtocol.state.completeHeld()
+            #expect(await visible.value != nil)
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(ArtworkMockProtocol.state.ids == ["held-0"])
+        }
     }
 
     @Test func serverChangeDiscardsPendingPrefetches() async throws {
-        let fixture = ArtworkFixture()
-        defer { fixture.finish() }
-        fixture.cache.prefetch([request("held-0"), request("obsolete")])
-        try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
-        fixture.cache.setServer(baseURL: URL(string: "https://other.example.com")!)
-        ArtworkMockProtocol.state.completeHeld()
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(ArtworkMockProtocol.state.ids == ["held-0"])
+        try await withFixture { fixture in
+            fixture.cache.prefetch([request("held-0"), request("obsolete")])
+            try await waitUntil { ArtworkMockProtocol.state.ids.contains("held-0") }
+            fixture.cache.setServer(baseURL: URL(string: "https://other.example.com")!)
+            ArtworkMockProtocol.state.completeHeld()
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(ArtworkMockProtocol.state.ids == ["held-0"])
+        }
     }
 
     @Test func oversizedWindowFetchesOnlyTheBoundedPrefix() async throws {
+        try await withFixture { fixture in
+            fixture.cache.prefetch((0..<50).map { request("album-\($0)") })
+            try await waitUntil { fixture.cache.cachedVariant(key: "album-23") != nil }
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(ArtworkMockProtocol.state.ids == (0..<24).map { "album-\($0)" })
+            // A repeated window reuses the warmed entries rather than downloading again.
+            fixture.cache.prefetch((0..<24).map { request("album-\($0)") })
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(ArtworkMockProtocol.state.ids.count == 24)
+        }
+    }
+
+    private func withFixture(_ body: (ArtworkFixture) async throws -> Void) async throws {
         let fixture = ArtworkFixture()
-        defer { fixture.finish() }
-        fixture.cache.prefetch((0..<50).map { request("album-\($0)") })
-        try await waitUntil { fixture.cache.cachedVariant(key: "album-23") != nil }
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(ArtworkMockProtocol.state.ids == (0..<24).map { "album-\($0)" })
-        // A repeated window reuses the warmed entries rather than downloading again.
-        fixture.cache.prefetch((0..<24).map { request("album-\($0)") })
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(ArtworkMockProtocol.state.ids.count == 24)
+        do {
+            try await body(fixture)
+        } catch {
+            await fixture.finish()
+            throw error
+        }
+        await fixture.finish()
     }
 
     @Test func albumPrefetchWindowWaitsForGeometryAndTracksVisibleIDs() {
@@ -186,25 +197,37 @@ private actor ConcurrencyGauge {
 }
 
 @MainActor
-private struct ArtworkFixture {
+private final class ArtworkFixture {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let session: URLSession
-    let cache: ArtworkCache
+    private var ownedCache: ArtworkCache?
+    var cache: ArtworkCache { ownedCache! }
 
     init() {
         ArtworkMockProtocol.state.reset()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ArtworkMockProtocol.self]
         session = URLSession(configuration: config)
-        cache = ArtworkCache(session: session, directory: directory)
+        ownedCache = ArtworkCache(session: session, directory: directory)
         let creds = ServerCredentials(baseURL: URL(string: "https://artwork.example.com")!,
                                       username: "u", secret: "s", authMethod: .tokenSalt)
         cache.clientBox = ClientBox(SubsonicClient(credentials: InMemoryCredentialStore(creds)))
     }
 
-    func finish() {
+    func finish() async {
         cache.prefetch([])
-        ArtworkMockProtocol.state.completeHeld()
+        // A queued request can reach the protocol after teardown begins.
+        // Complete those too, then let the cache's worker and image calls
+        // release it before invalidating the session or removing its files.
+        ArtworkMockProtocol.state.completeHeld(stopHolding: true)
+        weak var drainingCache = ownedCache
+        ownedCache = nil
+        for _ in 0..<500 {
+            if drainingCache == nil { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(drainingCache == nil, "Artwork work must drain before its session is invalidated")
+        guard drainingCache == nil else { return }
         session.invalidateAndCancel()
         try? FileManager.default.removeItem(at: directory)
     }
@@ -217,19 +240,21 @@ private final class ArtworkMockProtocol: URLProtocol, @unchecked Sendable {
         private let lock = NSLock()
         private var started: [String] = []
         private var held: [ArtworkMockProtocol] = []
+        private var isFinishing = false
 
         var ids: [String] { lock.withLock { started } }
-        func reset() { lock.withLock { started = []; held = [] } }
+        func reset() { lock.withLock { started = []; held = []; isFinishing = false } }
         func record(_ request: ArtworkMockProtocol, id: String) -> Bool {
             lock.withLock {
                 started.append(id)
-                guard id.hasPrefix("held-") else { return false }
+                guard id.hasPrefix("held-"), !isFinishing else { return false }
                 held.append(request)
                 return true
             }
         }
-        func completeHeld() {
+        func completeHeld(stopHolding: Bool = false) {
             let requests = lock.withLock {
+                if stopHolding { isFinishing = true }
                 let requests = held
                 held = []
                 return requests

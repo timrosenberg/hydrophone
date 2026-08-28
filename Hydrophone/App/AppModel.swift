@@ -126,9 +126,21 @@ final class AppModel {
     let credentials: CredentialStore
     let client: SubsonicClient
     let playback: PlaybackService
-    let nowPlaying: NowPlayingCenter
 
-    init() {
+    /// Assemble an existing graph without registering process-wide services
+    /// or restoring a queue. Normal app startup uses the convenience initializer.
+    init(credentials: CredentialStore, client: SubsonicClient, playback: PlaybackService,
+         connection: ConnectionModel, library: LibraryModel, player: PlayerModel) {
+        self.credentials = credentials
+        self.client = client
+        self.playback = playback
+        self.connection = connection
+        self.library = library
+        self.player = player
+        connection.setSongsInvalidationHandler { [weak library] in library?.invalidateSongs() }
+    }
+
+    convenience init() {
         let credentials = Self.makeCredentialStore()
         let client = SubsonicClient(credentials: credentials)
         // Native Navidrome feature detection (#26). `LibraryModel` also holds
@@ -145,13 +157,7 @@ final class AppModel {
             await connection.nativeFeaturesAvailable()
         })
 
-        self.credentials = credentials
-        self.client = client
-        self.playback = playback
-        self.nowPlaying = nowPlaying
-        self.connection = connection
-        self.library = library
-        self.player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
+        let player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in
             // Best-effort: a failed scrobble should never surface in the UI.
             _ = try? await client.sendStatus(.scrobble(id: id, submission: submission))
@@ -162,12 +168,13 @@ final class AppModel {
                 ids: snapshot.songIds, current: snapshot.currentId,
                 positionMs: snapshot.positionMs))
         })
+        self.init(credentials: credentials, client: client, playback: playback,
+                  connection: connection, library: library, player: player)
 
         // Give the shared artwork cache access to the authenticated client, and
         // scope it to the current server so artwork never mixes across servers.
         ArtworkCache.shared.clientBox = ClientBox(client)
         ArtworkCache.shared.setServer(baseURL: credentials.load()?.baseURL)
-        connection.setSongsInvalidationHandler { [weak library] in library?.invalidateSongs() }
 
         // Bring back the last session's queue (paused; never interrupts).
         Task { await restorePlayQueue() }
