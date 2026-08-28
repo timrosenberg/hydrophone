@@ -36,6 +36,42 @@ extension SubsonicAllSongsTests {
         if case .loaded = library.songsState {} else { Issue.record("Expected loaded songs state") }
     }
 
+    /// A caller watching `onProgress` has already rendered the songs from
+    /// offset 0 by the time offset 500 fails. Overwriting that render with
+    /// an unrelated random sample (even a fetchable one) would look like
+    /// silent data loss, so the walk's own error must propagate instead
+    /// (see PR #98 review).
+    @Test func laterPageFailureAfterProgressPropagatesInsteadOfFallingBack() async throws {
+        await AllSongsMockProtocol.reset(
+            songCount: 12_000,
+            rejectAtOffset: 500,
+            randomSongCount: 2
+        )
+        let client = makeClient().client
+
+        await #expect(throws: SubsonicError.self) {
+            _ = try await client.allSongs { _ in }
+        }
+
+        #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/getRandomSongs.view") == 0)
+    }
+
+    @MainActor
+    @Test func failedPartialLoadKeepsPartialRowsInsteadOfARandomSample() async {
+        await AllSongsMockProtocol.reset(songCount: 1_003, rejectAtOffset: 500, randomSongCount: 2)
+        let library = makeProgressLibrary()
+        await library.loadSongsIfNeeded()
+
+        // The walk already rendered 500 real songs before offset 500 failed;
+        // the fallback (which would have succeeded, unlike
+        // failedPartialLoadCanRetryOnTheNextVisit's rejectRandom case) must
+        // not silently replace them with an unrelated random sample.
+        #expect(library.songs.count == 500)
+        #expect(library.songs.first?.id == "song-0")
+        if case .failed = library.songsState {} else { Issue.record("Expected failed songs state") }
+        #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/getRandomSongs.view") == 0)
+    }
+
     @MainActor
     @Test func failedPartialLoadCanRetryOnTheNextVisit() async {
         await AllSongsMockProtocol.reset(songCount: 1_003, rejectAtOffset: 500, rejectRandom: true)

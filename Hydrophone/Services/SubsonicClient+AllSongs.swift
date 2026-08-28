@@ -74,21 +74,49 @@ extension SubsonicClient {
 
     /// Walks the library and falls back to the existing random-sample
     /// behavior when the server rejects or cannot safely paginate an empty
-    /// search (including a failure partway through the walk, e.g. a server
-    /// that ignores offsets — see `repeatedFullPageFallsBackWithoutAnUnboundedWalk`).
-    /// The fallback is marked incomplete so `allSongs()` won't cache it as
-    /// the verified library.
+    /// search before any page has reached the caller (including an
+    /// immediate failure, e.g. a server that ignores offsets on page one —
+    /// see `repeatedFullPageFallsBackWithoutAnUnboundedWalk`). The fallback
+    /// is marked incomplete so `allSongs()` won't cache it as the verified
+    /// library.
+    ///
+    /// If the walk instead fails *after* already publishing progress via
+    /// `onProgress`, the caller may already be showing those real songs —
+    /// silently replacing them with an unrelated random sample would look
+    /// like data loss, so the original error is propagated instead and the
+    /// caller keeps its last good partial snapshot (see PR #98 review).
     private func buildAllSongs(
         using creds: ServerCredentials,
         onProgress: (@Sendable ([Song]) async -> Void)?
     ) async throws(SubsonicError) -> AllSongsOutcome {
+        let marker = onProgress.map { _ in ProgressMarker() }
+        let trackedProgress: (@Sendable ([Song]) async -> Void)?
+        if let onProgress, let marker {
+            trackedProgress = { songs in
+                await marker.markPublished()
+                await onProgress(songs)
+            }
+        } else {
+            trackedProgress = nil
+        }
         do {
-            let songs = try await walkAllSongs(using: creds, onProgress: onProgress)
+            let songs = try await walkAllSongs(using: creds, onProgress: trackedProgress)
             return AllSongsOutcome(songs: songs, isComplete: true)
         } catch {
+            if let marker, await marker.published {
+                throw error
+            }
             let songs = try await list(.randomSongs(size: Self.allSongsPageSize), using: creds, of: Song.self)
             return AllSongsOutcome(songs: songs, isComplete: false)
         }
+    }
+
+    /// Records whether the walk has published at least one page, so
+    /// `buildAllSongs` can tell a fresh failure apart from one that would
+    /// clobber progress a caller already rendered.
+    private actor ProgressMarker {
+        private(set) var published = false
+        func markPublished() { published = true }
     }
 
     // The walk keeps its probe, bounded fan-out, ordering, and progress guard

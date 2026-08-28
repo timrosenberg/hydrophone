@@ -65,6 +65,46 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #82 PR review follow-up: fallback no longer clobbers published progress (2026-08-28) ✅
+
+- Fixed a bug found in `/code-review` on PR #98: when the eager `allSongs()`
+  walk failed *after* already publishing partial pages via `onProgress`
+  (e.g. `LibraryModel.songs` already showing thousands of real songs), the
+  random-sample fallback in `buildAllSongs` silently replaced that partial
+  render with an unrelated small random sample and reported success
+  (`isComplete: false`, but the flag was never surfaced) — so the Songs
+  list would visibly grow, then snap down to ~500 unrelated songs with no
+  error shown.
+- `buildAllSongs` (`Hydrophone/Services/SubsonicClient+AllSongs.swift`) now
+  tracks, via a small private `ProgressMarker` actor, whether the walk
+  published at least one page to its caller before failing. The
+  random-sample fallback is used only for a failure *before* any progress
+  was published (matching every existing tested scenario, since those all
+  call `allSongs()` without `onProgress`); once progress has been
+  published, the original error propagates instead. `LibraryModel`'s
+  existing `.failed` handling in `loadSongsIfNeeded` already keeps the last
+  good partial `songs` snapshot in that case ("Partial rows remain usable,
+  but must not prevent a fresh attempt") — no caller-side change was
+  needed.
+- New hermetic coverage: `laterPageFailureAfterProgressPropagatesInsteadOfFallingBack`
+  (`SubsonicAllSongsProgressTests.swift`) asserts the client throws rather
+  than falling back once progress was published, and that
+  `getRandomSongs.view` is never called; `failedPartialLoadKeepsPartialRowsInsteadOfARandomSample`
+  asserts the `LibraryModel`-level outcome: 500 real partial songs retained,
+  `.failed` state, no random-sample request. Existing fallback-on-immediate-failure
+  tests (e.g. `laterPageFailureFallsBackToTheExistingRandomSample`, which uses
+  plain `allSongs()` with no `onProgress`) pass unchanged.
+- Verified: unsigned build succeeds with zero compiler warnings; full test
+  suite passes (targeted `SubsonicAllSongsTests`/`SubsonicAllSongsProgressTests`
+  run plus a full-suite run, both green); SwiftLint reports 0 violations.
+  Live-verified the unaffected normal path only (the fix's own behavior is a
+  failure-path change not reproducible against a healthy real server, which is
+  why it's covered hermetically with mocked failure injection instead): a
+  fresh launch against the live Navidrome server completed a full walk and
+  rendered the Songs column browser with real data, no errors.
+- Finding posted as an inline PR review comment on #98; fix committed to the
+  same `issue-82-full-songs-view` branch per Tim's explicit go-ahead.
+
 ## Issue #82: incremental full-library Songs browsing (2026-08-26; verified 2026-08-28) ✅
 
 - The complete `allSongs()` walk now publishes its first page and ordered
