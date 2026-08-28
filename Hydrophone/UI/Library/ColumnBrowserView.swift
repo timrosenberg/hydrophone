@@ -8,6 +8,7 @@ struct ColumnBrowserView: View {
 
     @State private var songs: [Song] = []          // songs for the selected genre
     @State private var isLoading = false
+    @State private var genreLoadGeneration = 0
 
     // Pane selections persist across launches ("" = nothing selected). The
     // cascade (genre resets artist+album+composer, artist resets
@@ -152,13 +153,16 @@ struct ColumnBrowserView: View {
     }
 
     private func loadGenre(_ genre: String?) async {
+        guard selectedGenre == genre else { return }
+        genreLoadGeneration += 1
+        let generation = genreLoadGeneration
         guard let genre else { songs = []; isLoading = false; return }
         isLoading = true
         let fetched = await library.songs(forGenre: genre)
         // The Binding-setter Task isn't cancelled by a newer selection —
         // two rapid genre clicks race, and the slower fetch must never land
-        // under the newer selection.
-        guard storedGenre == genre else { return }
+        // under the newer selection, even after an A -> B -> A round trip.
+        guard generation == genreLoadGeneration, storedGenre == genre else { return }
         songs = fetched
         isLoading = false
     }
