@@ -15,8 +15,13 @@ final class BrowserLibraryFixture {
     private let player = PlayerModel()
     private let app: AppModel
     private let window: NSWindow
+    private let standardBrowserPreferences: [String: Any]
 
     init() {
+        standardBrowserPreferences = UserDefaults.standard.dictionaryRepresentation().filter {
+            Self.isBrowserPreference($0.key)
+        }
+        standardBrowserPreferences.keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
         // Use the existing fresh-start harness so this required environment
         // object never reads the user's Keychain or restores a server queue.
         let previous = ProcessInfo.processInfo.environment["HYDROPHONE_SCREENSHOT_FRESH"]
@@ -45,6 +50,7 @@ final class BrowserLibraryFixture {
     }
 
     func show() {
+        stopSavingScroll()
         window.contentView = NSHostingView(rootView: ColumnBrowserView()
             .environment(app).environment(library).environment(connection).environment(player)
             .environment(Navigator()).defaultAppStorage(defaults)
@@ -53,9 +59,27 @@ final class BrowserLibraryFixture {
     }
 
     func close() {
+        stopSavingScroll()
         window.orderOut(nil)
         window.contentView = nil
         defaults.removePersistentDomain(forName: suite)
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where Self.isBrowserPreference(key) {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        for (key, value) in standardBrowserPreferences { UserDefaults.standard.set(value, forKey: key) }
+    }
+
+    private static func isBrowserPreference(_ key: String) -> Bool {
+        ["trackSort.browser", "trackScroll.browser", "trackColumns.browser"].contains(key)
+            || key.hasPrefix("trackColumnWidth.browser.")
+    }
+
+    private func stopSavingScroll() {
+        for table in tables {
+            guard let coordinator = table.dataSource as? MusicTrackTable.Coordinator else { continue }
+            coordinator.parent.scrollAutosaveKey = nil
+            coordinator.pendingScrollSave?.cancel()
+        }
     }
 
     private var tables: [NSTableView] {

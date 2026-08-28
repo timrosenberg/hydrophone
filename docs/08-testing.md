@@ -93,7 +93,13 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 291 test cases; 307 executions including parameters)
+## Current suite (Swift Testing, 310 test cases; 330 executions including parameters)
+
+Issue #84 gate is currently blocked: the 2026-08-28 full run had one process
+crash in artwork fetching after a test session was invalidated. The same
+artwork stack reproduced with the new browser suite excluded (305 cases /
+325 executions). Focused browser coverage passes; test-host isolation review
+and real-server verification remain outstanding. See `PROGRESS.md`.
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -111,7 +117,7 @@ audio hardware.
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
 `SubsonicAllSongsTests` ·
-`TrackTableLargeLibraryTests` · `ColumnBrowserSelectionTests` ·
+`TrackTableLargeLibraryTests` · `ColumnBrowserSelectionTests` · `ColumnBrowserLibraryTests` ·
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
@@ -154,6 +160,18 @@ sends a complete AppKit mouse-down/up click to each All row. It verifies
 that an existing selection clears and another item remains selectable.
 The original nil-tag implementation was observed failing the reset assertion;
 the concrete empty-string tag passes.
+
+`ColumnBrowserLibraryTests` hosts the complete browser against a hermetic HTTP
+fixture: 1,003 songs with an artist/album/composer absent from the first 500
+rows, a 503-track composer, real cascading pane clicks, restored genre and
+downstream selections after view recreation, delayed A → B → A responses,
+and All Genres during an outstanding request. The stale-A regression failed
+with the original genre-name-only guard and passes with the request generation
+guard. A 14,082-song rendered fixture records initial-render and composer-click
+timings without a machine-dependent CI timing assertion. Its selection defaults
+are isolated, and standard browser table preferences are saved and restored.
+The required `AppModel` environment still needs isolation from shared artwork
+state before this test-host review can be considered complete.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and
