@@ -26,7 +26,7 @@ M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
 design; artwork cached on disk; Songs and selected genres paginate to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
-final #82 review-fix live recheck pending server recovery) ·
+final #82 review-fix live recheck passed on 2026-08-28) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -65,7 +65,7 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
-## Issue #82: incremental full-library Songs browsing (2026-08-26) — final live recheck pending
+## Issue #82: incremental full-library Songs browsing (2026-08-26; verified 2026-08-28) ✅
 
 - The complete `allSongs()` walk now publishes its first page and ordered
   later pages into `LibraryModel` while keeping the loading state active.
@@ -87,10 +87,12 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   UI, All-row clicks, failed-partial retries, selection/playback identity, and
   user-scroll cancellation. The reset-click test fails with the original nil
   tags and passes with the fix; other item selections remain functional.
-- Local verification: unsigned build succeeds with **zero warnings**; full
+- Local verification rerun **2026-08-28**: unsigned build succeeds with
+  **zero compiler warnings**; full
   suite **303 cases / 323 executions including parameters, 0 failures/skips**
   (canonical xcresult summary). SwiftLint reports **0 violations** and
-  `git diff --check` passes.
+  `git diff --check` passes. A fresh build emits only Xcode's non-compiler
+  AppIntents metadata-extraction notice (no AppIntents.framework dependency).
   An earlier full run aborted in `ArtworkCache.fetch`/URLSession; the focused
   table suite and subsequent complete suite passed. No unrelated artwork code
   was changed.
@@ -110,11 +112,16 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   mixes without changing the visible Songs list. No view cap was needed.
 - Final pre-PR review added partial-failure retry, selection-identity, and
   pending-scroll-cancellation safeguards, all with failing-then-passing
-  regression coverage. The final isolated app's live recheck is **blocked**:
-  startup and a subsequent Test Connection returned **HTTP 502** from the same
-  server on 2026-08-26. Earlier user confirmations remain valid evidence for
-  their tested build; the post-review build still needs a successful live
-  recheck. **No PR opened.**
+  regression coverage. HTTP 502 responses blocked the 2026-08-26 live recheck;
+  the server recovered and the final recheck **passed on 2026-08-28**.
+- Final live recheck, **2026-08-28, same authorized private Navidrome server
+  (host redacted)**: a fresh isolated build rendered 500 songs while loading,
+  advanced to the current **14,117 songs**, and removed progress after the
+  metadata join. A track selected before completion remained selected, and
+  Get Info opened that same track. Scrolling during loading retained its
+  position after completion with no snap-back. Composer filtering and clicking
+  All Composers restored the unfiltered list. This recheck did not start
+  playback or alter the queue; Tim's earlier Shuffle All confirmation stands.
 - Project signing and saved connection settings are unchanged;
   the isolated local test copy uses ad-hoc signing with the app's existing
   sandbox/network entitlements because no Developer ID identity is available.
@@ -3323,7 +3330,8 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
-- ✅ Issue #82 local (2026-08-26): unsigned build has zero warnings; full suite
+- ✅ Issue #82 local (2026-08-28): unsigned build has zero compiler warnings
+  (only the non-compiler AppIntents extraction notice); full suite
   **303 cases / 323 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Incremental loading, large-table/scroll behavior,
   and All-row reset clicks have automated coverage.
@@ -3331,9 +3339,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   Tim confirmed column-browser reset and deep-scroll/relaunch restoration with
   no snap-back, responsive Title/Artist/Album sorting, and fresh Shuffle All
   mixes without altering the visible Songs list.
-- ⏳ Issue #82 final live recheck (2026-08-26): post-review safeguards pass
-  regression tests, but startup and Test Connection return HTTP 502 from the
-  private server. PR remains unopened until this check can complete.
+- ✅ Issue #82 final live recheck (2026-08-28): server recovered from HTTP 502;
+  fresh isolated build incrementally loaded 500 → 14,117 songs and finished
+  metadata enrichment. Selection/Get Info identity, scrolling without
+  snap-back, and composer-filter reset verified; no queue changes.
 - ✅ Issue #81 (2026-08-26): unsigned build has zero compiler warnings; full
   suite **291 cases / 307 executions, 0 failures/skips**;
   SwiftLint and `git diff --check` pass. Paging, cache, invalidation, fallback,
