@@ -93,13 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 310 test cases; 330 executions including parameters)
-
-Issue #84 gate is currently blocked: the 2026-08-28 full run had one process
-crash in artwork fetching after a test session was invalidated. The same
-artwork stack reproduced with the new browser suite excluded (305 cases /
-325 executions). Focused browser coverage passes; test-host isolation review
-and real-server verification remain outstanding. See `PROGRESS.md`.
+## Current suite (Swift Testing, 311 test cases; 331 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -170,8 +164,18 @@ with the original genre-name-only guard and passes with the request generation
 guard. A 14,082-song rendered fixture records initial-render and composer-click
 timings without a machine-dependent CI timing assertion. Its selection defaults
 are isolated, and standard browser table preferences are saved and restored.
-The required `AppModel` environment still needs isolation from shared artwork
-state before this test-host review can be considered complete.
+An injected `AppModel` graph supplies the required environment without changing
+process environment variables, configuring shared artwork/media services, or
+restoring a server queue. A regression verifies that constructing the fixture
+does not replace the shared artwork client. Normal launch still performs the
+same startup wiring through `AppModel`'s convenience initializer.
+
+Artwork-test fixtures drain their cache work before invalidating the URL
+session and removing temporary files. Teardown stops holding both current
+and newly arriving protocol requests, drops its cache ownership, and awaits
+release by active workers. This fixes the reproduced full-suite crash from
+an artwork retry creating a task in an already-invalidated session; production
+artwork scheduling remains unchanged.
 
 `ComposerSongLiveTests` requires `HYDROPHONE_COMPOSER_LIVE=1` in addition to
 the three connection variables above, and a library with 500+ Bach and

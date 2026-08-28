@@ -42,7 +42,7 @@ final class BrowserLibraryFixture {
     }
 
     func show() {
-        stopSavingScroll()
+        stopSavingPreferences()
         window.contentView = NSHostingView(rootView: ColumnBrowserView()
             .environment(app).environment(library).environment(connection).environment(player)
             .environment(Navigator()).defaultAppStorage(defaults)
@@ -51,7 +51,7 @@ final class BrowserLibraryFixture {
     }
 
     func close() {
-        stopSavingScroll()
+        stopSavingPreferences()
         window.orderOut(nil)
         window.contentView = nil
         defaults.removePersistentDomain(forName: suite)
@@ -66,11 +66,13 @@ final class BrowserLibraryFixture {
             || key.hasPrefix("trackColumnWidth.browser.")
     }
 
-    private func stopSavingScroll() {
+    private func stopSavingPreferences() {
         for table in tables {
             guard let coordinator = table.dataSource as? MusicTrackTable.Coordinator else { continue }
             coordinator.parent.scrollAutosaveKey = nil
+            coordinator.parent.sortAutosaveKey = nil
             coordinator.pendingScrollSave?.cancel()
+            coordinator.pendingColumnWidthSave?.cancel()
         }
     }
 
