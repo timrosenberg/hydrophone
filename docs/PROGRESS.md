@@ -77,7 +77,7 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   `.white.opacity(0.6)` selected — down from `.secondary`/`0.8`). An
   interim attempt to hide the count below 2 was tried live and reverted in
   favor of the lighter color alone.
-- Gate: build passes with zero warnings; full suite **330 test cases/
+- Gate: build passes with zero warnings; full suite **311 test cases / 331
   executions, 0 failures/skips**; SwiftLint 0 violations.
 - Live: Tim reviewed the running app against his connected library across
   several rebuild/relaunch iterations and confirmed the final spacing and
