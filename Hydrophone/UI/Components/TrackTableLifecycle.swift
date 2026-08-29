@@ -6,7 +6,7 @@ import AppKit
 
 /// Header view that surfaces the column-picker context menu (#37) on
 /// right-click, mirroring how `InnerTableView.menu(for:)` does it for rows.
-private final class InnerTableHeaderView: NSTableHeaderView {
+final class InnerTableHeaderView: NSTableHeaderView {
     var menuProvider: (() -> NSMenu?)?
     override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
 
@@ -20,10 +20,13 @@ private final class InnerTableHeaderView: NSTableHeaderView {
     /// left to the native header drag.
     private var dividerAreas: [NSTrackingArea] = []
     private var hoveringDivider = false
+    private(set) weak var observedTable: NSTableView?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard let tableView else { return }
+        stopObservingColumnChanges()
+        guard window != nil, let tableView else { return }
+        observedTable = tableView
         // A column's width can change (persisted-width restore, the picker's
         // reconciliation, a user drag) without the header view's own overall
         // frame changing — uniform autoresizing keeps the total width fixed
@@ -34,6 +37,15 @@ private final class InnerTableHeaderView: NSTableHeaderView {
                             name: NSTableView.columnDidResizeNotification, object: tableView)
         center.addObserver(self, selector: #selector(rebuildDividerAreas),
                             name: NSTableView.columnDidMoveNotification, object: tableView)
+        rebuildDividerAreas()
+    }
+
+    private func stopObservingColumnChanges() {
+        guard let observedTable else { return }
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: NSTableView.columnDidResizeNotification, object: observedTable)
+        center.removeObserver(self, name: NSTableView.columnDidMoveNotification, object: observedTable)
+        self.observedTable = nil
     }
 
     override func updateTrackingAreas() {

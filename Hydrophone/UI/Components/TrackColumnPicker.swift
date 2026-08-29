@@ -50,6 +50,7 @@ extension MusicTrackTable.Coordinator {
                 table.moveColumn(table.tableColumns.count - 1, toColumn: favIndex)
             }
         }
+        table.headerView?.updateTrackingAreas()
         persistVisibleColumnsAndOrder(table: table)
     }
 
@@ -95,7 +96,10 @@ extension MusicTrackTable.Coordinator {
         guard contentColumns(in: table) != desired else { return }
 
         reconcilingNativeColumns = true
-        defer { reconcilingNativeColumns = false }
+        defer {
+            reconcilingNativeColumns = false
+            table.headerView?.updateTrackingAreas()
+        }
 
         for column in contentColumns(in: table) where !desired.contains(column) {
             if let existing = table.tableColumn(withIdentifier: .init(column.id)) {
