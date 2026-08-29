@@ -67,6 +67,35 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Track table column divider resize cursor (2026-08-28) ✅
+
+- Track table column headers (Songs, Album detail, Favorites, column browser,
+  playlists, search) never hinted that a divider was draggable — no cursor
+  changed on hover. AppKit's native resize hit zone turned out to be only a
+  few points wide with no cursor of its own, and raw `resetCursorRects`/
+  `addCursorRect` don't reliably fire on AppKit content hosted inside SwiftUI
+  (this app's own `PanelResizeHandle` already worked around the same
+  limitation with tracking areas + `NSCursor.push()/pop()`).
+- `InnerTableHeaderView` now derives a shared 16pt hit zone around each
+  resizable column's trailing divider (`dividerZones()`), used by both the
+  hover cursor (tracking areas) and the resize itself (a manual drag loop in
+  `mouseDown`) so the two can never disagree — an earlier pass that widened
+  only the cursor zone past AppKit's native, narrower resize hit-test caused
+  clicks inside the wider zone to fall through into header-cell reorder-drag
+  instead.
+- Zones rebuild on `NSTableView.columnDidResizeNotification`/
+  `columnDidMoveNotification`, not just the header's own layout pass — a
+  column's width can change (persisted-width restore, the column picker's
+  reconciliation) without the header view's own overall frame changing,
+  since `uniformColumnAutoresizingStyle` keeps the total width fixed by
+  redistributing the difference.
+- Gate: build passes with zero warnings; full suite **330 test cases/
+  executions, 0 failures/skips**; SwiftLint 0 violations.
+- Live: iterated against Tim's connected library across several
+  rebuild/relaunch cycles; a captured screen recording confirmed the resize
+  tracks smoothly with no drift once the cursor zone is acquired, and no
+  reorder-drag conflicts.
+
 ## Issue #84: complete-library column browser (2026-08-28) ✅
 
 - The merged #81/#82/#83 work already supplies the browser with complete
@@ -3410,6 +3439,12 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Column divider resize cursor (2026-08-28): unsigned build has zero
+  compiler warnings; full suite **330 test cases/executions, 0
+  failures/skips**; SwiftLint clean. Live against Tim's connected library:
+  resize cursor and drag confirmed via a captured screen recording across
+  several iterations, including a fix for the cursor zone promising a resize
+  that fell through to reorder-drag.
 - ✅ Issue #84 (2026-08-28): unsigned build has zero compiler warnings; full
   suite **311 cases / 331 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete panes, hundreds
