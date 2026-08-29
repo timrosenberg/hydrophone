@@ -42,10 +42,11 @@ struct ArtistsView: View {
                         Spacer()
                         if let count = artist.albumCount {
                             Text("\(count)").monospacedDigit()
-                                .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.8))
-                                                            : AnyShapeStyle(.secondary))
+                                .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.6))
+                                                            : AnyShapeStyle(.tertiary))
                         }
                     }
+                    .padding(.vertical, 3)
                     .tag(artist.id)
                     // Accent selection matching the track list (the system
                     // highlight — suppressed below — renders the accent
@@ -57,6 +58,7 @@ struct ArtistsView: View {
                     }
                 }
             }
+            .listRowSeparatorTint(Color(nsColor: .separatorColor).opacity(0.75))
             .listStyle(.plain)
             .playPauseOnSpace()
             .background(ListSelectionHighlightDisabler())
