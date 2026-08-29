@@ -6,9 +6,108 @@ import AppKit
 
 /// Header view that surfaces the column-picker context menu (#37) on
 /// right-click, mirroring how `InnerTableView.menu(for:)` does it for rows.
-private final class InnerTableHeaderView: NSTableHeaderView {
+final class InnerTableHeaderView: NSTableHeaderView {
     var menuProvider: (() -> NSMenu?)?
     override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+
+    /// A widened, comfortable hit zone (16pt) around each resizable column's
+    /// trailing divider — both the hover cursor and the actual drag-to-resize
+    /// read from this same geometry, so they can never disagree. AppKit's own
+    /// native resize hit-test is only a few points wide, which is why simply
+    /// widening the *cursor* zone past it made the cursor promise a resize
+    /// that a click there didn't honor (it fell through to header-cell
+    /// reorder-drag instead) — so resizing is handled entirely here too, not
+    /// left to the native header drag.
+    private var dividerAreas: [NSTrackingArea] = []
+    private var hoveringDivider = false
+    private(set) weak var observedTable: NSTableView?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stopObservingColumnChanges()
+        guard window != nil, let tableView else { return }
+        observedTable = tableView
+        // A column's width can change (persisted-width restore, the picker's
+        // reconciliation, a user drag) without the header view's own overall
+        // frame changing — uniform autoresizing keeps the total width fixed
+        // — so `updateTrackingAreas` alone never fires again. Rebuild
+        // explicitly on both notifications too.
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(rebuildDividerAreas),
+                            name: NSTableView.columnDidResizeNotification, object: tableView)
+        center.addObserver(self, selector: #selector(rebuildDividerAreas),
+                            name: NSTableView.columnDidMoveNotification, object: tableView)
+        rebuildDividerAreas()
+    }
+
+    private func stopObservingColumnChanges() {
+        guard let observedTable else { return }
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: NSTableView.columnDidResizeNotification, object: observedTable)
+        center.removeObserver(self, name: NSTableView.columnDidMoveNotification, object: observedTable)
+        self.observedTable = nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        rebuildDividerAreas()
+    }
+
+    private func dividerZones() -> [(rect: NSRect, column: NSTableColumn)] {
+        guard let tableView else { return [] }
+        let columns = tableView.tableColumns
+        return (0..<max(columns.count - 1, 0)).compactMap { index in
+            let column = columns[index]
+            guard column.resizingMask.contains(.userResizingMask), column.minWidth < column.maxWidth
+            else { return nil }
+            let edge = headerRect(ofColumn: index).maxX
+            return (NSRect(x: edge - 8, y: 0, width: 16, height: bounds.height), column)
+        }
+    }
+
+    @objc private func rebuildDividerAreas() {
+        dividerAreas.forEach(removeTrackingArea)
+        dividerAreas.removeAll()
+        for zone in dividerZones() {
+            let area = NSTrackingArea(rect: zone.rect, options: [.mouseEnteredAndExited, .activeInKeyWindow],
+                                       owner: self, userInfo: nil)
+            addTrackingArea(area)
+            dividerAreas.append(area)
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard !hoveringDivider else { return }
+        hoveringDivider = true
+        NSCursor.resizeLeftRight.push()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard hoveringDivider else { return }
+        hoveringDivider = false
+        NSCursor.pop()
+    }
+
+    /// A press inside a divider zone runs the resize as a manual drag loop —
+    /// anywhere else falls through to AppKit's native header handling (sort,
+    /// reorder, column picker menu) unchanged.
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let zone = dividerZones().first(where: { $0.rect.contains(point) }), let window else {
+            super.mouseDown(with: event)
+            return
+        }
+        let column = zone.column
+        let startWidth = column.width
+        let startX = point.x
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp],
+                                           until: .distantFuture, inMode: .eventTracking, dequeue: true) {
+            let currentX = convert(next.locationInWindow, from: nil).x
+            let proposed = startWidth + (currentX - startX)
+            column.width = min(max(proposed, column.minWidth), column.maxWidth)
+            if next.type == .leftMouseUp { break }
+        }
+    }
 }
 
 /// NSTableView subclass that surfaces per-row menus and playback keys.

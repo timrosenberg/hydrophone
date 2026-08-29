@@ -83,6 +83,43 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   several rebuild/relaunch iterations and confirmed the final spacing and
   color result.
 
+## Track table column divider resize cursor (2026-08-28) ✅
+
+- Track table column headers (Songs, Album detail, Favorites, column browser,
+  playlists, search) never hinted that a divider was draggable — no cursor
+  changed on hover. AppKit's native resize hit zone turned out to be only a
+  few points wide with no cursor of its own, and raw `resetCursorRects`/
+  `addCursorRect` don't reliably fire on AppKit content hosted inside SwiftUI
+  (this app's own `PanelResizeHandle` already worked around the same
+  limitation with tracking areas + `NSCursor.push()/pop()`).
+- `InnerTableHeaderView` now derives a shared 16pt hit zone around each
+  resizable column's trailing divider (`dividerZones()`), used by both the
+  hover cursor (tracking areas) and the resize itself (a manual drag loop in
+  `mouseDown`) so the two can never disagree — an earlier pass that widened
+  only the cursor zone past AppKit's native, narrower resize hit-test caused
+  clicks inside the wider zone to fall through into header-cell reorder-drag
+  instead.
+- Zones rebuild on `NSTableView.columnDidResizeNotification`/
+  `columnDidMoveNotification`, not just the header's own layout pass — a
+  column's width can change (persisted-width restore, the column picker's
+  reconciliation) without the header view's own overall frame changing,
+  since `uniformColumnAutoresizingStyle` keeps the total width fixed by
+  redistributing the difference.
+- Review follow-up: column-picker add/remove and native-column reconciliation
+  now refresh divider tracking immediately after the table's structure
+  changes. Header notification observers are owned only while the header is
+  attached to a window, preventing duplicate callbacks across detach/
+  reattach cycles.
+- Added rendered AppKit regressions for picker removal and header observer
+  lifetime. Gate: build passes with zero warnings; full suite **313 cases /
+  333 executions, 0 failures/skips**; SwiftLint 0 violations and
+  `git diff --check` passes.
+- Live (2026-08-28): the configured private Navidrome server passed Test
+  Connection and rendered the 14,117-song library. Removing Artist through
+  the live picker reflowed the headers immediately, and the remaining Album/
+  Composer divider resized normally; the original columns/order/width and Now
+  Playing layout were restored afterward.
+
 ## Issue #84: complete-library column browser (2026-08-28) ✅
 
 - The merged #81/#82/#83 work already supplies the browser with complete
@@ -3431,6 +3468,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   failures/skips**; SwiftLint clean. Live against Tim's connected library
   across several iterations; final row spacing, separator, and count color
   confirmed.
+- ✅ Column divider resize cursor (2026-08-28): unsigned build has zero
+  compiler warnings; full suite **313 cases / 333 executions, 0
+  failures/skips**; SwiftLint and `git diff --check` pass. Rendered regressions
+  cover picker removal and detach/reattach observer ownership. Live on the
+  configured private Navidrome server: Test Connection succeeded, 14,117 songs
+  rendered, picker removal reflowed the headers immediately, and a remaining
+  divider resized normally. Earlier live iterations also confirmed smooth
+  resize tracking and no reorder-drag conflict.
 - ✅ Issue #84 (2026-08-28): unsigned build has zero compiler warnings; full
   suite **311 cases / 331 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete panes, hundreds
