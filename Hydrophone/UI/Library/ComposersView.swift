@@ -31,14 +31,16 @@ struct ComposersView: View {
                             Spacer()
                             if let count = composer.songCount {
                                 Text("\(count)").monospacedDigit()
-                                    .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.8))
-                                                                : AnyShapeStyle(.secondary))
+                                    .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.6))
+                                                                : AnyShapeStyle(.tertiary))
                             }
                         }
+                        .padding(.vertical, 3)
                         .tag(composer.id)
                         .listRowBackground(isSelected ? Color.accentColor : nil)
                     }
                 }
+                .listRowSeparatorTint(Color(nsColor: .separatorColor).opacity(0.75))
                 .listStyle(.plain)
                 .background(ListSelectionHighlightDisabler())
                 .frame(width: listWidth)

@@ -67,6 +67,22 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Composers/Artists list spacing and separator polish (2026-08-28) ✅
+
+- The Composers and Artists roster rows read as too tight together, with a
+  row separator that was too dark.
+- Added 3pt of vertical padding per row, lightened the row separator
+  (`.listRowSeparatorTint`, ~25% lighter than the system default), and
+  lightened the trailing track/album count text (`.tertiary` unselected,
+  `.white.opacity(0.6)` selected — down from `.secondary`/`0.8`). An
+  interim attempt to hide the count below 2 was tried live and reverted in
+  favor of the lighter color alone.
+- Gate: build passes with zero warnings; full suite **311 test cases / 331
+  executions, 0 failures/skips**; SwiftLint 0 violations.
+- Live: Tim reviewed the running app against his connected library across
+  several rebuild/relaunch iterations and confirmed the final spacing and
+  color result.
+
 ## Issue #84: complete-library column browser (2026-08-28) ✅
 
 - The merged #81/#82/#83 work already supplies the browser with complete
@@ -3410,6 +3426,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Composers/Artists list spacing polish (2026-08-28): unsigned build has
+  zero compiler warnings; full suite **330 test cases/executions, 0
+  failures/skips**; SwiftLint clean. Live against Tim's connected library
+  across several iterations; final row spacing, separator, and count color
+  confirmed.
 - ✅ Issue #84 (2026-08-28): unsigned build has zero compiler warnings; full
   suite **311 cases / 331 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete panes, hundreds
