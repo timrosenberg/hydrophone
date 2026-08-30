@@ -127,9 +127,13 @@ final class InnerTableHeaderView: NSTableHeaderView {
             ) as? NSTableCellView,
                 let label = cell.textField else { continue }
             cell.layoutSubtreeIfNeeded()
-            let labelFrame = cell.convert(label.bounds, from: label)
-            let horizontalInsets = labelFrame.minX + cell.bounds.maxX - labelFrame.maxX
-            width = max(width, label.intrinsicContentSize.width + horizontalInsets)
+            if let badgeCell = cell as? QualityBadgeCell {
+                width = max(width, badgeCell.autosizingWidth)
+            } else {
+                let labelFrame = cell.convert(label.bounds, from: label)
+                let horizontalInsets = labelFrame.minX + cell.bounds.maxX - labelFrame.maxX
+                width = max(width, label.intrinsicContentSize.width + horizontalInsets)
+            }
         }
 
         column.width = min(max(width, column.minWidth), column.maxWidth)

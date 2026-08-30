@@ -44,8 +44,13 @@ final class SecondaryTextCell: NSTableCellView {
 /// Cell for the Quality column: a small rounded-outline badge ("FLAC",
 /// "320 kbps") — white on the selected (emphasized) row like the other cells.
 final class QualityBadgeCell: NSTableCellView {
+    private static let outerHorizontalInset: CGFloat = 4
     private let badge = NSView()
     private let label = NSTextField(labelWithString: "")
+
+    var autosizingWidth: CGFloat {
+        badge.fittingSize.width + 2 * Self.outerHorizontalInset
+    }
 
     init(text: String) {
         super.init(frame: .zero)
@@ -63,8 +68,11 @@ final class QualityBadgeCell: NSTableCellView {
         badge.addSubview(label)
 
         NSLayoutConstraint.activate([
-            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            badge.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.outerHorizontalInset),
+            badge.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor,
+                constant: -Self.outerHorizontalInset
+            ),
             badge.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.leadingAnchor.constraint(equalTo: badge.leadingAnchor, constant: 4),
             label.trailingAnchor.constraint(equalTo: badge.trailingAnchor, constant: -4),

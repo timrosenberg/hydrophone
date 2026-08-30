@@ -80,10 +80,11 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   not create or measure offscreen cells. Ordinary divider dragging, header
   sorting/reordering, horizontal overflow, and adjacent-column widths remain
   unchanged. Autosized widths use the existing debounced per-view persistence.
-- Six rendered AppKit regressions cover visible Title text, Quality badges,
+- Seven rendered AppKit regressions cover visible Title text, compact and
+  maximum-width Quality badges,
   header precedence, empty tables, visible-row-only measurement, min/max
   clamping, and restoration in a recreated table. Gate: unsigned build passes
-  with zero compiler warnings; full suite **322 test cases / 342 executions,
+  with zero compiler warnings; full suite **323 test cases / 343 executions,
   0 failures/skips** (canonical xcresult summary); SwiftLint 0 violations and
   `git diff --check` passes.
 - Live (2026-08-30): an ad-hoc-signed temporary copy of the exact Debug build
@@ -3509,7 +3510,7 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
 
 ## Verification status
 - ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
-  suite **322 cases / 342 executions, 0 failures/skips**; SwiftLint and
+  suite **323 cases / 343 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover visible-only fitting,
   Quality badges, headers, bounds, empty tables, and persistence. Live on the
   configured Navidrome server: the exact Debug build rendered 14,327 songs;

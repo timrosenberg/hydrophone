@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 322 test cases; 342 executions including parameters)
+## Current suite (Swift Testing, 323 test cases; 343 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -126,7 +126,8 @@ and header-observer lifetime.
 `TrackTableAutosizeTests` double-clicks real rendered header dividers and
 verifies visible text and Quality-badge measurement, header precedence,
 minimum/maximum clamping, exclusion of offscreen rows, empty-table behavior,
-and per-view width restoration after recreating the table.
+and per-view width restoration after recreating the table. Separate normal
+FLAC and extreme-bit-rate cases guard compact-badge fitting and the maximum.
 
 `LibraryModelComposerSongsTests` covers native-to-`Song` metadata parity,
 work joins and source ordering, a 600-song/two-page composer with zero

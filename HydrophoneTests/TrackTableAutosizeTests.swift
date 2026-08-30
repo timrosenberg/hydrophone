@@ -46,6 +46,20 @@ struct TrackTableAutosizeTests {
         #expect(column.width == column.maxWidth)
     }
 
+    @Test func shortQualityBadgeShrinksToItsMinimumWidth() async throws {
+        let key = "autosize-short-quality-\(UUID().uuidString)"
+        defer { clearColumnPreferences(for: key) }
+        let song = Song(id: "song", title: "Title", bitRate: 1_411, suffix: "flac")
+        let window = host(table(sortKey: key, tracks: [song], columns: [.quality, .title]))
+        let table = try await loadedTable(in: window)
+        let column = try column(.quality, in: table)
+        #expect(column.width > column.minWidth)
+
+        try doubleClickTrailingDivider(of: column, in: table)
+
+        #expect(column.width == column.minWidth)
+    }
+
     @Test func autosizedWidthRestoresInARecreatedTable() async throws {
         let key = "autosize-persistence-\(UUID().uuidString)"
         defer { clearColumnPreferences(for: key) }
