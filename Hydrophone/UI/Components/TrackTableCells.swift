@@ -59,6 +59,7 @@ final class QualityBadgeCell: NSTableCellView {
         label.font = .systemFont(ofSize: 9.5, weight: .medium)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        textField = label
         badge.addSubview(label)
 
         NSLayoutConstraint.activate([

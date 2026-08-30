@@ -97,6 +97,10 @@ final class InnerTableHeaderView: NSTableHeaderView {
             return
         }
         let column = zone.column
+        if event.clickCount == 2 {
+            autosize(column)
+            return
+        }
         let startWidth = column.width
         let startX = point.x
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp],
@@ -106,6 +110,29 @@ final class InnerTableHeaderView: NSTableHeaderView {
             column.width = min(max(proposed, column.minWidth), column.maxWidth)
             if next.type == .leftMouseUp { break }
         }
+    }
+
+    private func autosize(_ column: NSTableColumn) {
+        guard let tableView,
+              let columnIndex = tableView.tableColumns.firstIndex(of: column) else { return }
+        var width = column.headerCell.cellSize.width
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard visibleRows.location != NSNotFound else { return }
+
+        for row in visibleRows.location..<NSMaxRange(visibleRows) {
+            guard let cell = tableView.view(
+                atColumn: columnIndex,
+                row: row,
+                makeIfNecessary: false
+            ) as? NSTableCellView,
+                let label = cell.textField else { continue }
+            cell.layoutSubtreeIfNeeded()
+            let labelFrame = cell.convert(label.bounds, from: label)
+            let horizontalInsets = labelFrame.minX + cell.bounds.maxX - labelFrame.maxX
+            width = max(width, label.intrinsicContentSize.width + horizontalInsets)
+        }
+
+        column.width = min(max(width, column.minWidth), column.maxWidth)
     }
 }
 
