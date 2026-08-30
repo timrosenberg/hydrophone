@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 316 test cases; 336 executions including parameters)
+## Current suite (Swift Testing, 324 test cases; 344 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -106,7 +106,8 @@ audio hardware.
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
 `NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
-`TrackTableKeyboardTests` · `TrackTableHeaderTests` · `TrackTableWorkMenuTests` ·
+`TrackTableKeyboardTests` · `TrackTableHeaderTests` · `TrackTableAutosizeTests` ·
+`TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
@@ -121,6 +122,15 @@ divider drag loop as a user, and verifies that widening one column preserves
 its neighbors while expanding the document width. It also guards independent
 column sizing, horizontal overflow scrolling, column-picker reconciliation,
 and header-observer lifetime.
+
+`TrackTableAutosizeTests` double-clicks real rendered header dividers and
+verifies complete displayed-row text and Quality-badge measurement, header
+precedence, minimum/maximum clamping, empty-table behavior, and per-view width
+restoration after recreating the table. An offscreen-widest-row case proves
+the same target width is reached from both a too-narrow and too-wide starting
+width without creating its row view; a date case guards the right-aligned
+monospaced font and padding. Separate normal FLAC and extreme-bit-rate cases
+guard compact-badge fitting and the maximum.
 
 `LibraryModelComposerSongsTests` covers native-to-`Song` metadata parity,
 work joins and source ordering, a 600-song/two-page composer with zero

@@ -97,6 +97,10 @@ final class InnerTableHeaderView: NSTableHeaderView {
             return
         }
         let column = zone.column
+        if event.clickCount == 2 {
+            autosize(column)
+            return
+        }
         let startWidth = column.width
         let startX = point.x
         while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp],
@@ -106,6 +110,12 @@ final class InnerTableHeaderView: NSTableHeaderView {
             column.width = min(max(proposed, column.minWidth), column.maxWidth)
             if next.type == .leftMouseUp { break }
         }
+    }
+
+    private func autosize(_ column: NSTableColumn) {
+        guard let tableView,
+              let coordinator = tableView.delegate as? MusicTrackTable.Coordinator else { return }
+        column.width = coordinator.autosizingWidth(for: column)
     }
 }
 

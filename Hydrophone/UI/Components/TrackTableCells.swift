@@ -1,5 +1,11 @@
 import AppKit
 
+enum TrackTableCellMetrics {
+    static let textHorizontalInset: CGFloat = 4
+    static let qualityOuterHorizontalInset: CGFloat = 4
+    static let qualityInnerHorizontalInset: CGFloat = 4
+}
+
 // Supporting AppKit pieces for `MusicTrackTable`: the closure-driven menu item
 // used by its context menus and the custom row/cell views that give the table
 // its Music-style selection and secondary-text treatment.
@@ -59,14 +65,27 @@ final class QualityBadgeCell: NSTableCellView {
         label.font = .systemFont(ofSize: 9.5, weight: .medium)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        textField = label
         badge.addSubview(label)
 
         NSLayoutConstraint.activate([
-            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            badge.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            badge.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: TrackTableCellMetrics.qualityOuterHorizontalInset
+            ),
+            badge.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor,
+                constant: -TrackTableCellMetrics.qualityOuterHorizontalInset
+            ),
             badge.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: badge.leadingAnchor, constant: 4),
-            label.trailingAnchor.constraint(equalTo: badge.trailingAnchor, constant: -4),
+            label.leadingAnchor.constraint(
+                equalTo: badge.leadingAnchor,
+                constant: TrackTableCellMetrics.qualityInnerHorizontalInset
+            ),
+            label.trailingAnchor.constraint(
+                equalTo: badge.trailingAnchor,
+                constant: -TrackTableCellMetrics.qualityInnerHorizontalInset
+            ),
             label.topAnchor.constraint(equalTo: badge.topAnchor, constant: 1.5),
             label.bottomAnchor.constraint(equalTo: badge.bottomAnchor, constant: -1.5)
         ])
@@ -168,19 +187,55 @@ extension MusicTrackTable.Coordinator {
         return cell
     }
 
-    @MainActor func textCell(id: String, song: Song) -> NSTableCellView {
-        let text: String
+    @MainActor func cellText(id: String, song: Song) -> String {
         switch id {
-        case "number": text = song.track.map(String.init) ?? ""
+        case "number": return song.track.map(String.init) ?? ""
         case "title":
-            text = WorkMovementTitle.titleForRow(song: song, workHeaderGroupingActive: workHeaderGroupingActive)
-        case "artist": text = song.artist ?? "—"
-        case "composer": text = song.nonEmptyDisplayComposer ?? "—"
-        case "album": text = song.album ?? "—"
-        case "genre": text = song.displayGenre ?? "—"
-        case "time": text = formatTime(song.duration)
-        default: text = pickerOnlyColumnText(id: id, song: song) ?? ""
+            return WorkMovementTitle.titleForRow(
+                song: song,
+                workHeaderGroupingActive: workHeaderGroupingActive
+            )
+        case "artist": return song.artist ?? "—"
+        case "composer": return song.nonEmptyDisplayComposer ?? "—"
+        case "album": return song.album ?? "—"
+        case "genre": return song.displayGenre ?? "—"
+        case "time": return formatTime(song.duration)
+        default: return pickerOnlyColumnText(id: id, song: song) ?? ""
         }
+    }
+
+    @MainActor func autosizingWidth(for column: NSTableColumn) -> CGFloat {
+        let id = column.identifier.rawValue
+        let measuringLabel = NSTextField(labelWithString: "")
+        let horizontalInsets: CGFloat
+        if id == "quality" {
+            measuringLabel.font = .systemFont(ofSize: 9.5, weight: .medium)
+            horizontalInsets = 2 * (
+                TrackTableCellMetrics.qualityOuterHorizontalInset
+                    + TrackTableCellMetrics.qualityInnerHorizontalInset
+            )
+        } else {
+            let trailingInset = -styleAlignment(of: measuringLabel, id: id)
+            horizontalInsets = TrackTableCellMetrics.textHorizontalInset + trailingInset
+        }
+
+        var width = column.headerCell.cellSize.width
+        for song in displayed {
+            let text: String?
+            switch id {
+            case "quality": text = song.qualityLabel
+            case "number" where song.id == parent.nowPlayingID: text = nil
+            default: text = cellText(id: id, song: song)
+            }
+            guard let text else { continue }
+            measuringLabel.stringValue = text
+            width = max(width, measuringLabel.intrinsicContentSize.width + horizontalInsets)
+        }
+        return min(max(width, column.minWidth), column.maxWidth)
+    }
+
+    @MainActor func textCell(id: String, song: Song) -> NSTableCellView {
+        let text = cellText(id: id, song: song)
         let label = NSTextField(labelWithString: text)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -192,7 +247,10 @@ extension MusicTrackTable.Coordinator {
         cell.addSubview(label)
         let trailing = styleAlignment(of: label, id: id)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            label.leadingAnchor.constraint(
+                equalTo: cell.leadingAnchor,
+                constant: TrackTableCellMetrics.textHorizontalInset
+            ),
             label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: trailing),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
         ])

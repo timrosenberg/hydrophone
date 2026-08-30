@@ -36,7 +36,10 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. independently resizable per-view track columns with horizontal overflow, scroll offset, and Artists master-list position, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get
+Info, restoration incl. independently resizable per-view track columns with
+horizontal overflow and divider double-click autosizing, scroll offset, and
+Artists master-list position, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -66,6 +69,35 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
+
+- Double-clicking a resizable track-table divider now fits that column to its
+  header or widest row in the complete currently displayed track model,
+  including offscreen rows and the nested Quality badge label, while honoring
+  the column's existing minimum and maximum width.
+- The fit scans display strings rather than row views, so a large library gets
+  complete-column accuracy without creating offscreen cells. It reuses the
+  rendered cells' text, font, and padding rules, including monospaced
+  numeric/date columns. Ordinary divider dragging, header sorting/reordering,
+  horizontal overflow, and adjacent-column widths remain unchanged. Autosized
+  widths use the existing debounced per-view persistence.
+- Eight rendered AppKit regressions cover visible Title text, compact and
+  maximum-width Quality badges, header precedence, empty tables, convergence
+  on an offscreen widest row from both too-narrow and too-wide starting widths,
+  exact monospaced date metrics, min/max clamping, no offscreen view creation,
+  and restoration in a recreated table. Gate: unsigned build passes with zero
+  compiler warnings; full suite **324 test cases / 344 executions,
+  0 failures/skips** (canonical xcresult summary); SwiftLint 0 violations and
+  `git diff --check` passes.
+- Live (2026-08-30): an ad-hoc-signed temporary copy of the exact Debug build
+  loaded **14,327 songs** from the configured Navidrome server. From a
+  deliberately too-narrow state, double-clicking the Title divider expanded
+  it to the full-library widest title in about 0.6 seconds; playback and Up
+  Next stayed unchanged. The temporary process was closed with the original
+  width preferences intact. The too-wide convergence is covered by the
+  rendered AppKit regression. The local Developer ID private key was
+  unavailable, so project signing settings were not changed.
 
 ## Issue #104: independent track-table column resizing (2026-08-30) ✅
 
@@ -3481,6 +3513,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
+  suite **324 cases / 344 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Rendered regressions cover complete displayed-row
+  fitting from too-narrow and too-wide widths, exact text/badge/font metrics,
+  headers, bounds, empty tables, offscreen-view exclusion, and persistence.
+  Live on the configured Navidrome server: the exact Debug build rendered
+  14,327 songs and fit Title from deliberately narrow to the full-library
+  widest value in about 0.6 seconds, with playback and Up Next unchanged.
 - ✅ Composers/Artists list spacing polish (2026-08-28): unsigned build has
   zero compiler warnings; full suite **330 test cases/executions, 0
   failures/skips**; SwiftLint clean. Live against Tim's connected library
