@@ -36,7 +36,7 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. per-view track columns, scroll offset, and Artists master-list position, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. independently resizable per-view track columns with horizontal overflow, scroll offset, and Artists master-list position, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -66,6 +66,24 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #104: independent track-table column resizing (2026-08-30) ✅
+
+- Track tables now use independent AppKit column sizing, so widening a column
+  keeps every neighboring width unchanged and expands the table content to the
+  right instead of redistributing the added width.
+- Enabled horizontal scrolling for overflow while preserving the shared header
+  divider tracking, column picker, reorder behavior, and per-view width/order
+  persistence.
+- Added rendered AppKit regressions that drive the real header drag loop and
+  assert neighbor widths, expanded document width, the no-autoresize policy,
+  and horizontal scrolling. Gate: build passes with zero compiler warnings;
+  full suite **316 test cases / 336 executions, 0 failures/skips**; SwiftLint 0
+  violations and `git diff --check` passes.
+- Live (2026-08-30): the configured Navidrome server rendered the 14,327-song
+  library. Expanding Title by 250pt left Artist unchanged, pushed later columns
+  right, and exposed a working horizontal scroll range; the width persisted
+  after leaving and returning to Songs. The original Title width was restored.
 
 ## Composers/Artists list spacing and separator polish (2026-08-28) ✅
 

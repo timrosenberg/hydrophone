@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 311 test cases; 331 executions including parameters)
+## Current suite (Swift Testing, 316 test cases; 336 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -106,7 +106,7 @@ audio hardware.
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
 `NavidromeComposerNetworkTests` · `NavidromeComposerSongLookupTests` ·
-`TrackTableKeyboardTests` · `TrackTableWorkMenuTests` ·
+`TrackTableKeyboardTests` · `TrackTableHeaderTests` · `TrackTableWorkMenuTests` ·
 `WorkHeaderDoubleClickTests` · `SongWorkInfoDecodingTests` ·
 `LibraryModelWorkInfoJoinTests` · `LibraryModelComposerSongsTests` ·
 `LibraryModelGenrePaginationTests` ·
@@ -115,6 +115,12 @@ audio hardware.
 `NativeSongMappingTests` · `ComposerSongLiveTests` (opt-in) ·
 `SidebarSelectionTests` · `ListScrollMemoryTests` ·
 `LiveDecodeTests` (opt-in) · `NavidromeLiveTests` (opt-in).
+
+`TrackTableHeaderTests` renders the AppKit table and header, drives the same
+divider drag loop as a user, and verifies that widening one column preserves
+its neighbors while expanding the document width. It also guards independent
+column sizing, horizontal overflow scrolling, column-picker reconciliation,
+and header-observer lifetime.
 
 `LibraryModelComposerSongsTests` covers native-to-`Song` metadata parity,
 work joins and source ordering, a 600-song/two-page composer with zero
