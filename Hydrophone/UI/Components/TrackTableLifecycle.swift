@@ -29,9 +29,8 @@ final class InnerTableHeaderView: NSTableHeaderView {
         observedTable = tableView
         // A column's width can change (persisted-width restore, the picker's
         // reconciliation, a user drag) without the header view's own overall
-        // frame changing — uniform autoresizing keeps the total width fixed
-        // — so `updateTrackingAreas` alone never fires again. Rebuild
-        // explicitly on both notifications too.
+        // frame changing, so `updateTrackingAreas` alone never fires again.
+        // Rebuild explicitly on both notifications too.
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(rebuildDividerAreas),
                             name: NSTableView.columnDidResizeNotification, object: tableView)
@@ -193,6 +192,7 @@ extension MusicTrackTable {
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         context.coordinator.table = table
@@ -238,8 +238,9 @@ extension MusicTrackTable {
             table.addTableColumn(col)
         }
         addFixedColumn("fav", width: 26)
-        // Flexible columns absorb extra width so rows/stripes fill edge-to-edge.
-        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        // User-resized columns keep their own widths; overflow extends the
+        // table instead of being redistributed across neighboring columns.
+        table.columnAutoresizingStyle = .noColumnAutoresizing
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {

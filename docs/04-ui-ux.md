@@ -126,8 +126,10 @@ rendered visibly washed out.
   every column the view could show (all of `TrackColumn` except `.number`,
   which doubles as the now-playing indicator and stays a per-call-site
   choice). Toggling shows/hides live; reordering (drag) and resizing (drag
-  the border) already work natively. All three — visible set, order, and
-  width — persist per view kind via `TrackColumnPreferences`. All six table
+  the border) already work natively. Resizing changes only the dragged
+  column: later columns move with the expanded table content, and horizontal
+  scrolling exposes any overflow. All three — visible set, order, and width —
+  persist per view kind via `TrackColumnPreferences`. All six table
   contexts (album, favorites, songs, column browser, playlist, and search)
   opt in while retaining their call-site defaults until customized — see
   `TrackColumnPicker.swift`. Work, Movement Name, and Movement are offered
