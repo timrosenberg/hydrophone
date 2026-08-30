@@ -128,9 +128,13 @@ rendered visibly washed out.
   choice). Toggling shows/hides live; reordering (drag) and resizing (drag
   the border) already work natively. Resizing changes only the dragged
   column: later columns move with the expanded table content, and horizontal
-  scrolling exposes any overflow. All three — visible set, order, and width —
-  persist per view kind via `TrackColumnPreferences`. All six table
-  contexts (album, favorites, songs, column browser, playlist, and search)
+  scrolling exposes any overflow. Double-clicking a resizable divider fits
+  that column to its header or widest currently visible rendered cell,
+  whichever is wider, clamped to the column's existing minimum and maximum;
+  offscreen rows are not created or measured. The fitted width follows the
+  same per-view persistence path as a dragged width. All three — visible set,
+  order, and width — persist per view kind via `TrackColumnPreferences`. All
+  six table contexts (album, favorites, songs, column browser, playlist, and search)
   opt in while retaining their call-site defaults until customized — see
   `TrackColumnPicker.swift`. Work, Movement Name, and Movement are offered
   only after `ConnectionModel.nativeFeaturesState` reaches `.available`;

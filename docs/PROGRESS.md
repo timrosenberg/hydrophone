@@ -36,7 +36,10 @@ M5 ✅ (playlist CRUD + reorder-by-replace verified vs Navidrome 0.62
 2026-07-03; favorites persist) ·
 M6 ✅ (MenuBarExtra panel + search verified; output-device switching,
 vanish-fallback and re-pin human-verified vs a USB DAC 2026-07-05) ·
-M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get Info, restoration incl. independently resizable per-view track columns with horizontal overflow, scroll offset, and Artists master-list position, accessibility semantics
+M7 ✅ (shortcuts incl. focus-safe Space play/pause and Caps Lock-safe ⌘I Get
+Info, restoration incl. independently resizable per-view track columns with
+horizontal overflow and divider double-click autosizing, scroll offset, and
+Artists master-list position, accessibility semantics
 AX-verified, Light/Dark verified — the `08` checklist passes; only the
 Liquid Glass look awaits a macOS 26 machine, plus by-hand VoiceOver/contrast
 spot checks) ·
@@ -66,6 +69,30 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
+
+- Double-clicking a resizable track-table divider now fits that column to its
+  header or widest currently visible rendered cell, including the nested
+  Quality badge label, while honoring the column's existing minimum and
+  maximum width.
+- The fit inspects only already-rendered visible rows, so a large library does
+  not create or measure offscreen cells. Ordinary divider dragging, header
+  sorting/reordering, horizontal overflow, and adjacent-column widths remain
+  unchanged. Autosized widths use the existing debounced per-view persistence.
+- Six rendered AppKit regressions cover visible Title text, Quality badges,
+  header precedence, empty tables, visible-row-only measurement, min/max
+  clamping, and restoration in a recreated table. Gate: unsigned build passes
+  with zero compiler warnings; full suite **322 test cases / 342 executions,
+  0 failures/skips** (canonical xcresult summary); SwiftLint 0 violations and
+  `git diff --check` passes.
+- Live (2026-08-30): an ad-hoc-signed temporary copy of the exact Debug build
+  loaded **14,327 songs** from the configured Navidrome server. Double-clicking
+  the Title divider expanded it to the widest visible rendered title; relaunch
+  restored that fitted width, and ordinary dragging still worked. The original
+  Title width was restored; playback and the queue were untouched. The local
+  Developer ID private key was unavailable, so project signing settings were
+  not changed.
 
 ## Issue #104: independent track-table column resizing (2026-08-30) ✅
 
@@ -3481,6 +3508,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
+  suite **322 cases / 342 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Rendered regressions cover visible-only fitting,
+  Quality badges, headers, bounds, empty tables, and persistence. Live on the
+  configured Navidrome server: the exact Debug build rendered 14,327 songs;
+  divider double-click fit the visible Title values, persisted across relaunch,
+  and retained ordinary drag behavior. The original width was restored.
 - ✅ Composers/Artists list spacing polish (2026-08-28): unsigned build has
   zero compiler warnings; full suite **330 test cases/executions, 0
   failures/skips**; SwiftLint clean. Live against Tim's connected library
