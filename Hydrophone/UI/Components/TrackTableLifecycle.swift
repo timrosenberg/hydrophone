@@ -114,29 +114,8 @@ final class InnerTableHeaderView: NSTableHeaderView {
 
     private func autosize(_ column: NSTableColumn) {
         guard let tableView,
-              let columnIndex = tableView.tableColumns.firstIndex(of: column) else { return }
-        var width = column.headerCell.cellSize.width
-        let visibleRows = tableView.rows(in: tableView.visibleRect)
-        guard visibleRows.location != NSNotFound else { return }
-
-        for row in visibleRows.location..<NSMaxRange(visibleRows) {
-            guard let cell = tableView.view(
-                atColumn: columnIndex,
-                row: row,
-                makeIfNecessary: false
-            ) as? NSTableCellView,
-                let label = cell.textField else { continue }
-            cell.layoutSubtreeIfNeeded()
-            if let badgeCell = cell as? QualityBadgeCell {
-                width = max(width, badgeCell.autosizingWidth)
-            } else {
-                let labelFrame = cell.convert(label.bounds, from: label)
-                let horizontalInsets = labelFrame.minX + cell.bounds.maxX - labelFrame.maxX
-                width = max(width, label.intrinsicContentSize.width + horizontalInsets)
-            }
-        }
-
-        column.width = min(max(width, column.minWidth), column.maxWidth)
+              let coordinator = tableView.delegate as? MusicTrackTable.Coordinator else { return }
+        column.width = coordinator.autosizingWidth(for: column)
     }
 }
 

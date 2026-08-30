@@ -18,8 +18,7 @@ struct TrackTableAutosizeTests {
         let cell = try #require(table.view(atColumn: table.column(withIdentifier: column.identifier),
                                            row: 0, makeIfNecessary: false) as? NSTableCellView)
         let label = try #require(cell.textField)
-        cell.layoutSubtreeIfNeeded()
-        let expected = fittedWidth(for: column, label: label, in: cell)
+        let expected = fittedWidth(for: column, label: label, horizontalInsets: 8)
 
         try doubleClickTrailingDivider(of: column, in: table)
 
@@ -37,8 +36,7 @@ struct TrackTableAutosizeTests {
         let cell = try #require(table.view(atColumn: table.column(withIdentifier: column.identifier),
                                            row: 0, makeIfNecessary: false) as? QualityBadgeCell)
         let label = try #require(cell.textField)
-        cell.layoutSubtreeIfNeeded()
-        let expected = fittedWidth(for: column, label: label, in: cell)
+        let expected = fittedWidth(for: column, label: label, horizontalInsets: 16)
 
         try doubleClickTrailingDivider(of: column, in: table)
 
@@ -58,6 +56,27 @@ struct TrackTableAutosizeTests {
         try doubleClickTrailingDivider(of: column, in: table)
 
         #expect(column.width == column.minWidth)
+    }
+
+    @Test func autosizeMatchesRightAlignedMonospacedCellMetrics() async throws {
+        let key = "autosize-monospaced-\(UUID().uuidString)"
+        defer { clearColumnPreferences(for: key) }
+        let song = Song(
+            id: "song",
+            title: "Title",
+            created: Date(timeIntervalSince1970: 1_788_070_400)
+        )
+        let window = host(table(sortKey: key, tracks: [song], columns: [.dateAdded, .title]))
+        let table = try await loadedTable(in: window)
+        let column = try column(.dateAdded, in: table)
+        let cell = try #require(table.view(atColumn: table.column(withIdentifier: column.identifier),
+                                           row: 0, makeIfNecessary: false) as? NSTableCellView)
+        let label = try #require(cell.textField)
+        let expected = fittedWidth(for: column, label: label, horizontalInsets: 10)
+
+        try doubleClickTrailingDivider(of: column, in: table)
+
+        #expect(abs(column.width - expected) < 0.5)
     }
 
     @Test func autosizedWidthRestoresInARecreatedTable() async throws {
@@ -83,19 +102,36 @@ struct TrackTableAutosizeTests {
         #expect(abs(restoredColumn.width - fittedWidth) < 0.5)
     }
 
-    @Test func autosizeIgnoresOffscreenRowsAndClampsToMinimumWidth() async throws {
-        let key = "autosize-visible-only-\(UUID().uuidString)"
+    @Test func autosizeConvergesToWidestDisplayedRowFromNarrowOrWideWidth() async throws {
+        let key = "autosize-all-displayed-\(UUID().uuidString)"
         defer { clearColumnPreferences(for: key) }
         var songs = (0..<29).map { Song(id: "short-\($0)", title: "Short") }
-        songs.append(Song(id: "offscreen", title: String(repeating: "W", count: 400)))
+        let widestTitle = String(repeating: "W", count: 48)
+        songs.append(Song(id: "offscreen", title: widestTitle))
         let window = host(table(sortKey: key, tracks: songs), height: 120)
         let table = try await loadedTable(in: window, expectedRows: songs.count)
         let column = try column(.title, in: table)
         #expect(!table.rows(in: table.visibleRect).contains(songs.count - 1))
+        #expect(table.view(atColumn: table.column(withIdentifier: column.identifier),
+                           row: songs.count - 1, makeIfNecessary: false) == nil)
+        let label = NSTextField(labelWithString: widestTitle)
+        let expected = clamped(
+            max(column.headerCell.cellSize.width, label.intrinsicContentSize.width + 8),
+            for: column
+        )
 
+        column.width = column.minWidth
         try doubleClickTrailingDivider(of: column, in: table)
 
-        #expect(column.width == column.minWidth)
+        #expect(abs(column.width - expected) < 0.5)
+        #expect(column.width > column.minWidth)
+
+        column.width = expected + 200
+        try doubleClickTrailingDivider(of: column, in: table)
+
+        #expect(abs(column.width - expected) < 0.5)
+        #expect(table.view(atColumn: table.column(withIdentifier: column.identifier),
+                           row: songs.count - 1, makeIfNecessary: false) == nil)
     }
 
     @Test func autosizeUsesHeaderWhenItIsWiderThanVisibleCellText() async throws {
@@ -200,11 +236,12 @@ struct TrackTableAutosizeTests {
     private func fittedWidth(
         for column: NSTableColumn,
         label: NSTextField,
-        in cell: NSTableCellView
+        horizontalInsets: CGFloat
     ) -> CGFloat {
-        let labelFrame = cell.convert(label.bounds, from: label)
-        let insets = labelFrame.minX + cell.bounds.maxX - labelFrame.maxX
-        return clamped(max(column.headerCell.cellSize.width, label.intrinsicContentSize.width + insets), for: column)
+        clamped(
+            max(column.headerCell.cellSize.width, label.intrinsicContentSize.width + horizontalInsets),
+            for: column
+        )
     }
 
     private func clamped(_ width: CGFloat, for column: NSTableColumn) -> CGFloat {

@@ -73,27 +73,31 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 
 - Double-clicking a resizable track-table divider now fits that column to its
-  header or widest currently visible rendered cell, including the nested
-  Quality badge label, while honoring the column's existing minimum and
-  maximum width.
-- The fit inspects only already-rendered visible rows, so a large library does
-  not create or measure offscreen cells. Ordinary divider dragging, header
-  sorting/reordering, horizontal overflow, and adjacent-column widths remain
-  unchanged. Autosized widths use the existing debounced per-view persistence.
-- Seven rendered AppKit regressions cover visible Title text, compact and
-  maximum-width Quality badges,
-  header precedence, empty tables, visible-row-only measurement, min/max
-  clamping, and restoration in a recreated table. Gate: unsigned build passes
-  with zero compiler warnings; full suite **323 test cases / 343 executions,
+  header or widest row in the complete currently displayed track model,
+  including offscreen rows and the nested Quality badge label, while honoring
+  the column's existing minimum and maximum width.
+- The fit scans display strings rather than row views, so a large library gets
+  complete-column accuracy without creating offscreen cells. It reuses the
+  rendered cells' text, font, and padding rules, including monospaced
+  numeric/date columns. Ordinary divider dragging, header sorting/reordering,
+  horizontal overflow, and adjacent-column widths remain unchanged. Autosized
+  widths use the existing debounced per-view persistence.
+- Eight rendered AppKit regressions cover visible Title text, compact and
+  maximum-width Quality badges, header precedence, empty tables, convergence
+  on an offscreen widest row from both too-narrow and too-wide starting widths,
+  exact monospaced date metrics, min/max clamping, no offscreen view creation,
+  and restoration in a recreated table. Gate: unsigned build passes with zero
+  compiler warnings; full suite **324 test cases / 344 executions,
   0 failures/skips** (canonical xcresult summary); SwiftLint 0 violations and
   `git diff --check` passes.
 - Live (2026-08-30): an ad-hoc-signed temporary copy of the exact Debug build
-  loaded **14,327 songs** from the configured Navidrome server. Double-clicking
-  the Title divider expanded it to the widest visible rendered title; relaunch
-  restored that fitted width, and ordinary dragging still worked. The original
-  Title width was restored; playback and the queue were untouched. The local
-  Developer ID private key was unavailable, so project signing settings were
-  not changed.
+  loaded **14,327 songs** from the configured Navidrome server. From a
+  deliberately too-narrow state, double-clicking the Title divider expanded
+  it to the full-library widest title in about 0.6 seconds; playback and Up
+  Next stayed unchanged. The temporary process was closed with the original
+  width preferences intact. The too-wide convergence is covered by the
+  rendered AppKit regression. The local Developer ID private key was
+  unavailable, so project signing settings were not changed.
 
 ## Issue #104: independent track-table column resizing (2026-08-30) ✅
 
@@ -3510,12 +3514,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
 
 ## Verification status
 - ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
-  suite **323 cases / 343 executions, 0 failures/skips**; SwiftLint and
-  `git diff --check` pass. Rendered regressions cover visible-only fitting,
-  Quality badges, headers, bounds, empty tables, and persistence. Live on the
-  configured Navidrome server: the exact Debug build rendered 14,327 songs;
-  divider double-click fit the visible Title values, persisted across relaunch,
-  and retained ordinary drag behavior. The original width was restored.
+  suite **324 cases / 344 executions, 0 failures/skips**; SwiftLint and
+  `git diff --check` pass. Rendered regressions cover complete displayed-row
+  fitting from too-narrow and too-wide widths, exact text/badge/font metrics,
+  headers, bounds, empty tables, offscreen-view exclusion, and persistence.
+  Live on the configured Navidrome server: the exact Debug build rendered
+  14,327 songs and fit Title from deliberately narrow to the full-library
+  widest value in about 0.6 seconds, with playback and Up Next unchanged.
 - ✅ Composers/Artists list spacing polish (2026-08-28): unsigned build has
   zero compiler warnings; full suite **330 test cases/executions, 0
   failures/skips**; SwiftLint clean. Live against Tim's connected library
