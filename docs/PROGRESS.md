@@ -55,8 +55,8 @@ missing/deleted files — #86; cached native rows resolve directly to playable
 songs with no per-track requests — #85) ·
 E5 ✅ (WorkInfo join, Work/Movement columns, album work-grouping headers, and
 Work context-menu actions complete — #45-48; follow-up polish: #54
-Title-column movement text under a work header, #53 spacer row, and #55
-work-header double-click all done) ·
+Title-column movement text under a work header, #53 spacer row, #55
+work-header double-click, and #120 single-work-album grouping all done) ·
 E7 ✅ (bounded artwork prefetch and cache budget; build, full tests, lint,
 and live artwork verification pass — see the 2026-08-26 entry below)
 
@@ -69,6 +69,44 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #120: work header and movement grouping for single-work albums (2026-08-31) ✅
+
+- `TrackTableRow.build` and `Coordinator.workHeaderGroupingActive`
+  (`MusicTrackTable.swift`) gated work-header grouping on `works.count > 1`,
+  so an album where every track shares the same tagged Work (a whole
+  symphony, opera, or song cycle) never got a work-header row or the
+  movement-title formatting (`WorkMovementTitle.titleForRow`) that
+  multi-work albums get. Both gates now trip on `!works.isEmpty` instead, so
+  a single-work album gets one header of its own — its title isn't
+  necessarily redundant with the album title — and its tracks get the same
+  movement-title treatment.
+- `groupedRows` already emitted exactly one header when every track shares
+  the same key, so no change was needed there. One consequence worth noting:
+  a single Work spanning multiple discs now gets a single header (folding in
+  only the first disc's number) instead of per-disc headers with any
+  server-supplied disc subtitle — the same "fold the key's first disc into
+  the header" behavior multi-work multi-disc albums already had.
+- Updated `docs/04-ui-ux.md`'s work-grouping section to state the new
+  contract (previously "albums with zero or one Work retain the existing
+  disc-header behavior unchanged" — now only *zero* tagged Works do).
+- `DiscHeaderTests` gained cases for a single-work single-disc album, a
+  single work spanning two discs (dropping the disc-header fallback), and a
+  lone tagged track amid untagged ones (grouping now applies, spacers
+  included). `oneWorkKeepsExistingDiscHeaders` and `noSpacerWhenNoGrouping
+  Applies` were rewritten for the new behavior; a stale comment in
+  `WorkHeaderDoubleClickTests` was corrected.
+- Gate: unsigned build clean, zero compiler warnings; full suite **326 test
+  cases / 346 executions, 0 failures/skips**; SwiftLint 0 violations across
+  131 files.
+- Live (2026-08-31), Tim's configured real Navidrome server (via the signed
+  Debug build sharing his Keychain credentials): *Variations on a Melancholy
+  Theme* (Brad Mehldau) — the exact single-Work album #47's live
+  verification (2026-08-24 entry) recorded as "remained headerless" — now
+  shows one **Variations on a Melancholy Theme** header above its 15 tracks,
+  with movement-stripped titles (`Theme`, `Variation 1`… `Variation 11`,
+  `Cadenza`, `Postlude`, `Encore: Variations "X" & "Y"`). No credentials were
+  read, logged, or copied.
 
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 
