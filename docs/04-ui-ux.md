@@ -152,15 +152,17 @@ rendered visibly washed out.
   `Song.qualityDetailLabel`, which adds `· N kbps` for lossless files when the
   server reports a positive bit rate while preserving `qualityLabel` behavior
   for lossy files and lossless files without one.
-- **Album work grouping**: when an album contains more than one distinct
-  tagged Work, flat, unselectable headers mark each consecutive run. Work
+- **Album work grouping**: when an album contains at least one distinct
+  tagged Work, flat, unselectable headers mark each consecutive run — a
+  single work spanning the whole album still gets one header of its own,
+  since its title isn't necessarily redundant with the album title. Work
   grouping takes priority over disc grouping; a multi-disc album folds the
   disc into each label (`Disc 2 · Work Name`). A blank spacer row marks the
   opposite boundary — where a grouped run ends and an ungrouped run begins —
   since no header exists there to separate them; it does not appear at the
   top of the list, between two grouped runs, or on albums with no grouping.
   Headers appear only in natural track order or ascending `#`, and withdraw
-  (spacer included) under every other sort. Albums with zero or one Work
+  (spacer included) under every other sort. Albums with zero tagged Works
   retain the existing disc-header behavior unchanged.
   A work header is double-click-to-play (#55, reversing #47's "no new
   interactivity" deferral): starts the whole Work from its first movement;

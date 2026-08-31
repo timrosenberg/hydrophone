@@ -54,8 +54,6 @@ struct WorkHeaderDoubleClickTests {
     }
 
     @Test func workHeaderRowResolvesItsWorkIdentity() {
-        // A single distinct Work withdraws grouping entirely (`works.count > 1`
-        // gates it), so a second work is needed to force the header row.
         let tracks = [
             song("a", track: 1, work: "Winterreise", movement: 1),
             song("b", track: 2, work: "Winterreise", movement: 2),

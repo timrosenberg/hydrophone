@@ -19,7 +19,7 @@ enum TrackTableRow: Equatable {
         guard let headers else { return plain }
         let discs = Set(tracks.map { $0.discNumber ?? 1 })
         let works = Set(tracks.compactMap(\.work))
-        if works.count > 1 {
+        if !works.isEmpty {
             return groupedRows(tracks: tracks, key: { $0.work }, title: { work, track in
                 let disc = track.discNumber ?? 1
                 return discs.count > 1 ? "Disc \(disc) · \(work)" : work
@@ -165,7 +165,7 @@ struct MusicTrackTable: NSViewRepresentable {
             displayed = sortedTracks()
             let headers = activeDiscHeaders
             rows = TrackTableRow.build(tracks: displayed, headers: headers)
-            workHeaderGroupingActive = headers != nil && Set(displayed.compactMap(\.work)).count > 1
+            workHeaderGroupingActive = headers != nil && !Set(displayed.compactMap(\.work)).isEmpty
             table?.reloadData()
         }
 
