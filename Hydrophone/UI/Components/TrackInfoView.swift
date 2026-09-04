@@ -33,6 +33,12 @@ struct TrackInfoView: View {
                 if let composer = song.nonEmptyDisplayComposer {
                     LabeledContent("Composer") { SelectableText(text: composer) }
                 }
+                if let performer = song.nonEmptyDisplayPerformer {
+                    LabeledContent("Performers") { SelectableText(text: performer) }
+                }
+                if let conductor = song.nonEmptyDisplayConductor {
+                    LabeledContent("Conductor") { SelectableText(text: conductor) }
+                }
                 if let year = song.year {
                     LabeledContent("Year") { SelectableText(text: String(year)) }
                 }

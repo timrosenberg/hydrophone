@@ -129,6 +129,42 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   bit depth — confirming both the codec-name-always behavior and the
   threshold-gated ALAC/AAC resolution.
 
+## Issue #103: Performers/Conductor rows in Get Info (2026-09-03)
+
+- Data-availability check first, as the issue asked: checked Navidrome's own
+  source (`model/participants.go`) and the OpenSubsonic spec. `performer` and
+  `conductor` are real Navidrome participant roles, carried on every regular
+  `getAlbum`/`getSong` response via the standard OpenSubsonic `contributors`
+  array (role + optional subRole, e.g. an instrument for performer) — no
+  native walk needed, unlike work/movement. `ensemble` does not exist
+  anywhere in Navidrome: not a participant role, not a tag mapping
+  (`resources/mappings.yaml` has no ensemble entry either). Scope dropped
+  Ensemble as a result — there is no field to surface for it.
+- Added `Song.contributors: [Contributor]?` (decoded from OpenSubsonic
+  `contributors`) plus `nonEmptyDisplayPerformer`/`nonEmptyDisplayConductor`
+  computed properties that filter+join by role, same "Name (subRole)"
+  convention `displayComposer` uses. `NativeSongRecord+Song.swift` synthesizes
+  the same `contributors` shape from `participants.performer`/`.conductor` so
+  Songs built via the Composers-roster native path (bypassing regular
+  Subsonic fetch) show the same rows. Two new `TrackInfoView` rows,
+  Composer-pattern (`LabeledContent` + `SelectableText`, hidden when absent).
+- Build clean (zero warnings), full test suite passes, swiftlint clean (one
+  `ContributorDecodingTests.swift` split out of `DecodingTests.swift` to stay
+  under the 250-line type-body-length rule).
+- Live-verified against Tim's real Navidrome server (not just the demo
+  server, whose ~500-track library has zero performer/conductor tags
+  anywhere — checked via the native `/api/song` walk): Get Info opened
+  cleanly on a real classical track (Schubert "Ava Maria", Rochester
+  Philharmonic Orchestra) — Composer row correct, no crash, no broken
+  Performer/Conductor row when those tags are absent. Did not find a track in
+  the browsed library with actual performer/conductor tags to confirm the
+  populated-row path live; that path is covered by unit tests
+  (`ContributorDecodingTests`, `NativeSongMappingTests`) built against the
+  exact JSON shape confirmed from Navidrome's source and the OpenSubsonic
+  spec, not by live observation.
+
+---
+
 ## Issue #120: work header and movement grouping for single-work albums (2026-08-31) ✅
 
 - `TrackTableRow.build` and `Coordinator.workHeaderGroupingActive`

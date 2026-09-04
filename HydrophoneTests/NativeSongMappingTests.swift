@@ -48,6 +48,18 @@ struct NativeSongMappingTests {
         #expect(song.displayComposer == "Composer (arrangement) • Other Composer")
     }
 
+    @Test func preservesPerformerAndConductorCredits() throws {
+        let data = Data("""
+        {"id":"song","participants":{
+          "performer":[{"id":"a","name":"Performer","subRole":"violin"},
+                       {"id":"b","name":"Other Performer","subRole":""}],
+          "conductor":[{"id":"c","name":"Conductor"}]}}
+        """.utf8)
+        let song = try JSONDecoder().decode(NativeSongRecord.self, from: data).asSong()
+        #expect(song.nonEmptyDisplayPerformer == "Performer (violin) • Other Performer")
+        #expect(song.nonEmptyDisplayConductor == "Conductor")
+    }
+
     @Test func sparseRecordRemainsPlayableWithoutInventingMetadata() throws {
         let record = try JSONDecoder().decode(NativeSongRecord.self, from: Data(#"{"id":"song"}"#.utf8))
         let song = record.asSong()
@@ -59,6 +71,8 @@ struct NativeSongMappingTests {
         #expect(song.contentType == nil)
         #expect(song.replayGain == nil)
         #expect(song.displayComposer == nil)
+        #expect(song.nonEmptyDisplayPerformer == nil)
+        #expect(song.nonEmptyDisplayConductor == nil)
         #expect(!song.isStarred)
     }
 
