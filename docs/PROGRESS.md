@@ -156,7 +156,8 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   most likely AppKit track-table rendering cost for 14,000+ rows, out of
   scope here. Tim independently confirmed the overall feel matches
   pre-#139 `main`.
-- Gate: unsigned build succeeds with zero warnings; full suite passes (**359
+- Gate: unsigned build succeeds; Xcode emits only its known duplicate-
+  destination and no-AppIntents-dependency notices. Full suite passes (**359
   test cases / 379 executions, 0 failures/skips** — 14 cases more than #139's
   baseline, all new); SwiftLint 0 violations across 140 files. Live:
   2026-09-04, Tim's real
