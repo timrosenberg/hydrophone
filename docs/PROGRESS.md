@@ -70,6 +70,38 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #139: library metadata-cache lifecycle inventory (2026-09-04)
+
+- Docs-only, no code changes. Part of the #125 metadata-caching audit epic;
+  precedes #140 (design) and #141 (implementation).
+- `docs/05-data-and-caching.md` gained an "In-memory metadata caches
+  (inventory)" section: a lifecycle matrix covering every credential-scoped
+  and session-scoped cache/load-state in `SubsonicClient` (`cachedAllSongs`,
+  `formPostSupport`), `NavidromeClient` (`cachedToken`, `cachedSongIndex`),
+  and `LibraryModel` (albums/artists/composers/genres/starred/home/songs),
+  with scope, warm trigger, coalescing, invalidation, and retry/failure
+  behavior for each, plus a classification (authoritative/derived/
+  capability/view-state).
+- Flagged for #140's design pass: the `cachedAllSongs`/`cachedSongIndex`
+  duplicate-walk overlap (already known from #125), the repeated
+  cache+guard+generation+coalescing shape hand-rolled three times, and an
+  invalidation-consistency table showing `cachedSongIndex`/`cachedToken`
+  have no explicit disconnect/credential-change invalidation (harmless today
+  only because of the credential-mismatch fallback).
+- New finding not previously tracked: `LibraryModel.reset()` — which clears
+  albums/artists/composers/genres/starred/home — is wired nowhere in the
+  running app (only in test teardown), so none of those collections are
+  invalidated on disconnect or server/account change; they show the previous
+  server's data until independently reloaded, which most never are. Left for
+  #140/#141 to decide the fix; not touched here (no-behavior-change scope).
+- Documented how this in-memory layer relates to #128's persistent-cache
+  proposal: orthogonal (session-only vs. cross-launch), but #128 should
+  inherit the same invalidation triggers rather than rediscovering them.
+- Gate: docs-only change, no source touched, but the full gate was still run
+  as a sanity check. Unsigned build succeeds with zero warnings; full suite
+  passes (365 passed, 0 failed, 0 skipped); SwiftLint 0 violations across
+  134 files. No live verification applicable — no runtime behavior changed.
+
 ## Issue #124: playlists render before the native work-info join (2026-09-04) ✅
 
 - `PlaylistDetailView.reload()` previously made one blocking

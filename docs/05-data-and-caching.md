@@ -3,13 +3,117 @@
 > **Decision (updated):** The **SwiftData metadata cache was dropped.** The app
 > is network-required by design — you can't stream music with the server down,
 > so caching library *metadata* for offline browsing adds complexity for little
-> value. Library metadata stays **in-memory** in `LibraryModel`, fetched per
-> session. The one thing we *do* cache aggressively is **artwork** (immutable),
-> on disk — see "Artwork cache". The SwiftData section below is retained as
-> historical context and is **not implemented**.
+> value. Library metadata stays **in-memory**, fetched per session, spread
+> across `SubsonicClient`, `NavidromeClient`, and `LibraryModel` rather than
+> held in one place — see "In-memory metadata caches (inventory)" for the full
+> lifecycle breakdown. The one thing we *do* cache **persistently** (disk,
+> across launches) is **artwork** (immutable) — see "Artwork cache". The
+> SwiftData section below is retained as historical context and is **not
+> implemented**.
 
-Caching here is **artwork only** — there is **no audio/offline caching** and no
-metadata persistence (streaming-only, network-required).
+**Persistent** (disk, survives relaunch) caching here is **artwork only** —
+there is **no audio/offline caching**. Library **metadata** does have a real
+in-memory caching layer, session-scoped only; it is inventoried below rather
+than persisted (streaming-only, network-required).
+
+## In-memory metadata caches (inventory)
+
+This section audits every in-memory cache and cache-like load/session state in
+the client and model layer, against `main` as of #139. It complements, but
+does not replace, "Pagination & lazy loading" below (which covers `LibraryModel`
+paging mechanics) — this section is about **what's held and for how long**,
+not how a page is fetched. It's a factual inventory (#125 → #139); no
+consolidation or warm-up-behavior decisions are made here — those are #140
+(design) and #141 (implementation).
+
+### Lifecycle matrix
+
+| Owner · state | Scope/key | Source endpoint(s) | Consumers | Warm trigger | Coalescing / stale guard | Invalidation | Retry/failure | Class |
+|---|---|---|---|---|---|---|---|---|
+| `SubsonicClient.cachedAllSongs` (+ `inFlightAllSongs`, `allSongsGeneration`) | exact `ServerCredentials` | `search3` (empty query, paginated) | `LibraryModel.loadSongsIfNeeded()` (Songs tab, Shuffle All fallback paths) | `LibraryModel.loadSongsIfNeeded()`, driven eager by `ConnectionModel`'s `songsLoadHandler` on connect (#118) | Generation counter + in-flight task reused for matching credentials; a completion whose generation is stale is dropped, never written back | Explicit: `invalidateAllSongs()` from `ConnectionModel.disconnect()` and `saveAndConnect()` (credentials changed) | Only a walk that reaches exhaustion is cached; a mid-walk failure after partial progress propagates the error uncached (never silently swapped for a random sample) — see `SubsonicClient+AllSongs.swift` | Authoritative fetched data |
+| `SubsonicClient.formPostSupport` | base URL only (not full credentials) | `getOpenSubsonicExtensions` | internal `perform(_:using:)` (routes flagged endpoints to POST) | Lazily, first flagged endpoint call per base URL | None (single cached tuple); a probe failure resolves `false` for that call *without* caching it, so one hiccup can't wedge POST off for the session | None explicit — reconnecting to the same base URL under different credentials keeps the old flag; correct today because form-post support is a server capability, not an account one | Failure (network, non-OpenSubsonic server, missing payload) resolves to `false`, uncached | Capability/auth state |
+| `NavidromeClient.cachedToken` / `cachedTokenCredentials` | exact `ServerCredentials` | `POST /auth/login` | `ensureValidToken(using:)`, used by every native `/api/*` page fetch | First native call needing a token (composer load, song-index build, `probeNativeFeatures()`) | None beyond the credentials-match + expiry check; no generation counter, no in-flight coalescing — concurrent callers under a cold token each `login()` independently | **No explicit invalidation path.** Relies entirely on (a) `cachedTokenCredentials == creds` failing after a Settings change, and (b) `invalidateCachedToken()`, called only internally on a `401` during `fetchPage` | One transparent retry on `401` (invalidate token, relogin, retry once) | Capability/auth state |
+| `NavidromeClient.cachedSongIndex` / `cachedSongIndexCredentials` (+ `songIndexGeneration`, `inFlightSongIndexBuild`) | exact `ServerCredentials` | `/api/song?missing=false` (paginated) | `songIndex()`, `songIndexSnapshot()`, composer roster/song lookup, `workInfo`/`bitDepths` batch joins (`NavidromeClient+SongLookup.swift`) | First caller needing native song data (Composers tab, `joinWorkInfo`, playlist detail's non-blocking join pass — #124) | Same shape as `cachedAllSongs`: generation counter + in-flight task reused per matching credentials, stale completions dropped | Explicit: `invalidateSongIndex()` from `ConnectionModel.startLibraryScan()` only. **Not called from `disconnect()`** — falls through to the credentials-mismatch check instead, same as the token cache | Errors propagate to the caller uncached; no fallback sample (unlike `cachedAllSongs`) since there's no meaningful partial substitute for native data | Authoritative fetched data |
+| `LibraryModel.albums` / `albumOffset` / `albumsExhausted` / `albumFilter` / `albumsState` | unscoped (no credential guard) | `getAlbumList2` | Albums grid | `loadAlbumsIfNeeded()`, first Albums-tab appearance | `albumsState == .loading` guard against duplicate concurrent loads; retried when `albums.isEmpty` | **None on disconnect or credential change** — only `reloadAlbums()` (sort/filter change) or the (unwired, see below) `reset()` clears it | Failed page load leaves `albumsState = .failed`; next appearance (if still empty) retries | View/model state (session cache) |
+| `LibraryModel.artists` / `artistsState` | unscoped | `getArtists` | Artists master list | `loadArtistsIfNeeded()` | `.loading` guard, retried while empty | Same gap as albums — no wired invalidation path | Failed load retried on next empty-state appearance | View/model state |
+| `LibraryModel.composers` / `composersState` | unscoped (gated by `nativeFeaturesAvailable()`) | `NavidromeClient.composers()` (itself unpaged-cache, walks `/api/artist?role=composer` fresh each call) | Composers master list | `loadComposersIfNeeded()` | `.loading` guard, retried while empty | Same gap — no wired invalidation | Failed load retried on next empty-state appearance | View/model state, derived from native capability state |
+| `LibraryModel.genres` / `genresLoading` | unscoped | `getGenres` | Genre column browser, Albums genre filter | `loadGenresIfNeeded()` | `genresLoading` flag prevents duplicate concurrent fetches from Albums + column browser | Same gap — no wired invalidation | Failure clears to `[]` silently (no `.failed` state surfaced) | View/model state |
+| `LibraryModel.starredSongs` / `starredAlbums` / `starredSongIDs` / `starOverrides` / `albumStarOverrides` / `starredLoaded` | unscoped | `getStarred2`, `star`/`unstar` | Favorites view, `isStarred(_:)` everywhere a star glyph renders | `loadStarredIfNeeded()`, first favorite check or Favorites-tab visit | `starredLoading` flag; optimistic per-id overrides shown until the write + reconciling `reloadStarred()` round-trip | Same gap — no wired invalidation on disconnect/credential change; overrides are cleared per-id after each mutation's reload | A refused optimistic write rolls its override back; a failed reload keeps accepted overrides rather than reverting them | Mix: authoritative fetched data (`starredSongs`/`starredAlbums`) + view state (overrides) |
+| `LibraryModel.homeNewest/Recent/Frequent/Random` / `homeLoaded` / `homeLoading` | unscoped | `getAlbumList2` ×4 (newest/recent/frequent/random), concurrent | Home shelves | `loadHomeIfNeeded()` | `homeLoading` flag; `homeLoaded` only set true if at least one shelf came back non-empty, so an all-offline launch retries next appearance | Same gap — no wired invalidation | All-empty result is treated as "didn't really load" and retried, not cached as a true empty state | View/model state |
+| `LibraryModel.songs` / `songsState` / `songsGeneration` | unscoped *view* of `SubsonicClient.cachedAllSongs` | (derives from `client.allSongs()`, plus the native work-info join) | Songs tab, toolbar loading indicator (`songsAreLoading`) | `loadSongsIfNeeded()`, made eager at connect (#118) | Per-load generation counter: a superseded `loadSongsIfNeeded()` (invalidated mid-flight) can't overwrite `songs`/`songsState` with a stale result; partial pages publish incrementally via `onProgress` | Explicit: `invalidateSongs()`, wired through `ConnectionModel`'s `songsInvalidationHandler` on both `disconnect()` and credential change in `saveAndConnect()` | A failed load keeps existing (possibly partial) rows and surfaces `.failed`; next visit retries | Derived/view state layered over `cachedAllSongs`'s authoritative data |
+
+Not a cache (fetched fresh every call, listed for completeness/contrast):
+`LibraryModel.search(_:)`, `songs(forGenre:)`, `songs(forAlbum:)`,
+`albums(forArtist:)`, `artistInfo(id:)`, `similarSongs(id:)`,
+`topSongs(artist:)`, `randomAlbums()`, `randomBatch()`, playlist CRUD/listing
+(`LibraryModel+Playlists.swift`). `songs(forComposer:)`
+(`LibraryModel+Composers.swift`) has no cache of its own either, but reads
+through `NavidromeClient`'s cached song index. Adjacent but out of scope for
+this layer: `ConnectionModel.nativeFeaturesState` (capability state gating
+whether native calls happen at all) and `ArtworkCache` (its own section,
+disk-persisted, already documented).
+
+### Overlaps and gaps for #140's design decision
+
+- **`cachedAllSongs` vs. `cachedSongIndex` are two walks over largely the same
+  library**, one via `search3` (Subsonic) and one via `/api/song` (native), as
+  #125 already called out. Nothing here changes that; it's restated so the
+  matrix above is the reference #140 designs against.
+- **The same "cached value + credentials guard + generation counter + in-flight
+  coalescing" shape is hand-rolled three times**: `cachedAllSongs`,
+  `cachedSongIndex`, and (a simpler variant, no generation counter or
+  coalescing) `cachedToken`. A shared generic primitive is exactly #125's
+  "reusable cache abstraction" question for #140.
+- **Invalidation is inconsistent across the four credential-scoped caches**:
+
+  | Cache | On disconnect | On credential change (`saveAndConnect`) | On library scan |
+  |---|---|---|---|
+  | `cachedAllSongs` | ✅ explicit | ✅ explicit (if creds actually differ) | ✅ explicit |
+  | `cachedSongIndex` | ❌ (falls through to credential mismatch) | ❌ (same) | ✅ explicit |
+  | `cachedToken` | ❌ (same) | ❌ (same) | n/a (not library data) |
+  | `LibraryModel` collections (albums/artists/composers/genres/starred/home) | ❌ | ❌ | ❌ |
+
+  The credential-mismatch fallback (a stale cache simply won't match the new
+  `ServerCredentials` and gets rebuilt on next use) makes the missing
+  `cachedSongIndex`/`cachedToken` invalidations *harmless in practice*, not
+  merely unwired — but it's an inconsistency worth a deliberate call in #140:
+  either lean fully on the credential-guard pattern everywhere (and stop
+  explicitly invalidating `cachedAllSongs`/`cachedSongIndex` at all), or wire
+  every cache through one explicit invalidation path for the sake of a single
+  legible lifecycle.
+- **`LibraryModel.reset()` is effectively dead code in the running app.** It
+  clears `albums`, `artists`, `composers`, `genres`, all starred/override
+  state, and the home shelves — exactly the "unscoped, no wired invalidation"
+  row group in the matrix above — but nothing in `ConnectionModel` or
+  `AppModel` calls it; only `songsInvalidationHandler` (→ `invalidateSongs()`)
+  is wired to `disconnect()`/credential change. It's currently called only
+  from test teardown (`SubsonicAllSongsTests`, `NavidromeComposerLibraryModelTests`).
+  Concretely: today, switching to a different server without relaunching the
+  app leaves the Albums/Artists/Composers/Genres/Favorites/Home surfaces
+  showing the *previous* server's data until each collection happens to be
+  reloaded some other way (most never are, since their loaders all guard on
+  "already non-empty, skip"). This has no fallback like the credential-guard
+  caches above — it is a genuine, unscoped gap, and #140/#141 need to decide
+  whether the fix is wiring `reset()` in, or moving these collections onto the
+  same credential-scoped-cache pattern as `cachedAllSongs`/`cachedSongIndex`.
+- **`formPostSupport`'s scope (base URL only) is deliberately coarser** than
+  every other cache here (full `ServerCredentials`) — flagged in the matrix
+  as intentional, not an inconsistency, since form-post support is a
+  server-wide protocol capability rather than an account-specific fact.
+
+### Relationship to #128 (persistent metadata cache)
+
+Everything above is **session-only, in-memory, and non-authoritative** — it
+exists purely so a view doesn't re-walk the network on every appearance; the
+server remains the source of truth every time a cache misses. #128 proposes a
+disk-backed, cross-session persistent layer (the dropped-SwiftData shape
+further down this file was its predecessor idea) and is a different problem:
+it needs to survive relaunch, this layer explicitly must not (network-required
+by design). The two layers are not expected to merge, but #128 will need to
+either read through or bypass each in-memory cache here, and in either case
+should inherit the same invalidation triggers this inventory surfaces
+(credential change, disconnect, library scan, and user mutations like
+star/unstar or playlist edits) rather than rediscovering them independently.
 
 ## Artwork cache (implemented)
 
