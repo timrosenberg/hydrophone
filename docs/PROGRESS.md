@@ -70,32 +70,31 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
-## Issue #102: library-loading spinner moved into the top toolbar (2026-09-03) ✅
+## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
 
 - The "Loading songs…" / "N songs loaded" status no longer renders in a
-  bottom overlay on the Songs page. It now reads
-  `LibraryModel.songsAreLoading` (a new computed property, hoisted out of
-  duplicate `if case .loading = songsState` checks in `SongsView` and
-  `ColumnBrowserView`) as a leading segment **inside** `NowPlayingDisplay`'s
-  own LCD capsule — sharing its background and padding rather than floating
-  beside it as a separate element (adjusted after first-pass live review:
-  the initial cut placed it as a sibling in the toolbar's principal item,
-  which read as unattached). Since the underlying load is app-wide state,
-  not Songs-view-scoped, the status is correct regardless of which page is
-  on screen and collapses away (no reserved space) the instant loading
-  finishes.
+  bottom overlay on the Songs page. `LibraryLoadingStatus` now reads
+  `LibraryModel.songsAreLoading` and renders in a fixed-width pill between the
+  transport cluster and LCD. RootView draws the pill as a leading overlay
+  outside `NowPlayingDisplay`'s measured bounds, leaving the LCD as the sole
+  centered principal toolbar item; the transient status therefore cannot
+  shift either neighboring control. The underlying app-wide state keeps the
+  status correct regardless of which page is on screen and reserves no space
+  when loading is idle.
 - The Songs page keeps its own centered placeholder (`SongsLoadingProgress`,
   reused) for the moment before the first page is renderable — unrelated
   per-view empty-state UI, same pattern `AlbumsView` uses for `albumsState`.
-- Gate: unsigned build has zero compiler warnings; full suite (343-344
-  executions across runs, 0 failures/skips); SwiftLint 0 violations.
-- Live (2026-09-03): the configured Navidrome server. Relaunched fresh and
-  opened Songs — the status appeared attached inside the LCD capsule, left
-  of the artwork/title, counted up through the full-library walk (500 →
-  14,220 songs across one run, 6,500+ on a repeat), stayed visible after
-  navigating away to Artists mid-load (confirming app-wide, not
-  Songs-scoped), and disappeared the instant the walk completed. No
-  bottom-of-page overlay appeared at any point.
+- Gate: unsigned build succeeds with zero compiler diagnostics; full suite
+  **324 test cases / 344 executions, 0 failures/skips** (canonical xcresult
+  summary); SwiftLint 0 violations and `git diff --check` passes.
+- Live (2026-09-04): a uniquely named probe build
+  (`HydrophoneIssue102Probe`, bundle ID `app.hydrophone.issue102probe`) against
+  the configured Navidrome server removed any ambiguity with other open
+  Hydrophone builds. Opening Songs showed the pill count through 3,500,
+  12,500, and 14,231 loaded songs between the unchanged transport and LCD.
+  Loading and idle captures at the same 1,180pt window width confirmed the LCD
+  keeps the same horizontal position when the pill appears or disappears. The
+  transport/volume bubble-padding polish remains deliberately out of scope.
 
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 

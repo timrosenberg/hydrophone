@@ -102,10 +102,19 @@ struct RootView: View {
                     .padding(.leading, 16)
             }
             ToolbarItem(placement: .principal) {
-                // The app-wide library-load status (issue #102) lives inside
-                // NowPlayingDisplay itself, as a leading segment sharing its
-                // LCD capsule — see NowPlayingToolbar.swift.
+                // The LCD remains the sole principal item, so the transient
+                // loading status cannot change its centered position. A
+                // leading overlay updates with the app-wide loading state but
+                // does not participate in the principal item's width (#102).
                 NowPlayingDisplay()
+                    .overlay(alignment: .leading) {
+                        if library.songsAreLoading {
+                            LibraryLoadingStatus()
+                                // `offset` draws outside the principal item's
+                                // measured bounds, leaving the LCD centered.
+                                .offset(x: -(LibraryLoadingStatus.width + 16))
+                        }
+                    }
             }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 14) {
