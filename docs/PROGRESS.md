@@ -70,7 +70,7 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
-## Issue #106: bit depth/sample rate in the Now Playing quality badge (2026-09-03) ✅
+## Issue #106: bit depth/sample rate in the Now Playing quality badge (2026-09-03 – 2026-09-04) ✅
 
 - Confirmed live against demo.navidrome.org that Navidrome's native `/api/song`
   carries a `bitDepth` field (present on FLAC and ALAC-in-`.m4a` records,
@@ -80,10 +80,14 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   post-fetch, same convention as work/movement). `NavidromeClient.bitDepths(forSongIds:)`
   mirrors `workInfo(forSongIds:)`'s cache-reuse shape; `LibraryModel.joinWorkInfo(into:)`
   now joins both onto the same six track-table sources.
-- `Song.qualityDetailLabel` shows "24/96k"-style bit depth/sample rate for
-  lossless files with both fields, falling back to the existing format+kbps
-  label for plain Subsonic, untagged files, or lossy formats. The Quality
-  column (`qualityLabel`) is unchanged.
+- `Song.qualityDetailLabel` now always names the codec, splitting on a 320
+  kbps threshold rather than a lossless-suffix list: above it, with a bit
+  depth and sample rate both reported, format name + "24/96k"; at or below
+  it, or missing either field, format name + bit rate ("AAC 256 kbps", "MP3
+  192 kbps"). The threshold doubles as an ALAC/AAC resolver for `.m4a`/`.m4b`,
+  which the suffix alone can't distinguish. The Quality column (`qualityLabel`)
+  is unchanged — Tim's live-review feedback on the first round drove this
+  reshape from the original lossless-only "24/96k" (no codec name).
 - Split `NavidromeClient`'s composer/song-lookup extension into
   `NavidromeClient+SongLookup.swift` to stay under the file-length lint after
   the new method landed.
@@ -92,7 +96,12 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   violations.
 - Live (2026-09-03): the configured Navidrome server (14,327 songs) played a
   FLAC track ("String Quintet in C Major, Op. 163, D. 956") whose Now Playing
-  badge read **"24/48k"**; an MP3 track's badge was unaffected at "256 kbps".
+  badge read "24/48k" (pre-refinement format).
+- Live (2026-09-04, post-refinement): the same server (14,231–14,327 songs
+  across two loads) showed **"FLAC 24/192k"** for a Mahler symphony FLAC track
+  and **"AAC 603 kbps"** for a high-bitrate `.m4a` track that has no reported
+  bit depth — confirming both the codec-name-always behavior and the
+  threshold-gated ALAC/AAC resolution.
 
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 

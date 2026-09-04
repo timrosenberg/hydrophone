@@ -335,6 +335,11 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   `workInfo(forSongIds:)`'s batch/cache-reuse shape; `LibraryModel.joinWorkInfo(into:)`
   calls it alongside the work/movement join (same gate, same six sources) and
   sets `Song.bitDepth`. `Song.qualityDetailLabel` uses it for the Now Playing
-  badge — "24/96k" for lossless files with both bit depth and sample rate,
-  falling back to the existing format+kbps label otherwise (plain Subsonic,
-  untagged files, or lossy formats, which have no fixed bit depth).
+  badge — format name + bit depth/sample rate ("FLAC 24/96k") above the
+  320 kbps hi-res threshold when both fields are reported, otherwise format
+  name + bit rate ("AAC 256 kbps", "MP3 192 kbps"). 320 kbps is the ceiling of
+  legitimate lossy encoding, and it doubles as a lossless detector in place of
+  a suffix list. `.m4a`/`.m4b` alone can't distinguish lossless ALAC from lossy
+  AAC (Navidrome reports the same suffix and MIME type for both), so those two
+  suffixes are named from the hi-res branch instead of the suffix directly:
+  "ALAC" when a bit depth backs the high bit rate, "AAC" otherwise.
