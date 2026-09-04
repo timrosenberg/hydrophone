@@ -5,7 +5,11 @@ import Foundation
 /// Hermetic coverage for `LibraryModel`'s work/movement join (#45, epic #13):
 /// Album, Favorites, search, and playlist sources should carry `Song.work`
 /// etc. onto their results when native features are available, and leave songs
-/// untouched — with no native network call at all — when they aren't. Stubs
+/// untouched — with no native network call at all — when they aren't. The
+/// playlist source applies the join as its own non-blocking follow-up pass
+/// (`joinWorkInfo(intoPlaylist:)`) rather than inline in the initial fetch,
+/// so a cold native song-index cache can't delay a playlist's own tracks
+/// from rendering (#124). Stubs
 /// both `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s
 /// `/api/...` calls behind one shared `URLProtocol`, reusing the pattern
 /// `ConnectionModelNativeFeaturesTests` already established for a test that
@@ -102,7 +106,7 @@ struct LibraryModelWorkInfoJoinTests {
         #expect(song.movementName == "Der Doppelgänger")
     }
 
-    @Test func playlistJoinsWorkInfoOntoEntries() async throws {
+    @Test func playlistLoadsWithoutWorkInfoSoTracksRenderBeforeTheNativeWalk() async throws {
         await WorkInfoJoinMockProtocol.reset()
         await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())
         let library = makeLibrary(nativeFeaturesAvailable: { true })
@@ -110,8 +114,26 @@ struct LibraryModelWorkInfoJoinTests {
         let playlist = try #require(await library.playlist(id: "playlist-1"))
 
         let song = try #require(playlist.entry?.first)
+        #expect(song.work == nil)
+        #expect(song.bitDepth == nil)
+        // The fast fetch never touches the native song index.
+        #expect(await WorkInfoJoinMockProtocol.count(pathSuffix: "/api/song") == 0)
+    }
+
+    @Test func joinWorkInfoIntoPlaylistEnrichesAnAlreadyLoadedPlaylist() async throws {
+        await WorkInfoJoinMockProtocol.reset()
+        await WorkInfoJoinMockProtocol.setHandler(Self.makeHandler())
+        let library = makeLibrary(nativeFeaturesAvailable: { true })
+
+        let playlist = try #require(await library.playlist(id: "playlist-1"))
+        let enriched = await library.joinWorkInfo(intoPlaylist: playlist)
+
+        let song = try #require(enriched.entry?.first)
         #expect(song.work == "Schwanengesang, D. 957")
         #expect(song.movementName == "Der Doppelgänger")
+        #expect(song.movementNumber == 13)
+        #expect(song.movementTotal == 14)
+        #expect(song.bitDepth == 24)
     }
 
     // MARK: - Mock handler

@@ -81,8 +81,17 @@ struct PlaylistDetailView: View {
 
     // MARK: - Edits
 
+    /// Renders the playlist's own tracks immediately, then applies the
+    /// native work/movement/bit-depth join as a non-blocking follow-up pass —
+    /// a cold native song-index cache (a full-library `/api/song` walk) would
+    /// otherwise delay every track from appearing at all. See #124.
     private func reload() async {
-        playlist = await library.playlist(id: playlistID)
+        guard let loaded = await library.playlist(id: playlistID) else {
+            playlist = nil
+            return
+        }
+        playlist = loaded
+        playlist = await library.joinWorkInfo(intoPlaylist: loaded)
     }
 
     private func remove(_ offsets: IndexSet) {

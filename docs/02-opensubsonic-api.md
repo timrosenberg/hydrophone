@@ -342,6 +342,12 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   launch-time probe or starts it when necessary — a no-op, with no native
   network call at all, when unavailable. Wired into all six track-table
   sources: album, genre/Column Browser, Songs, Favorites, playlist, and search.
+  The playlist source is the one exception to "inline in the fetch": since a
+  cold native song-index cache means a full `/api/song` walk,
+  `PlaylistDetailView.reload()` renders the playlist's own tracks from
+  `LibraryModel.playlist(id:)` (unjoined) first, then applies
+  `LibraryModel.joinWorkInfo(intoPlaylist:)` as a non-blocking follow-up pass
+  — mirrors `allSongs()`'s partial-publish pattern (#124).
 - **Bit depth join onto `Song` (#106):** `/api/song` carries a `bitDepth`
   field (confirmed live 2026-09-03 against demo.navidrome.org: present on
   FLAC and ALAC-in-`.m4a` records, absent on lossy suffixes) that plain
