@@ -71,6 +71,12 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     var movementName: String?
     var movementNumber: Int?
     var movementTotal: Int?
+    /// Native (Navidrome-only) bit depth, joined the same way as work/movement
+    /// above — plain Subsonic has no field for it. Drives the Now Playing
+    /// quality badge's "24/96k"-style label (#106); absent for lossy files
+    /// (compressed audio has no fixed bit depth) and for untagged/plain-Subsonic
+    /// lossless files, which fall back to `qualityDetailLabel`'s format+kbps form.
+    var bitDepth: Int?
 
     var isStarred: Bool { starred != nil }
     /// Genre for display, preferring the legacy field, then the OpenSubsonic array.
@@ -118,15 +124,54 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         return suffix?.uppercased()
     }
 
-    /// Like `qualityLabel`, but lossless files also carry their bit rate —
-    /// for the Now Playing badge only; the Quality column stays compact.
+    /// Above this bit rate, a file is treated as hi-res/CD-quality rather
+    /// than a lossy encode, so `qualityDetailLabel` prefers bit depth/sample
+    /// rate over the (high, meaningless-for-lossless) bit rate figure. 320
+    /// kbps is the ceiling of legitimate lossy encoding (MP3/AAC's top
+    /// constant-bitrate tier); every lossless format sits well above it even
+    /// at CD quality (16/44.1 FLAC is ~900–1400 kbps). This also sidesteps
+    /// needing a lossless-suffix list: `.m4a` alone can't tell ALAC from AAC,
+    /// but their bit rates do.
+    private static let hiResBitRateThresholdKbps = 320
+
+    /// Format name + either bit depth/sample rate ("FLAC 24/96k") for files
+    /// above `hiResBitRateThresholdKbps` with both fields reported, or
+    /// format + bit rate ("AAC 256 kbps") otherwise — for the Now Playing
+    /// badge only; the Quality column (`qualityLabel`) stays compact.
     var qualityDetailLabel: String? {
-        if let suffix = suffix?.lowercased(), Self.losslessSuffixes.contains(suffix) {
-            let format = suffix == "aif" ? "AIFF" : suffix.uppercased()
-            guard let bitRate, bitRate > 0 else { return format }
-            return "\(format) · \(bitRate) kbps"
+        guard let suffix = suffix?.lowercased(), !suffix.isEmpty else {
+            if let bitRate, bitRate > 0 { return "\(bitRate) kbps" }
+            return nil
         }
-        return qualityLabel
+        if let bitRate, bitRate > Self.hiResBitRateThresholdKbps,
+           let bitDepth, bitDepth > 0, let samplingRate, samplingRate > 0 {
+            let format = Self.formatName(forSuffix: suffix, isHiRes: true)
+            return "\(format) \(bitDepth)/\(Self.formatKilohertz(samplingRate))"
+        }
+        let format = Self.formatName(forSuffix: suffix, isHiRes: false)
+        guard let bitRate, bitRate > 0 else { return format }
+        return "\(format) \(bitRate) kbps"
+    }
+
+    /// `.m4a`/`.m4b` alone can't say whether the container holds lossy AAC or
+    /// lossless ALAC — every other suffix names its own codec, but this one
+    /// only tells the two apart via the hi-res branch (a bit rate above the
+    /// threshold, with a reported bit depth).
+    private static func formatName(forSuffix suffix: String, isHiRes: Bool) -> String {
+        switch suffix {
+        case "aif": return "AIFF"
+        case "m4a", "m4b": return isHiRes ? "ALAC" : "AAC"
+        default: return suffix.uppercased()
+        }
+    }
+
+    /// "96k"/"44.1k"-style label: one decimal only when the rate isn't a
+    /// whole number of kHz. Mirrors `formatSampleRate`'s rounding rule
+    /// (`TrackTableView.swift`) without depending on UI code from this layer.
+    private static func formatKilohertz(_ hertz: Int) -> String {
+        let khz = Double(hertz) / 1000
+        guard khz.truncatingRemainder(dividingBy: 1) != 0 else { return "\(Int(khz))k" }
+        return String(format: "%.1fk", khz)
     }
 
     /// Sort key for the Quality column: lossless above any lossy bit rate.

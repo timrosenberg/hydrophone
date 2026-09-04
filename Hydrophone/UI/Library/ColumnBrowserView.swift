@@ -65,11 +65,6 @@ struct ColumnBrowserView: View {
         selectedGenre == nil ? library.songs : songs
     }
 
-    private var librarySongsAreLoading: Bool {
-        if case .loading = library.songsState { return true }
-        return false
-    }
-
     private var artists: [String] {
         uniqueSorted(baseSongs.compactMap(\.artist))
     }
@@ -131,7 +126,7 @@ struct ColumnBrowserView: View {
                                sortAutosaveKey: "browser",
                                defaultSortKey: "title",
                                scrollAutosaveKey: "browser",
-                               contentIsLoading: selectedGenre == nil && librarySongsAreLoading,
+                               contentIsLoading: selectedGenre == nil && library.songsAreLoading,
                                columnsCustomizable: true)
             }
         }

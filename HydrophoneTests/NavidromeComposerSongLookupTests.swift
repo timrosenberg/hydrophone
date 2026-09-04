@@ -36,7 +36,7 @@ extension NavidromeClientNetworkTests {
             }
             let json = """
             [
-              {"id": "beethoven-song", "title": "Symphony No. 5",
+              {"id": "beethoven-song", "title": "Symphony No. 5", "bitDepth": 24,
                "participants": {"composer": [{"id": "c-beethoven", "name": "Ludwig van Beethoven"}]}},
               {"id": "joint-song", "title": "Duet",
                "participants": {"composer": [
@@ -44,10 +44,10 @@ extension NavidromeClientNetworkTests {
                  {"id": "c-clara", "name": "Clara Schumann"}
                ]}},
               {"id": "no-composer-song", "title": "Untagged Track"},
-              {"id": "schubert-song", "title": "Schwanengesang, D. 957: XIII. Der Doppelgänger",
+              {"id": "schubert-song", "title": "Schwanengesang, D. 957: XIII. Der Doppelgänger", "bitDepth": 16,
                "tags": {"work": ["Schwanengesang, D. 957"], "movementname": ["Der Doppelgänger"],
                         "movement": ["13"], "movementtotal": ["14"]}},
-              {"id": "single-movement-song", "title": "A Single-Movement Work",
+              {"id": "single-movement-song", "title": "A Single-Movement Work", "bitDepth": 0,
                "tags": {"work": ["Some Sonata"], "movementname": ["Some Sonata"]}}
             ]
             """
@@ -193,6 +193,48 @@ extension NavidromeClientNetworkTests {
 
         let info = try await client.workInfo(forSongIds: [])
         #expect(info.isEmpty)
+
+        // No network call at all — not even to build the song index.
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 0)
+    }
+
+    @Test func bitDepthsForSongIdsJoinsMultipleSongsInOneBatch() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        let ids = ["beethoven-song", "schubert-song", "joint-song", "single-movement-song", "does-not-exist"]
+        let depths = try await client.bitDepths(forSongIds: ids)
+
+        #expect(depths["beethoven-song"] == 24)
+        #expect(depths["schubert-song"] == 16)
+        // No bitDepth key, a zero bitDepth, and an unknown id: all absent.
+        #expect(depths["joint-song"] == nil)
+        #expect(depths["single-movement-song"] == nil)
+        #expect(depths["does-not-exist"] == nil)
+        #expect(depths.count == 2)
+    }
+
+    @Test func bitDepthsForSongIdsDoesNotRefetchTheSongIndex() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        _ = try await client.songIndex()
+        _ = try await client.bitDepths(forSongIds: ["beethoven-song", "schubert-song"])
+
+        let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")
+        #expect(songCallCount == 1) // reused the cache built by songIndex(), no extra network call
+    }
+
+    @Test func bitDepthsForSongIdsIsEmptyForEmptyInput() async throws {
+        await NavidromeMockProtocol.reset()
+        await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
+        let client = songLookupClient()
+
+        let depths = try await client.bitDepths(forSongIds: [])
+        #expect(depths.isEmpty)
 
         // No network call at all — not even to build the song index.
         let songCallCount = await NavidromeMockProtocol.count(pathSuffix: "/api/song")

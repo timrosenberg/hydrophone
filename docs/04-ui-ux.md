@@ -148,19 +148,27 @@ rendered visibly washed out.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
-  Now Playing hero card uses the same outline styling with
-  `Song.qualityDetailLabel`, which adds `· N kbps` for lossless files when the
-  server reports a positive bit rate while preserving `qualityLabel` behavior
-  for lossy files and lossless files without one.
-- **Album work grouping**: when an album contains more than one distinct
-  tagged Work, flat, unselectable headers mark each consecutive run. Work
+  Now Playing hero card uses the same outline styling but always names the
+  codec via `Song.qualityDetailLabel` (#106): format name + bit depth/sample
+  rate ("FLAC 24/96k") above the 320 kbps hi-res threshold when a native
+  (Navidrome-only) bit depth and sample rate are both present, otherwise
+  format name + bit rate ("AAC 256 kbps", "MP3 192 kbps"); the bare format
+  name when there's no bit rate at all. `.m4a`/`.m4b` is named "ALAC" in the
+  hi-res case and "AAC" otherwise, since the suffix alone can't tell the two
+  apart. Diverges from `qualityLabel` (which never shows a codec name
+  alongside a lossy bit rate) — the badge is meant to be read in isolation,
+  unlike the compact table column.
+- **Album work grouping**: when an album contains at least one distinct
+  tagged Work, flat, unselectable headers mark each consecutive run — a
+  single work spanning the whole album still gets one header of its own,
+  since its title isn't necessarily redundant with the album title. Work
   grouping takes priority over disc grouping; a multi-disc album folds the
   disc into each label (`Disc 2 · Work Name`). A blank spacer row marks the
   opposite boundary — where a grouped run ends and an ungrouped run begins —
   since no header exists there to separate them; it does not appear at the
   top of the list, between two grouped runs, or on albums with no grouping.
   Headers appear only in natural track order or ascending `#`, and withdraw
-  (spacer included) under every other sort. Albums with zero or one Work
+  (spacer included) under every other sort. Albums with zero tagged Works
   retain the existing disc-header behavior unchanged.
   A work header is double-click-to-play (#55, reversing #47's "no new
   interactivity" deferral): starts the whole Work from its first movement;
@@ -266,6 +274,14 @@ selections does not clear downstream selections.
   artist — album, elapsed/total time, and a hairline accent progress bar along
   its bottom edge; volume + panel toggle trailing. Clicking the LCD (or the
   trailing toolbar button, or ⌘U) toggles the Now Playing panel.
+- A compact "Loading songs…" / "N songs loaded" pill (`LibraryLoadingStatus`,
+  wrapping `SongsLoadingProgress`) appears between the transport cluster and
+  LCD whenever `LibraryModel.songsAreLoading` is true. It is drawn as a
+  fixed-width leading overlay outside `NowPlayingDisplay`'s measured bounds,
+  leaving the LCD as the sole centered principal item; appearing or
+  disappearing therefore cannot move the transport or LCD. The app-wide load
+  state keeps the status correct on every page, and no space remains reserved
+  when loading finishes (#102).
 
 ## MenuBarExtra Now Playing panel ✅
 
