@@ -76,6 +76,7 @@ final class ConnectionModel {
     private let navidrome: NavidromeClient
     private let credentials: CredentialStore
     @ObservationIgnored private var songsInvalidationHandler: @MainActor () -> Void = {}
+    @ObservationIgnored private var songsLoadHandler: @MainActor () async -> Void = {}
 
     init(client: SubsonicClient, navidrome: NavidromeClient, credentials: CredentialStore) {
         self.client = client
@@ -103,6 +104,13 @@ final class ConnectionModel {
     /// the credentials or server library behind it changes.
     func setSongsInvalidationHandler(_ handler: @escaping @MainActor () -> Void) {
         songsInvalidationHandler = handler
+    }
+
+    /// Composition-root hook that starts the complete Songs walk after a
+    /// persisted server connection succeeds, including first-time setup and
+    /// reconnects that happen after RootView's launch task has already run.
+    func setSongsLoadHandler(_ handler: @escaping @MainActor () async -> Void) {
+        songsLoadHandler = handler
     }
 
     private func invalidateSongs() async {
@@ -155,6 +163,7 @@ final class ConnectionModel {
             ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
             state = .connected(info)
             await probeNativeFeatures()
+            await songsLoadHandler()
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -184,6 +193,7 @@ final class ConnectionModel {
             let info = try await client.ping()
             state = .connected(info)
             await probeNativeFeatures()
+            await songsLoadHandler()
         } catch {
             state = .failed(error.userMessage)
         }

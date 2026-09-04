@@ -93,6 +93,48 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   placement. The pre-existing minimum-width loading-status/transport overlap
   is unchanged and remains outside #134.
 
+## Issue #118: Songs library walk now starts at launch, not on first visit (2026-09-04) ✅
+
+- `AppModel` now wires `ConnectionModel`'s successful persisted-connection
+  lifecycle to `library.loadSongsIfNeeded()`. Both launch-time `refresh()` and
+  later `saveAndConnect()` calls await that hook after the native-feature
+  probe, so the all-songs walk (`search3`, paginated to exhaustion per `05`)
+  starts regardless of which sidebar section is visible — including first-time
+  setup and reconnects after an initially unconfigured or failed launch.
+  `loadSongsIfNeeded()` remains idempotent via `songsState`, so a concurrent
+  per-selection request from Songs still coalesces onto one walk.
+- Hermetic `ConnectionModelNativeFeaturesTests` regressions compose the real
+  connection, app, and library models over a stubbed HTTP boundary. They prove
+  both a saved-credential launch refresh and a first `Save & Connect` complete
+  one eager `search3` walk without relying on `RootView` appearance.
+- Deliberately out of scope (flagged in the issue's own follow-up comment):
+  the separate native `/api/song` index walk that `NavidromeClient.
+  songIndexSnapshot()` feeds to playlists/Composers/work-grouping — that's
+  issue #124's fix to design, not this one's.
+- Gate: unsigned build succeeds with zero compiler warnings; full suite passes
+  343 test cases / 363 executions with 0 failures and 0 skips; SwiftLint 0
+  violations; `git diff --check` clean.
+- Live (2026-09-04), Tim's configured real Navidrome server: with
+  `sidebarSelection` forced to `artists` (never visiting Songs), a fresh
+  launch of the exact Debug build showed the toolbar's "N songs loaded" pill
+  climbing to the full 14,231-song count within a few seconds while the
+  Artists list was on screen — confirming the walk starts eagerly at launch
+  rather than waiting for a Songs visit. Repeated across several relaunches
+  restarting the walk from scratch each time (in-memory cache dies with the
+  process, per `05`), never regressing to the old click-to-start behavior.
+  Note for future live-verification: this Debug build (`CODE_SIGNING_ALLOWED=NO`,
+  effectively unsigned) reads `~/Library/Preferences/app.hydrophone.plist`
+  directly, not the sandboxed container copy the notarized release uses —
+  `defaults write app.hydrophone …` silently redirects to the container path
+  instead, so forcing `@AppStorage` values for a Debug-build test needs the
+  explicit plain-path `defaults write ~/Library/Preferences/app.hydrophone.plist`
+  form (or a uniquely bundle-ID'd probe build, as issue #102 did below).
+- Review-fix live recheck (2026-09-04), public Navidrome demo: launched the
+  actual Debug app with `HYDROPHONE_SCREENSHOT_FRESH=1` so the real Keychain
+  remained untouched, selected Artists before connecting, and used the first-
+  time Demo Server flow. Without opening Songs, the toolbar showed "Loading
+  songs…", advanced to "500 songs loaded", and then cleared when the complete
+  walk finished.
 ## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
 
 - The "Loading songs…" / "N songs loaded" status no longer renders in a
@@ -3669,6 +3711,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #118 (2026-09-04): unsigned build has zero compiler warnings; full
+  suite passes; SwiftLint clean. Live on Tim's configured Navidrome server:
+  launching directly on Artists (never visiting Songs) still showed the
+  toolbar's songs-loaded pill climb to the full 14,231-song count within
+  seconds, confirming the walk now starts eagerly at launch.
 - ✅ Issue #102 (2026-09-03): unsigned build has zero compiler warnings; full
   suite (343-344 executions across runs, 0 failures/skips); SwiftLint clean.
   Live on the configured Navidrome server: the status renders attached
