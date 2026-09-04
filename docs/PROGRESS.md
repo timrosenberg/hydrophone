@@ -70,6 +70,65 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
+
+- The "Loading songs…" / "N songs loaded" status no longer renders in a
+  bottom overlay on the Songs page. `LibraryLoadingStatus` now reads
+  `LibraryModel.songsAreLoading` and renders in a fixed-width pill between the
+  transport cluster and LCD. RootView draws the pill as a leading overlay
+  outside `NowPlayingDisplay`'s measured bounds, leaving the LCD as the sole
+  centered principal toolbar item; the transient status therefore cannot
+  shift either neighboring control. The underlying app-wide state keeps the
+  status correct regardless of which page is on screen and reserves no space
+  when loading is idle.
+- The Songs page keeps its own centered placeholder (`SongsLoadingProgress`,
+  reused) for the moment before the first page is renderable — unrelated
+  per-view empty-state UI, same pattern `AlbumsView` uses for `albumsState`.
+- Gate: unsigned build succeeds with zero compiler diagnostics; full suite
+  **324 test cases / 344 executions, 0 failures/skips** (canonical xcresult
+  summary); SwiftLint 0 violations and `git diff --check` passes.
+- Live (2026-09-04): a uniquely named probe build
+  (`HydrophoneIssue102Probe`, bundle ID `app.hydrophone.issue102probe`) against
+  the configured Navidrome server removed any ambiguity with other open
+  Hydrophone builds. Opening Songs showed the pill count through 3,500,
+  12,500, and 14,231 loaded songs between the unchanged transport and LCD.
+  Loading and idle captures at the same 1,180pt window width confirmed the LCD
+  keeps the same horizontal position when the pill appears or disappears. The
+  transport/volume bubble-padding polish remains deliberately out of scope.
+
+## Issue #106: bit depth/sample rate in the Now Playing quality badge (2026-09-03 – 2026-09-04) ✅
+
+- Confirmed live against demo.navidrome.org that Navidrome's native `/api/song`
+  carries a `bitDepth` field (present on FLAC and ALAC-in-`.m4a` records,
+  absent on lossy suffixes) that plain Subsonic never exposes — the open
+  question the issue flagged.
+- Added `bitDepth` to `NativeSongRecord` and `Song` (native-only, joined
+  post-fetch, same convention as work/movement). `NavidromeClient.bitDepths(forSongIds:)`
+  mirrors `workInfo(forSongIds:)`'s cache-reuse shape; `LibraryModel.joinWorkInfo(into:)`
+  now joins both onto the same six track-table sources.
+- `Song.qualityDetailLabel` now always names the codec, splitting on a 320
+  kbps threshold rather than a lossless-suffix list: above it, with a bit
+  depth and sample rate both reported, format name + "24/96k"; at or below
+  it, or missing either field, format name + bit rate ("AAC 256 kbps", "MP3
+  192 kbps"). The threshold doubles as an ALAC/AAC resolver for `.m4a`/`.m4b`,
+  which the suffix alone can't distinguish. The Quality column (`qualityLabel`)
+  is unchanged — Tim's live-review feedback on the first round drove this
+  reshape from the original lossless-only "24/96k" (no codec name).
+- Split `NavidromeClient`'s composer/song-lookup extension into
+  `NavidromeClient+SongLookup.swift` to stay under the file-length lint after
+  the new method landed.
+- Gate: unsigned build passes with zero compiler warnings; full suite
+  **333 test cases / 353 executions, 0 failures/skips**; SwiftLint 0
+  violations.
+- Live (2026-09-03): the configured Navidrome server (14,327 songs) played a
+  FLAC track ("String Quintet in C Major, Op. 163, D. 956") whose Now Playing
+  badge read "24/48k" (pre-refinement format).
+- Live (2026-09-04, post-refinement): the same server (14,231–14,327 songs
+  across two loads) showed **"FLAC 24/192k"** for a Mahler symphony FLAC track
+  and **"AAC 603 kbps"** for a high-bitrate `.m4a` track that has no reported
+  bit depth — confirming both the codec-name-always behavior and the
+  threshold-gated ALAC/AAC resolution.
+
 ## Issue #120: work header and movement grouping for single-work albums (2026-08-31) ✅
 
 - `TrackTableRow.build` and `Coordinator.workHeaderGroupingActive`
@@ -3551,6 +3610,12 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #102 (2026-09-03): unsigned build has zero compiler warnings; full
+  suite (343-344 executions across runs, 0 failures/skips); SwiftLint clean.
+  Live on the configured Navidrome server: the status renders attached
+  inside the LCD capsule, tracked the full-library walk, stayed visible
+  after navigating to Artists mid-load, and vanished on completion; no
+  bottom-of-Songs-page overlay appeared.
 - ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
   suite **324 cases / 344 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete displayed-row

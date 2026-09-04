@@ -7,16 +7,11 @@ struct SongsView: View {
     @Environment(LibraryModel.self) private var library
     @AppStorage("showColumnBrowser") private var showColumnBrowser = true
 
-    private var songsAreLoading: Bool {
-        if case .loading = library.songsState { return true }
-        return false
-    }
-
     var body: some View {
         Group {
             if showColumnBrowser {
                 ColumnBrowserView()
-            } else if library.songs.isEmpty, songsAreLoading {
+            } else if library.songs.isEmpty, library.songsAreLoading {
                 SongsLoadingProgress(songCount: 0)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -39,18 +34,9 @@ struct SongsView: View {
                                    sortAutosaveKey: "songs",
                                    defaultSortKey: "title",
                                    scrollAutosaveKey: "songs",
-                                   contentIsLoading: songsAreLoading,
+                                   contentIsLoading: library.songsAreLoading,
                                    columnsCustomizable: true)
                 }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if songsAreLoading, !library.songs.isEmpty {
-                SongsLoadingProgress(songCount: library.songs.count)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, 8)
             }
         }
         .navigationTitle("Songs")
@@ -60,8 +46,11 @@ struct SongsView: View {
     }
 }
 
-/// Compact progress shown over both Songs browsing modes once the first page
-/// is renderable; before that, the same view serves as the centered loader.
+/// Compact spinner + status text ("Loading songs…" / "N songs loaded").
+/// Serves as the centered placeholder here before the flat Songs table's
+/// first page is renderable, and — since the underlying load is app-wide,
+/// not Songs-view-scoped — is reused in the toolbar (`NowPlayingToolbar`)
+/// to reflect the same state regardless of which page is active (#102).
 struct SongsLoadingProgress: View {
     let songCount: Int
 

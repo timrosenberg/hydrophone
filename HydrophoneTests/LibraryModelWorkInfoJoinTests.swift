@@ -43,7 +43,9 @@ struct LibraryModelWorkInfoJoinTests {
         #expect(songs[0].movementName == "Der Doppelgänger")
         #expect(songs[0].movementNumber == 13)
         #expect(songs[0].movementTotal == 14)
+        #expect(songs[0].bitDepth == 24)
         #expect(songs[1].work == nil) // no work tags on this one — untouched
+        #expect(songs[1].bitDepth == nil)
     }
 
     @Test func albumDetailJoinsWorkInfoOntoReturnedSongs() async throws {
@@ -71,6 +73,7 @@ struct LibraryModelWorkInfoJoinTests {
 
         #expect(!songs.isEmpty)
         #expect(songs.allSatisfy { $0.work == nil })
+        #expect(songs.allSatisfy { $0.bitDepth == nil })
         // Gated before the native call is ever made — not just discarded after.
         #expect(await WorkInfoJoinMockProtocol.count(pathSuffix: "/api/song") == 0)
     }
@@ -154,7 +157,7 @@ struct LibraryModelWorkInfoJoinTests {
             }
             if path.hasSuffix("/api/song") {
                 let json = """
-                [{"id": "schubert-song", "title": "Der Doppelgänger",
+                [{"id": "schubert-song", "title": "Der Doppelgänger", "bitDepth": 24,
                   "tags": {"work": ["Schwanengesang, D. 957"], "movementname": ["Der Doppelgänger"],
                            "movement": ["13"], "movementtotal": ["14"]}},
                  {"id": "untagged-song", "title": "Some Other Track"}]

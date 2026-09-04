@@ -50,6 +50,29 @@ struct TransportControls: View {
     }
 }
 
+// MARK: - Library-load status (leading overlay beside the LCD)
+
+/// Compact "Loading songs…" / "N songs loaded" status shown while the songs
+/// library is loading. RootView draws it just before `NowPlayingDisplay` as a
+/// non-layout overlay: it remains visually separate while the LCD stays the
+/// sole measured, centered `.principal` toolbar item (#102).
+struct LibraryLoadingStatus: View {
+    static let width: CGFloat = 160
+
+    @Environment(LibraryModel.self) private var library
+
+    var body: some View {
+        SongsLoadingProgress(songCount: library.songs.count)
+            .frame(width: Self.width - 20)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.4), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+            }
+    }
+}
+
 // MARK: - Now-playing display (centered)
 
 /// The centered "LCD" capsule: artwork, centered title with artist — album

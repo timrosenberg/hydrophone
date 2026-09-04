@@ -20,6 +20,7 @@ extension NativeSongRecord {
         song.genres = genres
         song.bitRate = Self.nonzero(bitRate)
         song.samplingRate = sampleRate
+        song.bitDepth = Self.nonzero(bitDepth)
         song.suffix = Self.nonempty(suffix)
         song.contentType = suffix.flatMap { Self.contentTypes[$0.lowercased()] }
         song.size = Self.nonzero(size)
