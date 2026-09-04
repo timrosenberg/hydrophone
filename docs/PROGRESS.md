@@ -70,6 +70,93 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #141: implement song-index consolidation & cache abstraction (2026-09-04)
+
+- Implements #140's design decision exactly, with one correction found during
+  live verification (below). Closes out the #125 audit epic (#118, #124,
+  #139, #140, #141).
+- New `Services/LibrarySongIndex.swift`: single owner of both full-library
+  walks (Subsonic `search3`, native `/api/song`), replacing the hand-rolled
+  cache/generation/in-flight state previously split across
+  `SubsonicClient.cachedAllSongs` and `NavidromeClient.cachedSongIndex`. One
+  entry point, `allSongs(onProgress:)`, now performs the native
+  work/movement/bitDepth join itself before returning, instead of
+  `LibraryModel` calling the walk and the join as two separate steps.
+- New `Services/CredentialScopedCache.swift`: the generic credentials-guard +
+  generation-counter + in-flight-coalescing + explicit-invalidate primitive,
+  adopted by `LibrarySongIndex`'s two caches and by
+  `NavidromeClient`'s token cache (fixing a minor thundering-herd gap there —
+  concurrent callers under a cold token now coalesce onto one `login()`).
+- `SubsonicClient`/`NavidromeClient` reverted to pure transport actors;
+  `NavidromeClient` gained a pinned `paginatedGet(...using:as:)` overload so
+  the native walk (and its 401 retry) can pin one credential snapshot across
+  its whole walk, mirroring `SubsonicClient.perform(_:using:)`.
+- `LibraryModel`'s five single-shot collections (artists/composers/genres/
+  starred/home) and `albums`'s pagination state now share one
+  `librarySessionGeneration` counter, bumped by `reset()` — **not**
+  `CredentialScopedCache` as #140.2 originally decided; implementing it
+  surfaced that wrapping `@MainActor`/`@Observable` UI state in an
+  actor-based cache reintroduces a loading flicker on every tab revisit for
+  no correctness benefit a plain generation guard doesn't already give. The
+  actual #139 fix is `ConnectionModel`'s composition-root wiring calling
+  `library.reset()` (which already cleared every collection correctly) on
+  disconnect/credential-change/scan, instead of the narrower
+  `invalidateSongs()` it called before — that one-line wiring change is what
+  stops switching servers from showing stale Albums/Artists/Composers/
+  Genres/Favorites/Home. A library scan now also invalidates those five
+  collections, which it didn't before.
+- `ConnectionModel`'s invalidation hook, `invalidateLibrary()`, and
+  `disconnect()` all became `async` — required so `reset()` can `await` its
+  actor-cache invalidation directly rather than fire-and-forget it, closing a
+  real race (a `disconnect()` immediately followed by a fresh fetch could
+  otherwise read stale actor state). `SettingsView`'s Disconnect button wraps
+  the call in `Task { await ... }`, matching its sibling buttons.
+- Full docs/05-data-and-caching.md rewrite of the #139 inventory and #140
+  decision sections to describe the shipped architecture (owners, resolved
+  invalidation gaps, the `librarySessionGeneration` pivot and why).
+- New tests: `CredentialScopedCacheTests.swift` (hermetic, endpoint-agnostic —
+  cache-hit reuse, credential-mismatch rebuild, concurrent coalescing,
+  invalidate, stale-completion guard, uncacheable-result-not-cached);
+  `LibraryModelResetTests.swift` (proves `reset()` clears Favorites/Home and
+  bumps the shared generation — the direct regression test for #139's
+  finding). Existing `SubsonicAllSongsTests`/`NavidromeClientNetworkTests`/
+  `NavidromeSongIndexNetworkTests`/`NavidromeComposerSongLookupTests`/
+  `ConnectionModelNativeFeaturesTests` cases migrated to target the new
+  types; same assertions, reused mock infrastructure.
+- **Live-verification finding (real bug, fixed before landing):** the first
+  implementation made `LibrarySongIndex` an actor. Live-testing against
+  Tim's real ~14,000-track Navidrome server surfaced that this reintroduced
+  the exact blocking #124 fixed — opening a playlist while the Songs tab's
+  eager Subsonic walk was running made the playlist's non-blocking native
+  join wait behind it, because entering `LibrarySongIndex`'s own actor
+  serialized both walks against each other even though their two
+  `CredentialScopedCache`s were independently isolated. `LibrarySongIndex`
+  holds no mutable state of its own, so it didn't need to be an actor at
+  all; converting it to a plain `final class: Sendable` removed that
+  serialization point. No hermetic test caught this — it needed real
+  concurrent load against a real server to surface. Confirmed fixed by
+  re-testing after the change.
+- **Live-verification findings (confirmed pre-existing, not regressions):**
+  with temporary timing instrumentation (since removed), confirmed (a) the
+  native `/api/song` walk itself took ~30–40s against Tim's real library —
+  unrelated to this change, walk logic untouched, matches #124's already-
+  documented cold-cache-walk cost; (b) concurrent callers (three playlists
+  opened mid-walk plus the Songs tab's own join) correctly coalesced onto
+  the one walk rather than each starting their own (confirmed by identical
+  completion timestamps across differing per-caller wait durations); (c) a
+  Songs-tab revisit after the walk completes produces zero new cache/network
+  activity (confirmed via the same instrumentation showing no log output),
+  so a separately-reported "~1s tab click" lag is unrelated to this layer —
+  most likely AppKit track-table rendering cost for 14,000+ rows, out of
+  scope here. Tim independently confirmed the overall feel matches
+  pre-#139 `main`.
+- Gate: unsigned build succeeds with zero warnings; full suite passes (373
+  passed, 0 failed, 0 skipped — 8 more than #139's baseline, all new);
+  SwiftLint 0 violations across 139 files. Live: 2026-09-04, Tim's real
+  configured Navidrome server — Songs tab, playlists (opened both during and
+  after the Songs walk), and the actor-contention regression/fix cycle above
+  all verified by hand.
+
 ## Issue #140: song-index consolidation & cache-abstraction design decision (2026-09-04)
 
 - Docs-only, no code changes (explicit non-goal). Part of the #125 audit epic,
