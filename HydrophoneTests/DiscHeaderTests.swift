@@ -68,14 +68,27 @@ struct DiscHeaderTests {
                          .header("Disc 2 · Bagatelle No. 25", work: "Bagatelle No. 25"), .track(2)])
     }
 
-    @Test func oneWorkKeepsExistingDiscHeaders() {
+    @Test func singleWorkGetsOneWorkHeaderInsteadOfDiscHeaders() {
+        // Issue #120: a single tagged Work spanning the whole album (or, as
+        // here, multiple discs) now gets a work header of its own — it no
+        // longer falls back to per-disc headers, and folds in only the disc
+        // of the track where the run started since the key (the work) never
+        // changes across the album.
         let tracks = [
             song("a", disc: 1, track: 1, work: "The Ring"),
             song("b", disc: 2, track: 1, work: "The Ring")
         ]
         let rows = TrackTableRow.build(tracks: tracks, headers: [2: "Götterdämmerung"])
-        #expect(rows == [.header("Disc 1", work: nil), .track(0),
-                         .header("Disc 2 · Götterdämmerung", work: nil), .track(1)])
+        #expect(rows == [.header("Disc 1 · The Ring", work: "The Ring"), .track(0), .track(1)])
+    }
+
+    @Test func singleWorkSingleDiscStillGetsAWorkHeader() {
+        let tracks = [
+            song("a", disc: 1, track: 1, work: "Winterreise"),
+            song("b", disc: 1, track: 2, work: "Winterreise")
+        ]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.header("Winterreise", work: "Winterreise"), .track(0), .track(1)])
     }
 
     @Test func repeatedWorkGetsAHeaderForEachContiguousRun() {
@@ -134,10 +147,23 @@ struct DiscHeaderTests {
 
     @Test func noSpacerWhenNoGroupingApplies() {
         let tracks = [song("a", disc: 1, track: 1),
-                      song("b", disc: 1, track: 2, work: "Work A"),
+                      song("b", disc: 1, track: 2),
                       song("c", disc: 1, track: 3)]
         let rows = TrackTableRow.build(tracks: tracks, headers: [:])
         #expect(rows == [.track(0), .track(1), .track(2)])
+    }
+
+    @Test func singleStrayWorkAmongUntaggedTracksStillGetsBoundarySpacers() {
+        // Issue #120: even one distinct Work is enough to trigger grouping
+        // now, so a lone tagged track surrounded by untagged ones gets both
+        // its own header and the spacer marking where the run ends.
+        let tracks = [song("a", disc: 1, track: 1),
+                      song("b", disc: 1, track: 2, work: "Work A"),
+                      song("c", disc: 1, track: 3)]
+        let rows = TrackTableRow.build(tracks: tracks, headers: [:])
+        #expect(rows == [.track(0),
+                         .header("Work A", work: "Work A"), .track(1),
+                         .spacer, .track(2)])
     }
 
     @Test func albumDecodesDiscTitles() throws {
