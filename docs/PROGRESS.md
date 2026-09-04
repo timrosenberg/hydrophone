@@ -70,6 +70,27 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #113: "Go to Album" fetched the same album twice (2026-09-04) ✅
+
+- `AlbumDetailView.task(id:)` always re-ran `getAlbum` from scratch, even when
+  the caller had already fetched the full `Album` (with its song list) just to
+  navigate there — both "Go to Album" call sites (`TrackTableView.swift`'s
+  track context menu, `RootView.swift`'s Show Current Album handler) do
+  exactly that. Now the view uses the caller's `album.song` directly when it's
+  already populated, and only fetches when it's `nil` — the case for the four
+  list-sourced `openAlbum` call sites (Albums grid, Artists page, Home
+  shelves, Up Next shelf), which are unaffected.
+- Gate: unsigned build succeeds with zero compiler diagnostics; full test
+  suite passes; SwiftLint 0 violations.
+- Live (2026-09-04): the configured Navidrome server (14,231 songs loaded).
+  Right-clicked "Nightingale" (Norah Jones) in Songs → Go to Album; the
+  album page for *Come Away With Me* rendered all 14 tracks immediately.
+  Temporary stderr instrumentation on the request path confirmed a single
+  `getAlbum` call followed only by the unrelated `getStarred2` (favorite-state
+  check) — no duplicate fetch. Instrumentation was removed before committing.
+
+---
+
 ## Issue #134: balanced transport/volume toolbar bubble padding (2026-09-04) ✅
 
 - Replaced the transport's one-sided 16pt leading inset and the volume/panel
