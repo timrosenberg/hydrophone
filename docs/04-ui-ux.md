@@ -274,6 +274,11 @@ selections does not clear downstream selections.
   artist — album, elapsed/total time, and a hairline accent progress bar along
   its bottom edge; volume + panel toggle trailing. Clicking the LCD (or the
   trailing toolbar button, or ⌘U) toggles the Now Playing panel.
+- The transport and volume/panel clusters each use 8pt horizontal content
+  padding inside their system-drawn toolbar bubbles. This keeps the bubbles'
+  internal whitespace visually balanced while preserving the previous 16pt
+  total inset and therefore the transport, LCD, and trailing-item positions
+  (#134).
 - A compact "Loading songs…" / "N songs loaded" pill (`LibraryLoadingStatus`,
   wrapping `SongsLoadingProgress`) appears between the transport cluster and
   LCD whenever `LibraryModel.songsAreLoading` is true. It is drawn as a
