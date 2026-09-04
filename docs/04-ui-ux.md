@@ -149,9 +149,10 @@ rendered visibly washed out.
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
   Now Playing hero card uses the same outline styling with
-  `Song.qualityDetailLabel`, which adds `· N kbps` for lossless files when the
-  server reports a positive bit rate while preserving `qualityLabel` behavior
-  for lossy files and lossless files without one.
+  `Song.qualityDetailLabel`: for lossless files with a native (Navidrome-only)
+  bit depth and a sample rate, a "24/96k"-style label (#106); otherwise `· N
+  kbps` when the server reports a positive bit rate; otherwise the bare format
+  name — while preserving `qualityLabel` behavior for lossy files.
 - **Album work grouping**: when an album contains more than one distinct
   tagged Work, flat, unselectable headers mark each consecutive run. Work
   grouping takes priority over disc grouping; a multi-disc album folds the

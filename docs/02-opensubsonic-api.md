@@ -328,3 +328,13 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   launch-time probe or starts it when necessary — a no-op, with no native
   network call at all, when unavailable. Wired into all six track-table
   sources: album, genre/Column Browser, Songs, Favorites, playlist, and search.
+- **Bit depth join onto `Song` (#106):** `/api/song` carries a `bitDepth`
+  field (confirmed live 2026-09-03 against demo.navidrome.org: present on
+  FLAC and ALAC-in-`.m4a` records, absent on lossy suffixes) that plain
+  Subsonic never exposes. `NavidromeClient.bitDepths(forSongIds:)` mirrors
+  `workInfo(forSongIds:)`'s batch/cache-reuse shape; `LibraryModel.joinWorkInfo(into:)`
+  calls it alongside the work/movement join (same gate, same six sources) and
+  sets `Song.bitDepth`. `Song.qualityDetailLabel` uses it for the Now Playing
+  badge — "24/96k" for lossless files with both bit depth and sample rate,
+  falling back to the existing format+kbps label otherwise (plain Subsonic,
+  untagged files, or lossy formats, which have no fixed bit depth).

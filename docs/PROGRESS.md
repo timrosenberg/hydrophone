@@ -70,6 +70,30 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #106: bit depth/sample rate in the Now Playing quality badge (2026-09-03) ✅
+
+- Confirmed live against demo.navidrome.org that Navidrome's native `/api/song`
+  carries a `bitDepth` field (present on FLAC and ALAC-in-`.m4a` records,
+  absent on lossy suffixes) that plain Subsonic never exposes — the open
+  question the issue flagged.
+- Added `bitDepth` to `NativeSongRecord` and `Song` (native-only, joined
+  post-fetch, same convention as work/movement). `NavidromeClient.bitDepths(forSongIds:)`
+  mirrors `workInfo(forSongIds:)`'s cache-reuse shape; `LibraryModel.joinWorkInfo(into:)`
+  now joins both onto the same six track-table sources.
+- `Song.qualityDetailLabel` shows "24/96k"-style bit depth/sample rate for
+  lossless files with both fields, falling back to the existing format+kbps
+  label for plain Subsonic, untagged files, or lossy formats. The Quality
+  column (`qualityLabel`) is unchanged.
+- Split `NavidromeClient`'s composer/song-lookup extension into
+  `NavidromeClient+SongLookup.swift` to stay under the file-length lint after
+  the new method landed.
+- Gate: unsigned build passes with zero compiler warnings; full suite
+  **333 test cases / 353 executions, 0 failures/skips**; SwiftLint 0
+  violations.
+- Live (2026-09-03): the configured Navidrome server (14,327 songs) played a
+  FLAC track ("String Quintet in C Major, Op. 163, D. 956") whose Now Playing
+  badge read **"24/48k"**; an MP3 track's badge was unaffected at "256 kbps".
+
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 
 - Double-clicking a resizable track-table divider now fits that column to its
