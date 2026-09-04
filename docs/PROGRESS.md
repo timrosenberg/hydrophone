@@ -70,6 +70,28 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #102: library-loading spinner moved into the top toolbar (2026-09-03) ✅
+
+- The "Loading songs…" / "N songs loaded" status (`SongsLoadingProgress`) no
+  longer renders in a bottom overlay on the Songs page. It now reads
+  `LibraryModel.songsAreLoading` (a new computed property, hoisted out of
+  duplicate `if case .loading = songsState` checks in `SongsView` and
+  `ColumnBrowserView`) directly in `RootView`'s toolbar, shown to the left of
+  `NowPlayingDisplay`. Since the underlying load is app-wide state, not
+  Songs-view-scoped, the status is correct regardless of which page is on
+  screen and collapses away (no reserved space) the instant loading finishes.
+- The Songs page keeps its own centered placeholder (`SongsLoadingProgress`,
+  reused) for the moment before the first page is renderable — unrelated
+  per-view empty-state UI, same pattern `AlbumsView` uses for `albumsState`.
+- Gate: unsigned build has zero compiler warnings; full suite (344
+  executions, 0 failures/skips); SwiftLint 0 violations.
+- Live (2026-09-03): the configured Navidrome server. Relaunched fresh and
+  opened Songs — the toolbar spinner appeared left of the play-status LCD,
+  counted up through the full-library walk (500 → 14,220 songs), stayed
+  visible after navigating away to Artists mid-load (confirming app-wide,
+  not Songs-scoped), and disappeared the instant the walk completed. No
+  bottom-of-page overlay appeared at any point.
+
 ## Issue #108: double-click column-divider autosizing (2026-08-30) ✅
 
 - Double-clicking a resizable track-table divider now fits that column to its
@@ -3513,6 +3535,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #102 (2026-09-03): unsigned build has zero compiler warnings; full
+  suite (344 executions, 0 failures/skips); SwiftLint clean. Live on the
+  configured Navidrome server: toolbar spinner tracked the full-library walk
+  (500 → 14,220 songs), stayed visible after navigating to Artists mid-load,
+  and vanished on completion; no bottom-of-Songs-page overlay appeared.
 - ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
   suite **324 cases / 344 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete displayed-row
