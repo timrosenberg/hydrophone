@@ -94,6 +94,7 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
     var genres: [GenreRef]?
     var bitRate: Int?
     var sampleRate: Int?
+    var bitDepth: Int?
     var suffix: String?
     var size: Int?
     var comment: String?

@@ -63,6 +63,12 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     var movementName: String?
     var movementNumber: Int?
     var movementTotal: Int?
+    /// Native (Navidrome-only) bit depth, joined the same way as work/movement
+    /// above — plain Subsonic has no field for it. Drives the Now Playing
+    /// quality badge's "24/96k"-style label (#106); absent for lossy files
+    /// (compressed audio has no fixed bit depth) and for untagged/plain-Subsonic
+    /// lossless files, which fall back to `qualityDetailLabel`'s format+kbps form.
+    var bitDepth: Int?
 
     var isStarred: Bool { starred != nil }
     /// Genre for display, preferring the legacy field, then the OpenSubsonic array.
@@ -94,15 +100,29 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         return suffix?.uppercased()
     }
 
-    /// Like `qualityLabel`, but lossless files also carry their bit rate —
-    /// for the Now Playing badge only; the Quality column stays compact.
+    /// Like `qualityLabel`, but lossless files show bit depth/sample rate
+    /// (e.g. "24/96k") when the server reports both, falling back to
+    /// format+bit rate (e.g. "FLAC · 998 kbps") otherwise — for the Now
+    /// Playing badge only; the Quality column stays compact.
     var qualityDetailLabel: String? {
         if let suffix = suffix?.lowercased(), Self.losslessSuffixes.contains(suffix) {
+            if let bitDepth, bitDepth > 0, let samplingRate, samplingRate > 0 {
+                return "\(bitDepth)/\(Self.formatKilohertz(samplingRate))"
+            }
             let format = suffix == "aif" ? "AIFF" : suffix.uppercased()
             guard let bitRate, bitRate > 0 else { return format }
             return "\(format) · \(bitRate) kbps"
         }
         return qualityLabel
+    }
+
+    /// "96k"/"44.1k"-style label: one decimal only when the rate isn't a
+    /// whole number of kHz. Mirrors `formatSampleRate`'s rounding rule
+    /// (`TrackTableView.swift`) without depending on UI code from this layer.
+    private static func formatKilohertz(_ hertz: Int) -> String {
+        let khz = Double(hertz) / 1000
+        guard khz.truncatingRemainder(dividingBy: 1) != 0 else { return "\(Int(khz))k" }
+        return String(format: "%.1fk", khz)
     }
 
     /// Sort key for the Quality column: lossless above any lossy bit rate.
