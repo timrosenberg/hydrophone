@@ -102,7 +102,17 @@ struct RootView: View {
                     .padding(.leading, 16)
             }
             ToolbarItem(placement: .principal) {
-                NowPlayingDisplay()
+                HStack(spacing: 12) {
+                    // App-wide library-load status (issue #102): reads
+                    // `LibraryModel.songsState` directly rather than a
+                    // Songs-view-scoped flag, so it's correct no matter
+                    // which page is on screen, and simply collapses away
+                    // (no reserved space) once loading finishes.
+                    if library.songsAreLoading {
+                        SongsLoadingProgress(songCount: library.songs.count)
+                    }
+                    NowPlayingDisplay()
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 14) {
