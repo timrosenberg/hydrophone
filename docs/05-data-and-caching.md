@@ -53,7 +53,7 @@ this layer: `ConnectionModel.nativeFeaturesState` (capability state gating
 whether native calls happen at all) and `ArtworkCache` (its own section,
 disk-persisted, already documented).
 
-### Overlaps and gaps for #140's design decision
+### Overlaps and gaps → resolved by #140's design decision
 
 - **`cachedAllSongs` vs. `cachedSongIndex` are two walks over largely the same
   library**, one via `search3` (Subsonic) and one via `/api/song` (native), as
@@ -109,11 +109,215 @@ server remains the source of truth every time a cache misses. #128 proposes a
 disk-backed, cross-session persistent layer (the dropped-SwiftData shape
 further down this file was its predecessor idea) and is a different problem:
 it needs to survive relaunch, this layer explicitly must not (network-required
-by design). The two layers are not expected to merge, but #128 will need to
-either read through or bypass each in-memory cache here, and in either case
-should inherit the same invalidation triggers this inventory surfaces
-(credential change, disconnect, library scan, and user mutations like
-star/unstar or playlist edits) rather than rediscovering them independently.
+by design). The two layers are not expected to merge; §140.4 below states how
+#128 should plug into the design decided here instead of rediscovering it.
+
+## Design decision (#140): song-index consolidation & cache abstraction
+
+Resolves the gaps §139 flagged above. This is an **architectural decision**
+(field/API evidence + trade-offs recorded), not an implementation — #141 does
+the code. Evidence behind each call:
+
+- **Native-only fields are genuinely native-only** (`docs/02`): work/movement
+  tags and `bitDepth` are exposed *only* via `/api/song`; plain Subsonic
+  (`search3`/`getAlbum`/`getSong`) never carries them. Composer credit **ids**
+  (needed for `songs(byComposerId:)`) are likewise only in
+  `participants.composer[].id` — Subsonic only gets the server-joined
+  `displayComposer` *string*, no ids. The native walk's data cannot be folded
+  into the Subsonic walk's, in either direction.
+- **The native walk is not universally available**: it requires Navidrome +
+  password auth and degrades to `.unavailable` for any non-Navidrome server,
+  network failure, or API-key auth (`docs/02`). `cachedAllSongs` (Subsonic) is
+  the only walk that works on every configuration, so it can never be dropped.
+- **`NativeSongRecord.asSong()`** (`NativeSongRecord+Song.swift`) already
+  proves a native record can stand in for a playable `Song` — used today by
+  `songs(forComposer:)` — but two of its fields are *derived*, not
+  server-truth: `coverArt = id` (relies on legacy Subsonic id-acceptance) and
+  `contentType` (guessed from a hardcoded suffix→MIME table, not the server's
+  own value). Making this the *primary* source for the whole Songs tab, not
+  just the smaller Composers-tab subset it serves today, would be a
+  correctness risk on the app's central, always-available list, for a
+  walk-count savings that only helps Navidrome-password-auth users.
+- **Prior art already answered a piece of this**: #118 made the Subsonic walk
+  eager at connect. #124 explicitly declined to also make the native walk
+  eager at connect ("doesn't add a second concurrent full-library walk to
+  every app launch… Pre-warming the native index remains a legitimate
+  follow-up, not folded in here" — `docs/PROGRESS.md`). Nothing new here
+  changes that trade-off.
+
+### 140.1 — Keep two walks; unify behind one interface
+
+Rejects collapsing to a single walk (the issue's option "supplied by one
+authoritative full-library walk with derived projections") — it isn't the
+same data, and forcing Navidrome-native-available users onto native-only
+playback metadata risks the one surface (Songs tab) that must behave
+identically across every server type, for a savings that doesn't apply to
+non-Navidrome/API-key users anyway.
+
+Instead: one new actor, **`LibrarySongIndex`**
+(`Hydrophone/Services/LibrarySongIndex.swift`), becomes the single owner of
+"the library's songs" (the issue's "combined behind one repository/index
+interface" option):
+
+- Holds what's currently split across `SubsonicClient.cachedAllSongs` /
+  `inFlightAllSongs` / `allSongsGeneration` (moves out of `SubsonicClient`,
+  which reverts to a pure transport actor) and
+  `NavidromeClient.cachedSongIndex` / `cachedSongIndexCredentials` /
+  `songIndexGeneration` / `inFlightSongIndexBuild` (moves out of
+  `NavidromeClient` likewise).
+- One entry point, `allSongs(onProgress:)`: walks Subsonic (always) and joins
+  native work/movement/bitDepth (when available) — replacing today's two-step
+  "`LibraryModel.loadSongsIfNeeded()` calls `client.allSongs()`, then
+  separately calls `joinWorkInfo(into:)`" with one call whose join logic
+  lives in one place.
+- `songs(byComposerId:)`, `workInfo(forSongIds:)`, `bitDepths(forSongIds:)`
+  relocate here unchanged in behavior from `NavidromeClient+SongLookup.swift`
+  — these stay native-only by necessity (composer ids only exist natively),
+  just discoverable under the same interface.
+- `LibraryModel` keeps its `songs`/`songsState`/`songsGeneration` — genuine
+  view state, not a second copy of the walk — but calls through
+  `LibrarySongIndex` instead of `client` + `navidrome` directly.
+
+This turns "two walks over largely the same library" into "two walks, one
+interface, one join point": the duplication that was actually a problem
+(three copies of cache-lifecycle code, ad hoc join call sites) goes away; the
+duplication that isn't a problem (two genuinely different endpoints) stays,
+because it has to.
+
+### 140.2 — One generic cache primitive, adopted broadly but not everywhere
+
+Build **`CredentialScopedCache<Value: Sendable>`**
+(`Hydrophone/Services/CredentialScopedCache.swift`): the credentials-guard +
+generation-counter + in-flight-task-coalescing + explicit-`invalidate()` shape
+`cachedAllSongs` and `cachedSongIndex` already hand-roll identically. Its
+`resolve(using:build:)` takes a credentials snapshot and an async build
+closure, returning the cached value, an in-flight result, or a fresh build —
+today's `allSongs()`/`songIndexSnapshot()` logic, generalized.
+
+**Adopts it:**
+- `LibrarySongIndex`'s two internal caches (replacing the hand-rolled
+  versions).
+- `NavidromeClient.cachedToken` — today the *only* credential-scoped cache
+  with no generation counter or in-flight coalescing, so a concurrent burst of
+  callers under a cold/expired token each independently call `login()`. Same
+  shape; fixes that thundering-herd case as a side effect.
+- **`LibraryModel`'s single-shot collections**: `artists`, `composers`,
+  `genres`, `starredSongs`/`starredAlbums` (as one `StarredSnapshot` value),
+  and the four home shelves (as one `HomeShelves` value). Each is "fetch
+  once, cache until invalidated" — `cachedAllSongs`'s shape, minus
+  partial-publish. This is the direct fix for §139's finding that
+  `LibraryModel.reset()` is wired nowhere in the running app: once each
+  collection adopts `CredentialScopedCache`, invalidation is automatic on any
+  credential mismatch — the same mechanism `cachedAllSongs` already relies on
+  — and the missing `reset()` wiring stops being load-bearing. This *is* a
+  behavior change versus today, but it's the correctness fix §139 flagged,
+  not scope creep: deciding which caches use the primitive is exactly what
+  #140 asks for, and this gap has no other proposed fix on the table.
+
+**Does not adopt it:**
+- `SubsonicClient.formPostSupport` — scoped by base URL, not full credentials;
+  failure resolves to an uncached `false` rather than propagating an error.
+  Forcing it into `CredentialScopedCache` would obscure that real difference
+  for no benefit.
+- `LibraryModel.albums` — incremental/paginated with independent
+  offset/exhaustion bookkeeping *per sort-or-filter selection*, not a single
+  walk-to-exhaustion result (multiple live variants, not one cached blob).
+  Genuinely different shape. It should still gain an explicit credential-scope
+  check before #141 lands, so switching servers doesn't leave a stale grid
+  either — a small bespoke guard, left as a concrete, scoped requirement for
+  #141 rather than designed further here.
+
+### 140.3 — Warm-up ownership: no change to what warms eagerly
+
+`ConnectionModel` stays the sole owner of "what starts automatically after a
+verified connection" (already true today via `songsLoadHandler`/
+`probeNativeFeatures()`):
+
+- Subsonic full-library walk (via `LibrarySongIndex`): **stays eager**,
+  unchanged from #118.
+- Native song-index walk: **stays lazy/on-demand**, unchanged from #124.
+  #124 already weighed and explicitly declined eager native warm-up for a
+  narrower symptom; nothing new here (no measured latency complaint, no
+  user-facing regression) changes that trade-off, and reversing it would
+  reintroduce a second concurrent full-library walk on every launch for a
+  feature (classical metadata) most sessions may never touch.
+- `LibraryModel`'s other collections (albums/artists/composers/genres/
+  starred/home): **stay demand-driven** (loaded on first view appearance),
+  unchanged from today — #140 fixes their invalidation gap (140.2), not their
+  loading trigger.
+- Demand joining an in-flight warm-up is already correct by construction:
+  `CredentialScopedCache.resolve` *is* "join the in-flight task if one's
+  running, else start one," so a Composers-tab visit landing mid-connect
+  warm-up naturally coalesces rather than double-fetching.
+
+This ratifies existing, already-justified behavior rather than inventing new
+sequencing, and gives #141 nothing to guess at.
+
+### 140.4 — Relationship to #128, restated for the new interface
+
+`LibrarySongIndex` and the `CredentialScopedCache`-backed collections stay
+session-only/non-authoritative, same as every cache in §139's inventory.
+#128's persistent layer would sit *behind* `LibrarySongIndex` (an alternate
+`build` source consulted before the network) or *beside* it (seeding on
+launch, network still authoritative) — either way #128 reuses
+`LibrarySongIndex`'s single join point and `CredentialScopedCache`'s
+invalidation hooks rather than inventing its own, which is the point of
+consolidating now.
+
+### Rejected alternatives
+
+- **Single native-only walk for the whole library.** Data loss for
+  non-Navidrome/API-key-auth servers (no native walk exists there at all);
+  correctness risk for Navidrome users too, since `asSong()`'s `coverArt`/
+  `contentType` are derived approximations never exercised at Songs-tab scale
+  today.
+- **Eager native warm-up at every connect.** Reverses #124's explicit,
+  reasoned decision with no new evidence; doubles concurrent full-library
+  walks at launch for a feature many sessions never touch.
+- **A fully generic cache primitive for every cache in §139's inventory
+  (including `formPostSupport` and `LibraryModel.albums`).** Their policies
+  (scope key, failure handling, multi-variant state) differ enough that
+  forcing the shared shape would obscure behavior rather than clarify it —
+  the issue itself allows preferring explicit implementations in that case.
+
+### Migration surface for #141
+
+- **New files**: `Services/LibrarySongIndex.swift`,
+  `Services/CredentialScopedCache.swift`.
+- **`SubsonicClient`**: remove `cachedAllSongs`/`inFlightAllSongs`/
+  `allSongsGeneration`/`invalidateAllSongs()`; `SubsonicClient+AllSongs.swift`'s
+  walk logic moves to `LibrarySongIndex`, leaving `SubsonicClient` with only
+  the raw page-fetching.
+- **`NavidromeClient`**: remove `cachedSongIndex`/`cachedSongIndexCredentials`/
+  `songIndexGeneration`/`inFlightSongIndexBuild`/`invalidateSongIndex()`;
+  `NavidromeClient+SongLookup.swift`'s cache-reading methods move to
+  `LibrarySongIndex`; `NavidromeClient` keeps `paginatedGet`/auth/token
+  (itself migrated onto `CredentialScopedCache`).
+- **`LibraryModel`**: `loadSongsIfNeeded()`/`invalidateSongs()` call through
+  `LibrarySongIndex` instead of `client`+`navidrome` directly;
+  `artists`/`composers`/`genres`/`starredSongs`+`starredAlbums`/home shelves
+  each wrap a `CredentialScopedCache` instance; `reset()` becomes redundant
+  for those (#141 decides whether to delete it once nothing — production or
+  tests — still calls it).
+- **`ConnectionModel`**: `songsInvalidationHandler`/`songsLoadHandler`
+  retarget `LibrarySongIndex` instead of `client`; `startLibraryScan()` calls
+  `LibrarySongIndex.invalidate()` instead of `navidrome.invalidateSongIndex()`.
+
+### Test contract for #141
+
+- Every existing `SubsonicAllSongsTests` case and the
+  `NavidromeClientNetworkTests` song-index/token-reuse cases move to target
+  `LibrarySongIndex`/`CredentialScopedCache` instead of the clients directly;
+  the same assertions (reuse-across-calls, credential-change invalidates,
+  concurrent coalescing, stale-generation guard, explicit-invalidate-forces-
+  refetch, scan-triggers-invalidate) must still pass in spirit.
+- New hermetic tests for `CredentialScopedCache` itself, decoupled from any
+  specific endpoint (a trivial mock `build` closure): guard/generation/
+  coalescing/invalidate behavior in isolation.
+- New regression test: switching `ServerCredentials` (simulating a
+  disconnect/reconnect to a different server) invalidates
+  `artists`/`composers`/`genres`/starred/home without any explicit `reset()`
+  call — the test that proves §139's gap is actually fixed.
 
 ## Artwork cache (implemented)
 

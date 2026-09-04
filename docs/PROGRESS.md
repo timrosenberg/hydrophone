@@ -70,6 +70,53 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #140: song-index consolidation & cache-abstraction design decision (2026-09-04)
+
+- Docs-only, no code changes (explicit non-goal). Part of the #125 audit epic,
+  depends on #139 (landed as PR #142); precedes #141 (implementation).
+- `docs/05-data-and-caching.md` gained a "Design decision (#140)" section,
+  recording an explicit architectural decision so #141 can implement without
+  reopening it:
+  - **Keep two full-library walks** (Subsonic `search3` and Navidrome-native
+    `/api/song`) rather than collapsing to one — `docs/02` confirms
+    work/movement, bit depth, and composer credit *ids* exist only in the
+    native response, and the native walk is unavailable on non-Navidrome/
+    API-key-auth servers, so neither walk can subsume the other. Rejected
+    making the native-derived `NativeSongRecord.asSong()` the Songs tab's
+    primary source for Navidrome users: two of its fields (`coverArt`,
+    `contentType`) are derived approximations never exercised at full-library
+    scale today, a correctness risk on the app's one universal list.
+  - **Unify both walks behind one new interface**, `LibrarySongIndex`,
+    replacing the split cache/generation/in-flight state currently hand-rolled
+    across `SubsonicClient.cachedAllSongs` and `NavidromeClient.cachedSongIndex`,
+    with the work/movement/bitDepth join folded into its single `allSongs()`
+    entry point instead of `LibraryModel` calling both separately.
+  - **Build one generic cache primitive**, `CredentialScopedCache<Value>`,
+    and adopt it for `LibrarySongIndex`'s two walks, `NavidromeClient.cachedToken`
+    (fixes a minor thundering-herd gap — no generation/coalescing today), and
+    `LibraryModel`'s single-shot collections (artists/composers/genres/
+    starred/home). The last one directly fixes the gap #139 found
+    (`LibraryModel.reset()` unwired in production) — once those collections
+    self-invalidate on credential mismatch, switching servers no longer
+    leaves stale data behind. Explicitly *not* adopted for `formPostSupport`
+    (different scope key) or `LibraryModel.albums` (incremental/paginated,
+    not a single cached blob) — differing policies, kept bespoke.
+  - **Warm-up ownership stays as today**: Subsonic walk eager at connect
+    (#118), native walk lazy/on-demand (#124) — reaffirmed with reasons
+    rather than reopened, since #124 already weighed and declined eager
+    native warm-up and nothing new here overturns that call.
+  - **#128 unchanged in relationship**: still session-only vs. persistent;
+    #128 would plug into `LibrarySongIndex`'s single join point rather than
+    duplicating it.
+  - Recorded rejected alternatives, a concrete file-level migration surface,
+    and a test contract (including a new regression test that credential
+    changes invalidate the LibraryModel collections without `reset()`) for
+    #141 to implement against.
+- Gate: docs-only change, no source touched, but the full gate was still run
+  as a sanity check. Unsigned build succeeds with zero warnings; full suite
+  passes; SwiftLint clean. No live verification applicable — no runtime
+  behavior changed.
+
 ## Issue #139: library metadata-cache lifecycle inventory (2026-09-04)
 
 - Docs-only, no code changes. Part of the #125 metadata-caching audit epic;
