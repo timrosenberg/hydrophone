@@ -174,16 +174,6 @@ struct RootView: View {
         }
         .task {
             await connection.refresh()
-            // Kick off the Songs walk as soon as we're connected, in parallel
-            // with whichever section the sidebar opens on — it's already
-            // designed to run eagerly to exhaustion (docs/05), so waiting for
-            // the user to click into Songs just means they watch it happen.
-            // Idempotent/coalesced via songsState, so a concurrent call from
-            // the per-selection `load(_:)` below (already on Songs at
-            // launch) does not start a second walk.
-            if connection.isConnected {
-                await library.loadSongsIfNeeded()
-            }
         }
         // Drive section loading here rather than from each detail view's own
         // `.task`: the detail root view didn't reliably run its `.task` on

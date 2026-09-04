@@ -40,6 +40,21 @@ struct ConnectionModelNativeFeaturesTests {
         return (model, navidrome)
     }
 
+    private func makeApp(
+        _ creds: ServerCredentials?
+    ) -> (app: AppModel, connection: ConnectionModel) {
+        let store = InMemoryCredentialStore(creds)
+        let session = makeSession()
+        let client = SubsonicClient(credentials: store, session: session)
+        let navidrome = NavidromeClient(credentials: store, session: session)
+        let connection = ConnectionModel(client: client, navidrome: navidrome, credentials: store)
+        let library = LibraryModel(client: client, navidrome: navidrome,
+                                   nativeFeaturesAvailable: { await connection.nativeFeaturesAvailable() })
+        let app = AppModel(credentials: store, client: client, playback: PlaybackService(client: client),
+                           connection: connection, library: library, player: PlayerModel())
+        return (app, connection)
+    }
+
     // MARK: - Probe outcomes
 
     @Test func refreshMarksNativeFeaturesAvailableAfterSuccessfulLogin() async {
@@ -51,6 +66,17 @@ struct ConnectionModelNativeFeaturesTests {
 
         #expect(model.isConnected)
         #expect(model.nativeFeaturesState == .available)
+    }
+
+    @Test func launchRefreshStartsTheEagerSongsWalk() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
+        let (app, connection) = makeApp(creds())
+
+        await connection.refresh()
+
+        #expect(app.library.songs.map(\.id) == ["s1"])
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/rest/search3.view") == 1)
     }
 
     @Test func nativeFeaturesAvailableStartsAndAwaitsDetectionWhenUnknown() async {
@@ -146,6 +172,21 @@ struct ConnectionModelNativeFeaturesTests {
         #expect(model.nativeFeaturesState == .available)
     }
 
+    @Test func firstSaveAndConnectStartsTheEagerSongsWalk() async {
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
+        let (app, connection) = makeApp(nil)
+        connection.serverAddress = "https://music.example.com"
+        connection.username = "tim"
+        connection.secret = "sesame"
+        connection.authMethod = .tokenSalt
+
+        await connection.saveAndConnect()
+
+        #expect(app.library.songs.map(\.id) == ["s1"])
+        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/rest/search3.view") == 1)
+    }
+
     @Test func changedSavedCredentialsInvalidateSongsSnapshot() async {
         await ConnectionProbeMockProtocol.reset()
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
@@ -227,6 +268,13 @@ struct ConnectionModelNativeFeaturesTests {
                 let body = """
                 {"subsonic-response":{"status":"ok","version":"1.16.1",\
                 "scanStatus":{"scanning":false,"count":1}}}
+                """
+                return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+            }
+            if path.hasSuffix("/rest/search3.view") {
+                let body = """
+                {"subsonic-response":{"status":"ok","version":"1.16.1","searchResult3":{
+                "song":[{"id":"s1","title":"Track 1"}]}}}
                 """
                 return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
             }
