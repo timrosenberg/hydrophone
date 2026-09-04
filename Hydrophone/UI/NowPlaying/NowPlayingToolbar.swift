@@ -58,6 +58,7 @@ struct TransportControls: View {
 /// scrubber lives).
 struct NowPlayingDisplay: View {
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryModel.self) private var library
     @AppStorage("showUpNext") private var showUpNext = false
     @State private var hovering = false
 
@@ -75,6 +76,20 @@ struct NowPlayingDisplay: View {
 
     var body: some View {
         HStack(spacing: 11) {
+            // Library-load status (#102): a leading segment inside the same
+            // LCD capsule — rather than a separate floating element — so it
+            // reads as attached to the display, not adrift beside it.
+            if library.songsAreLoading {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(loadingStatusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+
             ArtworkView(coverArt: player.currentTrack?.coverArt,
                         cacheKey: player.currentTrack?.artworkKey,
                         size: LCD.artworkSize, cornerRadius: LCD.artworkRadius)
@@ -96,9 +111,12 @@ struct NowPlayingDisplay: View {
                     .layoutPriority(1)
             }
         }
-        // Leading matches the artwork's concentric inset; trailing keeps the
-        // roomier gap the time text wants.
-        .padding(.leading, LCD.artworkInset)
+        // Leading matches the artwork's concentric inset — except while the
+        // loading status is showing, when its caption text wants more
+        // breathing room than the artwork's tight inset so it doesn't hug
+        // the capsule's rounded corner. Trailing keeps the roomier gap the
+        // time text wants.
+        .padding(.leading, library.songsAreLoading ? 10 : LCD.artworkInset)
         .padding(.trailing, 11)
         .frame(height: LCD.height)
         // Flexible up to 560pt, but with a restrained ideal width: the unified
@@ -150,7 +168,7 @@ struct NowPlayingDisplay: View {
         // the panel's album line and in Controls → Show Album in Library.
         .help(showUpNext ? "Hide Now Playing" : "Show Now Playing")
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Now Playing")
+        .accessibilityLabel(library.songsAreLoading ? "\(loadingStatusText), Now Playing" : "Now Playing")
     }
 
     private var subtitle: String {
@@ -158,6 +176,10 @@ struct NowPlayingDisplay: View {
         let artist = track.artist ?? "—"
         if let album = track.album, !album.isEmpty { return "\(artist) — \(album)" }
         return artist
+    }
+
+    private var loadingStatusText: String {
+        library.songs.isEmpty ? "Loading songs…" : "\(library.songs.count.formatted()) songs loaded"
     }
 
     private var progressFraction: CGFloat {

@@ -266,12 +266,12 @@ selections does not clear downstream selections.
   artist — album, elapsed/total time, and a hairline accent progress bar along
   its bottom edge; volume + panel toggle trailing. Clicking the LCD (or the
   trailing toolbar button, or ⌘U) toggles the Now Playing panel.
-- A compact "Loading songs…" / "N songs loaded" status (`SongsLoadingProgress`,
-  shared with the Songs page's own pre-first-page placeholder) appears left of
-  the LCD whenever `LibraryModel.songsAreLoading` is true — driven by the
-  app-wide load state rather than the Songs view's lifecycle, so it stays
-  correct no matter which page is on screen, and collapses away (no reserved
-  space) the instant loading finishes (#102).
+- A compact "Loading songs…" / "N songs loaded" status appears as a leading
+  segment *inside* the LCD capsule (sharing its background, not a separate
+  floating element) whenever `LibraryModel.songsAreLoading` is true — driven
+  by the app-wide load state rather than the Songs view's lifecycle, so it
+  stays correct no matter which page is on screen, and collapses away (no
+  reserved space) the instant loading finishes (#102).
 
 ## MenuBarExtra Now Playing panel ✅
 
