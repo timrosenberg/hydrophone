@@ -45,6 +45,14 @@ final class LibraryModel {
     var songsState: Load<Void> = .idle
     var songsGeneration = 0
 
+    /// Whether the complete-library walk is actively in flight — app-wide
+    /// (not tied to any particular view's lifecycle), so callers like the
+    /// toolbar status can reflect it regardless of which page is on screen.
+    var songsAreLoading: Bool {
+        if case .loading = songsState { return true }
+        return false
+    }
+
     private(set) var starredSongs: [Song] = []
     private(set) var starredAlbums: [Album] = []
     /// O(1) lookup mirror of `starredSongs`, rebuilt on every reload.

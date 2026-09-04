@@ -70,6 +70,32 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
+
+- The "Loading songs…" / "N songs loaded" status no longer renders in a
+  bottom overlay on the Songs page. `LibraryLoadingStatus` now reads
+  `LibraryModel.songsAreLoading` and renders in a fixed-width pill between the
+  transport cluster and LCD. RootView draws the pill as a leading overlay
+  outside `NowPlayingDisplay`'s measured bounds, leaving the LCD as the sole
+  centered principal toolbar item; the transient status therefore cannot
+  shift either neighboring control. The underlying app-wide state keeps the
+  status correct regardless of which page is on screen and reserves no space
+  when loading is idle.
+- The Songs page keeps its own centered placeholder (`SongsLoadingProgress`,
+  reused) for the moment before the first page is renderable — unrelated
+  per-view empty-state UI, same pattern `AlbumsView` uses for `albumsState`.
+- Gate: unsigned build succeeds with zero compiler diagnostics; full suite
+  **324 test cases / 344 executions, 0 failures/skips** (canonical xcresult
+  summary); SwiftLint 0 violations and `git diff --check` passes.
+- Live (2026-09-04): a uniquely named probe build
+  (`HydrophoneIssue102Probe`, bundle ID `app.hydrophone.issue102probe`) against
+  the configured Navidrome server removed any ambiguity with other open
+  Hydrophone builds. Opening Songs showed the pill count through 3,500,
+  12,500, and 14,231 loaded songs between the unchanged transport and LCD.
+  Loading and idle captures at the same 1,180pt window width confirmed the LCD
+  keeps the same horizontal position when the pill appears or disappears. The
+  transport/volume bubble-padding polish remains deliberately out of scope.
+
 ## Issue #106: bit depth/sample rate in the Now Playing quality badge (2026-09-03 – 2026-09-04) ✅
 
 - Confirmed live against demo.navidrome.org that Navidrome's native `/api/song`
@@ -3546,6 +3572,12 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #102 (2026-09-03): unsigned build has zero compiler warnings; full
+  suite (343-344 executions across runs, 0 failures/skips); SwiftLint clean.
+  Live on the configured Navidrome server: the status renders attached
+  inside the LCD capsule, tracked the full-library walk, stayed visible
+  after navigating to Artists mid-load, and vanished on completion; no
+  bottom-of-Songs-page overlay appeared.
 - ✅ Issue #108 (2026-08-30): unsigned build has zero compiler warnings; full
   suite **324 cases / 344 executions, 0 failures/skips**; SwiftLint and
   `git diff --check` pass. Rendered regressions cover complete displayed-row
