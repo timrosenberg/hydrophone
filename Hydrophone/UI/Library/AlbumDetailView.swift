@@ -25,13 +25,22 @@ struct AlbumDetailView: View {
                            columnsCustomizable: true)
         }
         .task(id: album.id) {
-            // One getAlbum fetch supplies both the tracks and the disc
-            // subtitles (multi-disc headers). A cancelled fetch (album
-            // switched underneath) resolves nil — don't clobber with empty.
-            let detail = await library.album(id: album.id)
-            if Task.isCancelled { return }
-            tracks = detail?.song ?? []
-            discSubtitles = detail?.discSubtitles ?? [:]
+            // "Go to Album" call sites already ran a full getAlbum fetch to
+            // get here (they needed the album's own metadata to navigate) —
+            // its song list is right there on `album`, so use it instead of
+            // fetching again. List-sourced albums (grid/shelf taps) arrive
+            // with `song` nil and still need the one fetch.
+            if let song = album.song {
+                tracks = song
+                discSubtitles = album.discSubtitles
+            } else {
+                // A cancelled fetch (album switched underneath) resolves
+                // nil — don't clobber with empty.
+                let detail = await library.album(id: album.id)
+                if Task.isCancelled { return }
+                tracks = detail?.song ?? []
+                discSubtitles = detail?.discSubtitles ?? [:]
+            }
             await library.loadStarredIfNeeded()
         }
     }
