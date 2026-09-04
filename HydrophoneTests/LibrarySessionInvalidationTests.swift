@@ -202,7 +202,7 @@ private final class LibrarySessionMockProtocol: URLProtocol, @unchecked Sendable
 
     override func startLoading() {
         guard let url = request.url, let host = url.host else { return }
-        Task {
+        Task { @Sendable [self] in
             await Self.state.record(path: url.path, host: host)
             await Self.state.waitIfBlocked(host)
             let response = HTTPURLResponse(
