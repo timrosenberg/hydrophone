@@ -8,6 +8,7 @@ struct PlaylistDetailView: View {
     let playlistID: String
     @Environment(LibraryModel.self) private var library
     @State private var playlist: Playlist?
+    @State private var loadGeneration = 0
     @State private var renameText = ""
     @State private var showRename = false
 
@@ -86,16 +87,23 @@ struct PlaylistDetailView: View {
     /// a cold native song-index cache (a full-library `/api/song` walk) would
     /// otherwise delay every track from appearing at all. See #124.
     private func reload() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         guard let loaded = await library.playlist(id: playlistID) else {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             playlist = nil
             return
         }
+        guard generation == loadGeneration, !Task.isCancelled else { return }
         playlist = loaded
-        playlist = await library.joinWorkInfo(intoPlaylist: loaded)
+        let enriched = await library.joinWorkInfo(intoPlaylist: loaded)
+        guard generation == loadGeneration, !Task.isCancelled else { return }
+        playlist = enriched
     }
 
     private func remove(_ offsets: IndexSet) {
         let indexes = Array(offsets)
+        loadGeneration += 1
         playlist?.entry?.remove(atOffsets: offsets) // optimistic
         Task {
             await library.removeFromPlaylist(id: playlistID, indexes: indexes)
@@ -105,6 +113,7 @@ struct PlaylistDetailView: View {
 
     private func move(_ offsets: IndexSet, to destination: Int) {
         guard var order = playlist?.entry else { return }
+        loadGeneration += 1
         order.move(fromOffsets: offsets, toOffset: destination)
         playlist?.entry = order // optimistic
         let ids = order.map(\.id)

@@ -96,16 +96,21 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   and makes zero `/api/song` calls, and `joinWorkInfo(intoPlaylist:)`
   correctly enriches an already-loaded playlist.
 - Gate: unsigned build succeeds with zero compiler warnings; full suite
-  passes; SwiftLint 0 violations.
-- Live (2026-09-04), Tim's configured real Navidrome server: opened the
-  "2027 Faculty Recital" playlist (10 songs, cold native-index cache — no
-  prior Composers/playlist visit this session) and all ten tracks rendered
-  instantly with real title/artist/album/genre/quality data. Added the
-  `Work` column via the header context menu; it populated a few seconds
-  later once the background join resolved — "Night Set" for the three
-  "Night ..." tracks, "Noir Vignettes (...)" for the four Noir Vignettes
-  movements, "—" for tracks with no work tag — with no re-render delay or
-  flash of missing tracks at any point.
+  passes (345 cases / 365 executions, 0 failures, 0 skips); SwiftLint 0
+  violations.
+- Live (2026-09-04), Tim's configured real Navidrome server: opened a
+  10-song playlist with a cold native-index cache and all tracks rendered
+  instantly with their standard metadata. The added `Work` column populated
+  a few seconds later with the expected tagged and untagged values, with no
+  re-render delay or missing-track flash.
+- Review follow-up: a per-view load generation now prevents a superseded
+  fetch or delayed enrichment from overwriting a newer playlist or an
+  optimistic reorder/removal. A rendered, gated-network regression reproduces
+  the stale overwrite and verifies that the optimistic row set remains intact.
+- Review follow-up live smoke (2026-09-04), Tim's configured real Navidrome
+  server: the exact DerivedData candidate reopened the same 10-song playlist
+  with every row, standard metadata, and expected work values intact. No live
+  playlist mutation was performed.
 
 ## Issue #113: "Go to Album" fetched the same album twice (2026-09-04) ✅
 
