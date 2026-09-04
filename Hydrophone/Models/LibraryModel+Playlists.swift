@@ -18,12 +18,23 @@ extension LibraryModel {
         }
     }
 
+    /// The playlist's own entries, unjoined — deliberately fast: no native
+    /// work/movement/bit-depth lookup, so the caller can render tracks before
+    /// paying for `joinWorkInfo(intoPlaylist:)`'s cold-cache cost. See #124.
     func playlist(id: String) async -> Playlist? {
-        guard var playlist = try? await client.object(.playlist(id: id), as: Playlist.self) else { return nil }
-        var songs = playlist.entry ?? []
+        try? await client.object(.playlist(id: id), as: Playlist.self)
+    }
+
+    /// Non-blocking work/movement + bit-depth enrichment pass for an
+    /// already-rendered playlist, applied after `playlist(id:)` so a cold
+    /// native song-index cache (a full `/api/song` walk) never delays the
+    /// playlist's own tracks from appearing. See #124.
+    func joinWorkInfo(intoPlaylist playlist: Playlist) async -> Playlist {
+        var updated = playlist
+        var songs = updated.entry ?? []
         await joinWorkInfo(into: &songs)
-        playlist.entry = songs
-        return playlist
+        updated.entry = songs
+        return updated
     }
 
     // MARK: - Playlist editing (M5)

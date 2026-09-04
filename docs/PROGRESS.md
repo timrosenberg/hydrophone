@@ -70,6 +70,48 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #124: playlists render before the native work-info join (2026-09-04) ✅
+
+- `PlaylistDetailView.reload()` previously made one blocking
+  `await library.playlist(id:)` that included the native work/movement/
+  bit-depth join, so opening a playlist paid for a full cold
+  `songIndexSnapshot()` walk (`/api/song`, paginated) before any track could
+  render — a completely separate cache from the Subsonic `allSongs()` walk
+  that #118 made eager (docs/02).
+- `LibraryModel.playlist(id:)` is now the fast, unjoined fetch (the
+  playlist's own entries only); a new `LibraryModel.joinWorkInfo
+  (intoPlaylist:)` applies work/movement/bit-depth as a non-blocking
+  follow-up pass, mirroring `allSongs()`'s partial-publish pattern.
+  `PlaylistDetailView.reload()` renders immediately after the fast fetch,
+  then updates `playlist` again once the join resolves.
+- Deliberately picked "render immediately, join non-blocking" over the
+  issue's other suggested direction (eagerly pre-warming
+  `songIndexSnapshot()` at launch alongside #118's Songs walk) — the chosen
+  fix resolves the literal blocking complaint regardless of cache warmth,
+  and doesn't add a second concurrent full-library walk to every app launch.
+  Pre-warming the native index remains a legitimate follow-up (noted in the
+  PR), not folded in here.
+- `LibraryModelWorkInfoJoinTests`'s playlist coverage split into two tests
+  matching the new two-phase contract: the fast fetch carries no work info
+  and makes zero `/api/song` calls, and `joinWorkInfo(intoPlaylist:)`
+  correctly enriches an already-loaded playlist.
+- Gate: unsigned build succeeds with zero compiler warnings; full suite
+  passes (345 cases / 365 executions, 0 failures, 0 skips); SwiftLint 0
+  violations.
+- Live (2026-09-04), Tim's configured real Navidrome server: opened a
+  10-song playlist with a cold native-index cache and all tracks rendered
+  instantly with their standard metadata. The added `Work` column populated
+  a few seconds later with the expected tagged and untagged values, with no
+  re-render delay or missing-track flash.
+- Review follow-up: a per-view load generation now prevents a superseded
+  fetch or delayed enrichment from overwriting a newer playlist or an
+  optimistic reorder/removal. A rendered, gated-network regression reproduces
+  the stale overwrite and verifies that the optimistic row set remains intact.
+- Review follow-up live smoke (2026-09-04), Tim's configured real Navidrome
+  server: the exact DerivedData candidate reopened the same 10-song playlist
+  with every row, standard metadata, and expected work values intact. No live
+  playlist mutation was performed.
+
 ## Issue #113: "Go to Album" fetched the same album twice (2026-09-04) ✅
 
 - `AlbumDetailView.task(id:)` always re-ran `getAlbum` from scratch, even when
@@ -3732,6 +3774,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #124 (2026-09-04): unsigned build has zero compiler warnings; full
+  suite passes; SwiftLint clean. Live on Tim's configured Navidrome server:
+  a 10-song playlist rendered instantly on a cold native-index cache; the
+  added Work column populated a few seconds later once the non-blocking
+  join resolved, with no re-render delay or missing-track flash.
 - ✅ Issue #118 (2026-09-04): unsigned build has zero compiler warnings; full
   suite passes; SwiftLint clean. Live on Tim's configured Navidrome server:
   launching directly on Artists (never visiting Songs) still showed the
