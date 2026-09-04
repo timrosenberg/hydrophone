@@ -95,11 +95,12 @@ struct RootView: View {
             // NSToolbar) — so the transport leads the detail column, right
             // beside the sidebar divider, as close to the traffic lights as
             // the framework allows.
-            // Breathing room at both toolbar ends nudges the transport and
-            // volume clusters toward the center.
+            // Keep the system-drawn bubbles' internal whitespace balanced.
+            // Eight points per side preserves the previous total inset, so
+            // neither item changes width or disturbs the centered LCD.
             ToolbarItem(placement: .navigation) {
                 TransportControls()
-                    .padding(.leading, 16)
+                    .padding(.horizontal, 8)
             }
             ToolbarItem(placement: .principal) {
                 // The LCD remains the sole principal item, so the transient
@@ -125,7 +126,7 @@ struct RootView: View {
                     .help(showUpNext ? "Hide Now Playing" : "Show Now Playing")
                     .disabled(!nowPlayingAvailable)
                 }
-                .padding(.trailing, 16)
+                .padding(.horizontal, 8)
             }
         }
         // In the sidebar (Music-style): a fixed, always-expanded field that
