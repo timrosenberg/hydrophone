@@ -6,12 +6,15 @@ import Foundation
 extension LibraryModel {
     func loadStarredIfNeeded() async {
         // `starredLoaded` (not emptiness): a user with zero favorites would
-        // otherwise refetch on every appearance; the in-flight flag stops
-        // Favorites + an album detail from firing duplicate fetches.
-        guard !starredLoaded, !starredLoading else { return }
-        starredLoading = true
+        // otherwise refetch on every appearance; the generation-owned
+        // in-flight identity stops same-session callers from duplicating it.
+        let generation = librarySessionGeneration
+        guard !starredLoaded, starredLoadingGeneration != generation else { return }
+        starredLoadingGeneration = generation
+        defer {
+            if starredLoadingGeneration == generation { starredLoadingGeneration = nil }
+        }
         await reloadStarred()
-        starredLoading = false
     }
 
     @discardableResult

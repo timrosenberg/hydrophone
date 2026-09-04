@@ -6,13 +6,22 @@ import Foundation
 extension LibraryModel {
     func loadPlaylistsIfNeeded() async {
         guard playlists.isEmpty else { return }
+        let generation = librarySessionGeneration
+        guard playlistsLoadingGeneration != generation else { return }
+        playlistsLoadingGeneration = generation
+        defer {
+            if playlistsLoadingGeneration == generation { playlistsLoadingGeneration = nil }
+        }
         await reloadPlaylists()
     }
 
     func reloadPlaylists() async {
+        let generation = librarySessionGeneration
         do {
-            playlists = try await client.list(.playlists, of: Playlist.self)
+            let fetched = try await client.list(.playlists, of: Playlist.self)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            guard generation == librarySessionGeneration else { return }
+            playlists = fetched
         } catch {
             // keep existing
         }

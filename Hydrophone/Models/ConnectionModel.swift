@@ -101,7 +101,8 @@ final class ConnectionModel {
     var isConfigured: Bool { credentials.load() != nil }
 
     /// Composition-root hook that clears every credential-scoped library
-    /// collection (Songs, Albums, Artists, Composers, Genres, Favorites, Home)
+    /// collection (Songs, Albums, Artists, Composers, Genres, Favorites, Home,
+    /// Playlists)
     /// whenever the credentials, server, or library contents behind them
     /// change — wired to `LibraryModel.reset()`.
     func setLibraryInvalidationHandler(_ handler: @escaping @MainActor () async -> Void) {

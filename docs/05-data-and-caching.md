@@ -36,12 +36,13 @@ a page is fetched.
 | `LibraryModel.albums` / `albumOffset` / `albumsExhausted` / `albumFilter` / `albumsState` | shares `librarySessionGeneration` (see below) | `getAlbumList2` | Albums grid | `loadAlbumsIfNeeded()`, first Albums-tab appearance | `albumsState == .loading` guard against duplicate concurrent loads; retried when `albums.isEmpty`; a generation captured before the fetch guards the eventual write | `reloadAlbums()` (sort/filter change); `reset()` clears the array directly and bumps `librarySessionGeneration` so an in-flight page fetch from before the reset can't append to the now-cleared array | Failed page load leaves `albumsState = .failed`; next appearance (if still empty) retries | View/model state (session cache) |
 | `LibraryModel.artists` / `artistsState` | shares `librarySessionGeneration` | `getArtists` | Artists master list | `loadArtistsIfNeeded()` | `.loading` guard, retried while empty; generation-guarded write | `reset()` | Failed load retried on next empty-state appearance | View/model state |
 | `LibraryModel.composers` / `composersState` | shares `librarySessionGeneration` (gated by `nativeFeaturesAvailable()`) | `NavidromeClient.composers()` (itself unpaged-cache, walks `/api/artist?role=composer` fresh each call) | Composers master list | `loadComposersIfNeeded()` | `.loading` guard, retried while empty; generation-guarded write | `reset()` | Failed load retried on next empty-state appearance | View/model state, derived from native capability state |
-| `LibraryModel.genres` / `genresLoading` | shares `librarySessionGeneration` | `getGenres` | Genre column browser, Albums genre filter | `loadGenresIfNeeded()` | `genresLoading` flag prevents duplicate concurrent fetches from Albums + column browser; generation-guarded write | `reset()` | Failure clears to `[]` silently (no `.failed` state surfaced) | View/model state |
-| `LibraryModel.starredSongs` / `starredAlbums` / `starredSongIDs` / `starOverrides` / `albumStarOverrides` / `starredLoaded` | shares `librarySessionGeneration` | `getStarred2`, `star`/`unstar` | Favorites view, `isStarred(_:)` everywhere a star glyph renders | `loadStarredIfNeeded()`, first favorite check or Favorites-tab visit | `starredLoading` flag; optimistic per-id overrides shown until the write + reconciling `reloadStarred()` round-trip; generation-guarded write | `reset()`; overrides are also cleared per-id after each mutation's reload | A refused optimistic write rolls its override back; a failed reload keeps accepted overrides rather than reverting them | Mix: authoritative fetched data (`starredSongs`/`starredAlbums`) + view state (overrides) |
-| `LibraryModel.homeNewest/Recent/Frequent/Random` / `homeLoaded` / `homeLoading` | shares `librarySessionGeneration` | `getAlbumList2` ×4 (newest/recent/frequent/random), concurrent | Home shelves | `loadHomeIfNeeded()` | `homeLoading` flag; `homeLoaded` only set true if at least one shelf came back non-empty, so an all-offline launch retries next appearance; generation-guarded write | `reset()` (`rerollRandomAlbums()`'s manual one-shelf refresh deliberately bypasses this — see below) | All-empty result is treated as "didn't really load" and retried, not cached as a true empty state | View/model state |
+| `LibraryModel.genres` / `genresLoadingGeneration` | shares `librarySessionGeneration` | `getGenres` | Genre column browser, Albums genre filter | `loadGenresIfNeeded()` | Generation-owned in-flight identity prevents duplicate same-session fetches without letting a retired session block the current one; generation-guarded write | `reset()` | Failure clears to `[]` silently (no `.failed` state surfaced) | View/model state |
+| `LibraryModel.starredSongs` / `starredAlbums` / `starredSongIDs` / `starOverrides` / `albumStarOverrides` / `starredLoaded` / `starredLoadingGeneration` | shares `librarySessionGeneration` | `getStarred2`, `star`/`unstar` | Favorites view, `isStarred(_:)` everywhere a star glyph renders | `loadStarredIfNeeded()`, first favorite check or Favorites-tab visit | Generation-owned in-flight identity; optimistic per-id overrides shown until the write + reconciling `reloadStarred()` round-trip; generation-guarded write | `reset()`; overrides are also cleared per-id after each mutation's reload | A refused optimistic write rolls its override back; a failed reload keeps accepted overrides rather than reverting them | Mix: authoritative fetched data (`starredSongs`/`starredAlbums`) + view state (overrides) |
+| `LibraryModel.homeNewest/Recent/Frequent/Random` / `homeLoaded` / `homeLoadingGeneration` | shares `librarySessionGeneration` | `getAlbumList2` ×4 (newest/recent/frequent/random), concurrent | Home shelves | `loadHomeIfNeeded()` | Generation-owned in-flight identity; `homeLoaded` only set true if at least one shelf came back non-empty, so an all-offline launch retries next appearance; all writes, including `rerollRandomAlbums()`, are generation guarded | `reset()` | All-empty result is treated as "didn't really load" and retried, not cached as a true empty state | View/model state |
+| `LibraryModel.playlists` / `playlistsLoadingGeneration` | shares `librarySessionGeneration` | `getPlaylists`, playlist create/update/delete endpoints | Sidebar playlist list, Add to Playlist menu, playlist CRUD reconciliation | `loadPlaylistsIfNeeded()` | Generation-owned in-flight identity coalesces same-session list loads; both lazy and forced reloads guard writes against a retired session | `reset()`; successful CRUD reloads the list | A failed list load keeps the existing list; an empty list retries on next appearance | View/model state |
 | `LibraryModel.songs` / `songsState` / `songsGeneration` | unscoped *view* of `LibrarySongIndex`'s Subsonic cache | (derives from `songIndex.allSongs()`, which now performs the native join itself before returning) | Songs tab, toolbar loading indicator (`songsAreLoading`) | `loadSongsIfNeeded()`, made eager at connect (#118) | Own generation counter (`songsGeneration`, separate from `librarySessionGeneration`): a superseded `loadSongsIfNeeded()` (invalidated mid-flight) can't overwrite `songs`/`songsState` with a stale result; partial pages publish incrementally via `onProgress` | Explicit: `invalidateSongs()`, awaited directly (not fire-and-forget) so `songIndex`'s cache is verifiably clear before the caller proceeds — wired through `ConnectionModel`'s `libraryInvalidationHandler` on `disconnect()`, credential change in `saveAndConnect()`, and (via `reset()`) `startLibraryScan()` | A failed load keeps existing (possibly partial) rows and surfaces `.failed`; next visit retries | Derived/view state layered over the Subsonic cache's authoritative data |
 
-**Why the five `LibraryModel` collections share a plain `Int` generation
+**Why the six `LibraryModel` collections share a plain `Int` generation
 (`librarySessionGeneration`) instead of each wrapping a `CredentialScopedCache`
 as originally decided in #140.2:** implementing it surfaced a real problem
 with that plan. These properties are `@MainActor`/`@Observable` UI state read
@@ -52,7 +53,7 @@ generation guard doesn't already give here — the actual #139 fix is
 `reset()` being wired into `ConnectionModel`'s hook at all (see below), not
 which primitive guards a stale write. `librarySessionGeneration` is `reset()`
 bumping one counter, exactly mirroring the `songsGeneration` pattern that
-already existed for Songs specifically — now shared across the other five
+already existed for Songs specifically — now shared across the other six
 collections since one disconnect/credential-change/scan event invalidates
 all of them together. `CredentialScopedCache` stayed exactly where it earns
 its keep: the two actor-resident, already-async-network-bound walks in
@@ -61,8 +62,10 @@ its keep: the two actor-resident, already-async-network-bound walks in
 Not a cache (fetched fresh every call, listed for completeness/contrast):
 `LibraryModel.search(_:)`, `songs(forGenre:)`, `songs(forAlbum:)`,
 `albums(forArtist:)`, `artistInfo(id:)`, `similarSongs(id:)`,
-`topSongs(artist:)`, `randomAlbums()`, `randomBatch()`, playlist CRUD/listing
-(`LibraryModel+Playlists.swift`). `songs(forComposer:)`
+`topSongs(artist:)`, `randomAlbums()`, `randomBatch()`, and individual playlist
+entry loads (`playlist(id:)`). Playlist listing is session-cached as inventoried
+above; playlist CRUD always reaches the server and then reconciles that list.
+`songs(forComposer:)`
 (`LibraryModel+Composers.swift`) has no cache of its own either, but reads
 through `NavidromeClient`'s cached song index. Adjacent but out of scope for
 this layer: `ConnectionModel.nativeFeaturesState` (capability state gating
@@ -86,12 +89,12 @@ disk-persisted, already documented).
   `ConnectionModel.invalidateLibrary()` → `libraryInvalidationHandler` →
   `LibraryModel.reset()`, which itself awaits `invalidateSongs()` (which
   awaits `LibrarySongIndex.invalidate()`) and bumps `librarySessionGeneration`
-  for the other five collections. A library scan previously left
-  albums/artists/composers/genres/starred/home untouched (only the song
+  for the other six collections. A library scan previously left
+  albums/artists/composers/genres/starred/home/playlists untouched (only the song
   caches were invalidated) — it now clears everything, matching disconnect.
 - **`LibraryModel.reset()` was effectively dead code in the running app** —
   the direct cause of switching servers leaving stale
-  Albums/Artists/Composers/Genres/Favorites/Home data visible. Resolved:
+  Albums/Artists/Composers/Genres/Favorites/Home/Playlists data visible. Resolved:
   `AppModel`'s composition-root wiring now calls `connection.setLibraryInvalidationHandler
   { [weak library] in await library?.reset() }` instead of the narrower
   `invalidateSongs()` it called before — the crux of the fix, since `reset()`
@@ -252,7 +255,7 @@ today's `allSongs()`/`songIndexSnapshot()` logic, generalized.
   correctness benefit the plain generation guard below doesn't already give.
   What actually fixes §139's finding is `reset()` being wired into
   `ConnectionModel`'s hook at all — that alone clears every collection
-  immediately on disconnect/credential-change/scan. The five collections
+  immediately on disconnect/credential-change/scan. The six collections
   instead share one `librarySessionGeneration: Int` (bumped by `reset()`),
   the same generation-guard shape `songsGeneration` already used for Songs,
   protecting against a fetch already in flight when `reset()` fires. This is
@@ -270,7 +273,7 @@ today's `allSongs()`/`songIndexSnapshot()` logic, generalized.
   offset/exhaustion bookkeeping *per sort-or-filter selection*, not a single
   walk-to-exhaustion result (multiple live variants, not one cached blob).
   Genuinely different shape. Shipped with the same `librarySessionGeneration`
-  guard the other five collections use (not the full primitive): `reset()`
+  guard the other six collections use (not the full primitive): `reset()`
   clears its pagination state directly, and a page fetch already in flight
   when that happens can't append to the now-cleared array.
 
@@ -289,7 +292,7 @@ verified connection" (already true today via `songsLoadHandler`/
   reintroduce a second concurrent full-library walk on every launch for a
   feature (classical metadata) most sessions may never touch.
 - `LibraryModel`'s other collections (albums/artists/composers/genres/
-  starred/home): **stay demand-driven** (loaded on first view appearance),
+  starred/home/playlists): **stay demand-driven** (loaded on first view appearance),
   unchanged from today — #140 fixes their invalidation gap (140.2), not their
   loading trigger.
 - Demand joining an in-flight warm-up is already correct by construction:
@@ -359,13 +362,14 @@ consolidating now.
   favorites/playlist — unchanged); `songs(forComposer:)` calls
   `songIndex.songs(byComposerId:)`. `loadMoreAlbums()`/`loadArtistsIfNeeded()`/
   `loadComposersIfNeeded()`/`loadGenresIfNeeded()`/`reloadStarred()`/
-  `reloadHome()` each capture `librarySessionGeneration` before their fetch
+  `reloadHome()`/`reloadPlaylists()`/`rerollRandomAlbums()` each capture
+  `librarySessionGeneration` before their fetch
   and check it's unchanged before writing the result. `reset()` bumps
   `librarySessionGeneration` (one added line) and `invalidateSongs()` now
   awaits `songIndex.invalidate()` directly (not fire-and-forget — see the
-  race note below). The `genresLoading`/`starredLoading`/`homeLoading`
-  booleans were kept (they still coalesce same-tab-visit concurrent callers;
-  `librarySessionGeneration` is a separate, complementary guard). Two new
+  race note below). Genres, Favorites, Home, and playlist listing keep a
+  generation-owned in-flight identity: it coalesces concurrent callers in the
+  same session without letting a retired request block a new session. Two new
   extension files, `LibraryModel+Favorites.swift` and `LibraryModel+Home.swift`,
   split out of the main file for the type/file-length lint (their stored
   properties widened from `private`/`private(set)` to internal `var`,
@@ -383,7 +387,8 @@ consolidating now.
   matching the button's siblings. `startLibraryScan()` now calls
   `invalidateLibrary()` alone (replacing the separate `navidrome.invalidateSongIndex()`
   + `invalidateSongs()` calls) — this also means a scan now invalidates
-  albums/artists/composers/genres/starred/home too, which it didn't before.
+  albums/artists/composers/genres/starred/home/playlists too, which it didn't
+  before.
   `AppModel`'s one wiring line changed to
   `connection.setLibraryInvalidationHandler { [weak library] in await library?.reset() }`.
 
@@ -413,6 +418,10 @@ consolidating now.
   covered by `NavidromeComposerLibraryModelTests`; Artists/Genres share that
   exact shape closely enough that a third near-duplicate test wouldn't add
   coverage `reset()`'s visible body doesn't already make obvious.
+- New `LibrarySessionInvalidationTests.swift`: six held-response regressions
+  prove `reset()` clears playlist listing, retired playlist/random-shelf
+  completions cannot repopulate the new session, and retired Home/Genres/
+  Favorites loads cannot block the current session's first load.
 - One pre-existing timing-sensitive test,
   `SubsonicAllSongsTests.fetchesPagesAfterTheProbeConcurrently`, needed its
   artificial response delay raised from 40ms to 80ms: the walk now hops from

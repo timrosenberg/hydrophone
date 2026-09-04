@@ -91,8 +91,8 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   `NavidromeClient` gained a pinned `paginatedGet(...using:as:)` overload so
   the native walk (and its 401 retry) can pin one credential snapshot across
   its whole walk, mirroring `SubsonicClient.perform(_:using:)`.
-- `LibraryModel`'s five single-shot collections (artists/composers/genres/
-  starred/home) and `albums`'s pagination state now share one
+- `LibraryModel`'s six single-shot collections (artists/composers/genres/
+  starred/home/playlists) and `albums`'s pagination state now share one
   `librarySessionGeneration` counter, bumped by `reset()` — **not**
   `CredentialScopedCache` as #140.2 originally decided; implementing it
   surfaced that wrapping `@MainActor`/`@Observable` UI state in an
@@ -103,8 +103,14 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   disconnect/credential-change/scan, instead of the narrower
   `invalidateSongs()` it called before — that one-line wiring change is what
   stops switching servers from showing stale Albums/Artists/Composers/
-  Genres/Favorites/Home. A library scan now also invalidates those five
+  Genres/Favorites/Home/Playlists. A library scan now also invalidates those six
   collections, which it didn't before.
+- Review follow-up: `reset()` now clears playlist listing; playlist reloads
+  and the Home Random re-roll discard completions from a retired session.
+  Home, Genres, Favorites, and playlist listing use generation-owned in-flight
+  identities so an old server's suspended request cannot block the first load
+  after credentials change. `LibrarySessionInvalidationTests.swift` holds real
+  loader responses at `URLProtocol` and covers all six regressions.
 - `ConnectionModel`'s invalidation hook, `invalidateLibrary()`, and
   `disconnect()` all became `async` — required so `reset()` can `await` its
   actor-cache invalidation directly rather than fire-and-forget it, closing a
@@ -150,12 +156,17 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   most likely AppKit track-table rendering cost for 14,000+ rows, out of
   scope here. Tim independently confirmed the overall feel matches
   pre-#139 `main`.
-- Gate: unsigned build succeeds with zero warnings; full suite passes (373
-  passed, 0 failed, 0 skipped — 8 more than #139's baseline, all new);
-  SwiftLint 0 violations across 139 files. Live: 2026-09-04, Tim's real
+- Gate: unsigned build succeeds with zero warnings; full suite passes (**359
+  test cases / 379 executions, 0 failures/skips** — 14 cases more than #139's
+  baseline, all new); SwiftLint 0 violations across 140 files. Live:
+  2026-09-04, Tim's real
   configured Navidrome server — Songs tab, playlists (opened both during and
   after the Songs walk), and the actor-contention regression/fix cycle above
-  all verified by hand.
+  all verified by hand. Review-fix follow-up live-verified the candidate Debug
+  build against `demo.navidrome.org`: Home, Genres, Favorites, and three
+  playlists loaded after a cold session start; the Random shelf refresh
+  replaced its album set. The held-response tests above cover the credential-
+  switch timing that a public server cannot make deterministic.
 
 ## Issue #140: song-index consolidation & cache-abstraction design decision (2026-09-04)
 

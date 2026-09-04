@@ -72,11 +72,12 @@ final class LibraryModel {
     var homeFrequent: [Album] = []
     var homeRandom: [Album] = []
     var homeLoaded = false
-    var homeLoading = false
+    var homeLoadingGeneration: Int?
 
     // Internal setter (not private): playlist CRUD lives in
     // LibraryModel+Playlists.swift.
     var playlists: [Playlist] = []
+    var playlistsLoadingGeneration: Int?
 
     static let pageSize = 100
 
@@ -97,13 +98,13 @@ final class LibraryModel {
     let songIndex: LibrarySongIndex
 
     /// Bumped by `reset()` (disconnect, credential change, or a successful
-    /// library scan). Loads for albums/artists/composers/genres/starred/home
-    /// capture this before their async fetch and check it's unchanged before
-    /// writing the result back, so a fetch already in flight when `reset()`
-    /// fires can't repopulate a collection with stale (wrong-server) data —
-    /// the same generation-guard shape `songsGeneration` already uses for
-    /// Songs specifically. Internal (not private): LibraryModel+Favorites.swift
-    /// and LibraryModel+Home.swift read it for their own generation guards.
+    /// library scan). Loads for albums/artists/composers/genres/starred/home/
+    /// playlists capture this before their async fetch and check it's unchanged
+    /// before writing the result back, so a fetch already in flight when
+    /// `reset()` fires can't repopulate a collection with stale (wrong-server)
+    /// data — the same generation-guard shape `songsGeneration` already uses
+    /// for Songs specifically. Internal (not private): the Favorites, Home,
+    /// and Playlists extensions read it for their own generation guards.
     var librarySessionGeneration = 0
 
     init(client: SubsonicClient, navidrome: NavidromeClient,
@@ -131,6 +132,7 @@ final class LibraryModel {
         composers = []
         composersState = .idle
         genres = []
+        playlists = []
         await invalidateSongs()
         starredSongs = []
         starredAlbums = []
@@ -279,14 +281,16 @@ final class LibraryModel {
 
     // MARK: - Genres
 
-    private var genresLoading = false
+    private var genresLoadingGeneration: Int?
 
     func loadGenresIfNeeded() async {
         // Albums and the column browser can both request genres at once.
-        guard genres.isEmpty, !genresLoading else { return }
-        genresLoading = true
-        defer { genresLoading = false }
         let generation = librarySessionGeneration
+        guard genres.isEmpty, genresLoadingGeneration != generation else { return }
+        genresLoadingGeneration = generation
+        defer {
+            if genresLoadingGeneration == generation { genresLoadingGeneration = nil }
+        }
         do {
             let fetched = try await client.list(.genres, of: Genre.self)
                 .sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
@@ -303,7 +307,7 @@ final class LibraryModel {
     // Internal (not private): LibraryModel+Favorites.swift's load/toggle
     // methods manage these directly.
     var starredLoaded = false
-    var starredLoading = false
+    var starredLoadingGeneration: Int?
 
     /// Fire a best-effort mutation, then refresh the affected collection —
     /// the shared shape of the playlist CRUD writes. Internal so

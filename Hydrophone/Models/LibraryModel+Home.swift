@@ -5,17 +5,19 @@ import Foundation
 /// LibraryModel+Playlists.swift.
 extension LibraryModel {
     func loadHomeIfNeeded() async {
-        guard !homeLoaded, !homeLoading else { return }
+        guard !homeLoaded else { return }
         await reloadHome()
     }
 
     /// The four shelves load concurrently; a shelf the server can't provide
     /// simply stays empty (the view hides it).
     func reloadHome() async {
-        guard !homeLoading else { return }
-        homeLoading = true
-        defer { homeLoading = false }
         let generation = librarySessionGeneration
+        guard homeLoadingGeneration != generation else { return }
+        homeLoadingGeneration = generation
+        defer {
+            if homeLoadingGeneration == generation { homeLoadingGeneration = nil }
+        }
         async let newest = albumList(type: "newest")
         async let recent = albumList(type: "recent")
         async let frequent = albumList(type: "frequent")
@@ -34,7 +36,10 @@ extension LibraryModel {
 
     /// Re-roll just the Random shelf (the Home view's refresh button).
     func rerollRandomAlbums() async {
-        homeRandom = await albumList(type: "random")
+        let generation = librarySessionGeneration
+        let fetched = await albumList(type: "random")
+        guard generation == librarySessionGeneration else { return }
+        homeRandom = fetched
     }
 
     private func albumList(type: String) async -> [Album] {
