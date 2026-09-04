@@ -70,6 +70,39 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #118: Songs library walk now starts at launch, not on first visit (2026-09-04) ✅
+
+- `RootView`'s launch-time `.task` (the one that awaits `connection.refresh()`)
+  now also awaits `library.loadSongsIfNeeded()` once connected, before the
+  per-selection `load(_:)` switch ever runs. The all-songs walk (`search3`,
+  paginated to exhaustion per `05`) therefore starts in the background right
+  after connect regardless of which sidebar section the app opens on, instead
+  of only firing once the user clicks into Songs. `loadSongsIfNeeded()` is
+  idempotent via `songsState`, so a launch that lands directly on Songs still
+  starts exactly one walk — the new top-level call and the per-selection
+  dispatch coalesce.
+- Deliberately out of scope (flagged in the issue's own follow-up comment):
+  the separate native `/api/song` index walk that `NavidromeClient.
+  songIndexSnapshot()` feeds to playlists/Composers/work-grouping — that's
+  issue #124's fix to design, not this one's.
+- Gate: unsigned build succeeds with zero compiler warnings; full suite
+  passes; SwiftLint 0 violations.
+- Live (2026-09-04), Tim's configured real Navidrome server: with
+  `sidebarSelection` forced to `artists` (never visiting Songs), a fresh
+  launch of the exact Debug build showed the toolbar's "N songs loaded" pill
+  climbing to the full 14,231-song count within a few seconds while the
+  Artists list was on screen — confirming the walk starts eagerly at launch
+  rather than waiting for a Songs visit. Repeated across several relaunches
+  restarting the walk from scratch each time (in-memory cache dies with the
+  process, per `05`), never regressing to the old click-to-start behavior.
+  Note for future live-verification: this Debug build (`CODE_SIGNING_ALLOWED=NO`,
+  effectively unsigned) reads `~/Library/Preferences/app.hydrophone.plist`
+  directly, not the sandboxed container copy the notarized release uses —
+  `defaults write app.hydrophone …` silently redirects to the container path
+  instead, so forcing `@AppStorage` values for a Debug-build test needs the
+  explicit plain-path `defaults write ~/Library/Preferences/app.hydrophone.plist`
+  form (or a uniquely bundle-ID'd probe build, as issue #102 did below).
+
 ## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
 
 - The "Loading songs…" / "N songs loaded" status no longer renders in a
@@ -3646,6 +3679,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #118 (2026-09-04): unsigned build has zero compiler warnings; full
+  suite passes; SwiftLint clean. Live on Tim's configured Navidrome server:
+  launching directly on Artists (never visiting Songs) still showed the
+  toolbar's songs-loaded pill climb to the full 14,231-song count within
+  seconds, confirming the walk now starts eagerly at launch.
 - ✅ Issue #102 (2026-09-03): unsigned build has zero compiler warnings; full
   suite (343-344 executions across runs, 0 failures/skips); SwiftLint clean.
   Live on the configured Navidrome server: the status renders attached
