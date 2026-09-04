@@ -148,10 +148,16 @@ rendered visibly washed out.
 - **Quality column**: a small outline badge per song — format name for
   lossless files ("FLAC", "AIFF"), bit rate for lossy ("320 kbps") — via
   `Song.qualityLabel`; sorting ranks lossless above any lossy bit rate. The
-  Now Playing hero card uses the same outline styling with
-  `Song.qualityDetailLabel`, which adds `· N kbps` for lossless files when the
-  server reports a positive bit rate while preserving `qualityLabel` behavior
-  for lossy files and lossless files without one.
+  Now Playing hero card uses the same outline styling but always names the
+  codec via `Song.qualityDetailLabel` (#106): format name + bit depth/sample
+  rate ("FLAC 24/96k") above the 320 kbps hi-res threshold when a native
+  (Navidrome-only) bit depth and sample rate are both present, otherwise
+  format name + bit rate ("AAC 256 kbps", "MP3 192 kbps"); the bare format
+  name when there's no bit rate at all. `.m4a`/`.m4b` is named "ALAC" in the
+  hi-res case and "AAC" otherwise, since the suffix alone can't tell the two
+  apart. Diverges from `qualityLabel` (which never shows a codec name
+  alongside a lossy bit rate) — the badge is meant to be read in isolation,
+  unlike the compact table column.
 - **Album work grouping**: when an album contains more than one distinct
   tagged Work, flat, unselectable headers mark each consecutive run. Work
   grouping takes priority over disc grouping; a multi-disc album folds the
