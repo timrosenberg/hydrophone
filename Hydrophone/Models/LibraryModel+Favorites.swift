@@ -1,0 +1,89 @@
+import Foundation
+
+/// Favorites load/reload and optimistic star toggling. Split from
+/// LibraryModel for the type-body-length lint, same reasoning as
+/// LibraryModel+Playlists.swift.
+extension LibraryModel {
+    func loadStarredIfNeeded() async {
+        // `starredLoaded` (not emptiness): a user with zero favorites would
+        // otherwise refetch on every appearance; the in-flight flag stops
+        // Favorites + an album detail from firing duplicate fetches.
+        guard !starredLoaded, !starredLoading else { return }
+        starredLoading = true
+        await reloadStarred()
+        starredLoading = false
+    }
+
+    @discardableResult
+    func reloadStarred() async -> Bool {
+        let generation = librarySessionGeneration
+        do {
+            let starred = try await client.object(.starred2, as: StarredContent.self)
+            var songs = starred.song ?? []
+            await joinWorkInfo(into: &songs)
+            guard generation == librarySessionGeneration else { return false }
+            starredAlbums = starred.album ?? []
+            starredSongs = songs
+            starredSongIDs = Set(starredSongs.map(\.id))
+            starredLoaded = true
+            return true
+        } catch {
+            // leave existing values; surfaced via UI empty state
+            return false
+        }
+    }
+
+    // MARK: - Favorite toggling (optimistic)
+
+    /// Star state for display: optimistic override > server truth once the
+    /// starred list is loaded > the row's own (possibly stale) flag before it.
+    func isStarred(_ song: Song) -> Bool {
+        if let pending = starOverrides[song.id] { return pending }
+        return starredLoaded ? starredSongIDs.contains(song.id) : song.isStarred
+    }
+
+    func isStarred(album: Album) -> Bool {
+        if let pending = albumStarOverrides[album.id] { return pending }
+        return starredLoaded ? starredAlbums.contains { $0.id == album.id } : album.isStarred
+    }
+
+    /// Changes whenever any star display state can change. Value-type views
+    /// (the AppKit-backed track table) take it as plain data so a toggle
+    /// re-renders them even though rows read stars through a closure.
+    var starSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(starredLoaded)
+        hasher.combine(starredSongIDs)
+        hasher.combine(starOverrides)
+        return hasher.finalize()
+    }
+
+    /// Star/unstar songs optimistically: the star flips immediately, the
+    /// writes go out, and one reload reconciles. A refused write rolls its
+    /// override back; a failed reload keeps overrides for accepted writes.
+    func setStarred(_ starred: Bool, songIds: [String]) async {
+        guard !songIds.isEmpty else { return }
+        for id in songIds { starOverrides[id] = starred }
+        for id in songIds where (try? await client.sendStatus(.favorite(id: id, starred: starred))) == nil {
+            starOverrides[id] = nil
+        }
+        if await reloadStarred() {
+            for id in songIds { starOverrides[id] = nil }
+        }
+    }
+
+    func setAlbumStarred(_ starred: Bool, albumId: String) async {
+        albumStarOverrides[albumId] = starred
+        if (try? await client.sendStatus(.favorite(id: albumId, kind: .album, starred: starred))) == nil {
+            albumStarOverrides[albumId] = nil
+        }
+        if await reloadStarred() { albumStarOverrides[albumId] = nil }
+    }
+
+    /// Toggle one song's star from anywhere (⌘L); loads favorites first so
+    /// the flip is truthful.
+    func toggleStarred(_ song: Song) async {
+        await loadStarredIfNeeded()
+        await setStarred(!isStarred(song), songIds: [song.id])
+    }
+}

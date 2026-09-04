@@ -13,13 +13,11 @@ actor NavidromeClient {
     private let decoder: JSONDecoder
     private let encoder = JSONEncoder()
 
-    private var cachedToken: NavidromeToken?
-    /// The credentials `cachedToken` was actually derived from. A token is
-    /// only reused when the store's *current* credentials still match this
-    /// snapshot — otherwise a token minted for one server/account could be
-    /// replayed against a different one after Settings changes the
-    /// connection (host swap, account swap, or a rotated password).
-    private var cachedTokenCredentials: ServerCredentials?
+    /// The session token, credential-scoped: a token minted for one
+    /// server/account is never replayed against a different one after
+    /// Settings changes the connection (host swap, account swap, or a
+    /// rotated password) — `CredentialScopedCache` enforces that by key.
+    private let tokenCache = CredentialScopedCache<NavidromeToken>()
 
     /// Bounds concurrent page fetches during `paginatedGet`. Same limit as
     /// `ArtworkCache`'s fetch limiter (`Services/AsyncLimiter.swift`) — 6-way
@@ -35,17 +33,25 @@ actor NavidromeClient {
 
     // MARK: - Auth
 
-    /// Logs in and caches the resulting token against the credentials used.
-    /// Call directly to force a fresh login (e.g. a feature-detection probe);
-    /// ordinary requests should go through `ensureValidToken()` instead so an
-    /// unexpired, still-current-credentials token is reused.
+    /// The currently persisted credentials snapshot, if any — exposed so
+    /// `LibrarySongIndex` can get a `ServerCredentials` to key its native
+    /// song-index cache by without its own `CredentialStore` reference.
+    var currentCredentials: ServerCredentials? { credentials.load() }
+
+    /// Forces a fresh login (e.g. a feature-detection probe) and seeds the
+    /// token cache with the result so the next `ensureValidToken()` call
+    /// reuses it instead of logging in again. Ordinary requests should go
+    /// through `ensureValidToken()` instead, which reuses an unexpired,
+    /// still-current-credentials token rather than always hitting the network.
     @discardableResult
     func login() async throws(NavidromeError) -> NavidromeToken {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
-        return try await login(using: creds)
+        let token = try await performLogin(using: creds)
+        await tokenCache.store(token, for: creds)
+        return token
     }
 
-    private func login(using creds: ServerCredentials) async throws(NavidromeError) -> NavidromeToken {
+    private func performLogin(using creds: ServerCredentials) async throws(NavidromeError) -> NavidromeToken {
         guard creds.authMethod == .tokenSalt else { throw NavidromeError.apiKeyAuthUnsupported }
         let request = try loginRequest(using: creds)
 
@@ -70,10 +76,7 @@ actor NavidromeClient {
         } catch {
             throw NavidromeError.decoding(error.localizedDescription)
         }
-        let token = NavidromeToken(raw: decoded.token, expiresAt: NavidromeToken.decodeExpiry(fromJWT: decoded.token))
-        cachedToken = token
-        cachedTokenCredentials = creds
-        return token
+        return NavidromeToken(raw: decoded.token, expiresAt: NavidromeToken.decodeExpiry(fromJWT: decoded.token))
     }
 
     /// Returns the cached token if it isn't (near) expired **and** the store's
@@ -82,10 +85,19 @@ actor NavidromeClient {
     /// (rather than reloaded here) so one `fetchPage` call uses a single
     /// consistent credential snapshot for both auth and URL construction.
     private func ensureValidToken(using creds: ServerCredentials) async throws(NavidromeError) -> NavidromeToken {
-        if let cachedToken, cachedTokenCredentials == creds, !cachedToken.isExpired() {
-            return cachedToken
+        // `resolve`'s own cache-hit check only compares credentials, not
+        // expiry — an expired-but-credential-matching cached token must be
+        // explicitly invalidated first, or `resolve` would just hand it back
+        // again without ever rebuilding.
+        if let cached = await tokenCache.peek(matching: creds) {
+            if !cached.isExpired() { return cached }
+            await tokenCache.invalidate()
         }
-        return try await login(using: creds)
+        do {
+            return try await tokenCache.resolve(using: creds) { try await self.performLogin(using: creds) }
+        } catch {
+            throw error as? NavidromeError ?? .transport("\(error)")
+        }
     }
 
     // MARK: - Pagination
@@ -117,6 +129,26 @@ actor NavidromeClient {
         as type: T.Type
     ) async throws(NavidromeError) -> [T] {
         guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
+        let query = PageQuery(
+            path: path, sort: sort, order: order,
+            extraQuery: extraQuery, credentials: creds
+        )
+        return try await paginatedGet(query, pageSize: pageSize, as: type)
+    }
+
+    /// Pinned-credentials variant of the above, for a caller (`LibrarySongIndex`)
+    /// that must pin an entire multi-page walk — and its 401 retry — to one
+    /// exact snapshot rather than letting each page reload `credentials`
+    /// independently, mirroring `SubsonicClient.perform(_:using:)`.
+    func paginatedGet<T: Decodable & Sendable>(
+        path: String,
+        sort: String,
+        order: String = "ASC",
+        extraQuery: [URLQueryItem] = [],
+        pageSize: Int = 500,
+        using creds: ServerCredentials,
+        as type: T.Type
+    ) async throws(NavidromeError) -> [T] {
         let query = PageQuery(
             path: path, sort: sort, order: order,
             extraQuery: extraQuery, credentials: creds
@@ -192,7 +224,7 @@ actor NavidromeClient {
             throw NavidromeError.transport("no HTTP response")
         }
         if http.statusCode == 401, !isRetry {
-            invalidateCachedToken()
+            await tokenCache.invalidate()
             return try await fetchPage(query, start: start, end: end, as: type, isRetry: true)
         }
         guard (200...299).contains(http.statusCode) else {
@@ -218,104 +250,6 @@ actor NavidromeClient {
 
     private static func totalCount(from response: HTTPURLResponse) -> Int? {
         response.value(forHTTPHeaderField: "X-Total-Count").flatMap(Int.init)
-    }
-
-    // MARK: - Song index
-
-    /// In-memory cache of `songIndex()`'s result, kept for the app session
-    /// only — no disk persistence (M2 dropped the SwiftData cache; see
-    /// docs/PROGRESS.md). Cleared by `invalidateSongIndex()`.
-    private var cachedSongIndex: NativeSongIndexSnapshot?
-    /// The credentials `cachedSongIndex` was built against — same reasoning
-    /// as `cachedTokenCredentials`: a cache built for one server/account
-    /// must not be served to a different one after Settings changes the
-    /// connection. See PR #31 review.
-    private var cachedSongIndexCredentials: ServerCredentials?
-    /// Bumped whenever a build starts and by `invalidateSongIndex()`. Actor
-    /// isolation is reentrant across an `await`, so this identity lets a
-    /// superseded build recognize it's stale and skip repopulating the cache
-    /// or clearing a newer build's in-flight state. See PR #31 re-review.
-    private var songIndexGeneration = 0
-    /// The in-flight full-library build, if any, plus the credentials it
-    /// was started under — coalesces overlapping `songIndex()` callers onto
-    /// one paginated walk instead of each starting their own, but only when
-    /// the caller's current credentials match (otherwise a caller under new
-    /// credentials could be handed a build's result fetched under the old
-    /// ones). See PR #31 review.
-    private var inFlightSongIndexBuild: Task<NativeSongIndexSnapshot, Error>?
-    private var inFlightSongIndexCredentials: ServerCredentials?
-
-    /// Every non-missing song in the library, with per-role `participants` credits and
-    /// raw `tags` — the data a later sub-issue needs to answer "songs by
-    /// composer X" and "work/movement for song Y" without further network
-    /// calls. Paginates `/api/song` concurrently via `paginatedGet` and
-    /// caches the result; repeat calls within the same session return the
-    /// cached copy without refetching, unless credentials changed or
-    /// `invalidateSongIndex()` was called. See #24, epic #11.
-    func songIndex() async throws(NavidromeError) -> [NativeSongRecord] {
-        try await songIndexSnapshot().records
-    }
-
-    /// Exposed (not `private`) so `NavidromeClient+SongLookup.swift` — split
-    /// out for the file-length lint — can reuse this cache instead of each
-    /// composer/song/bit-depth lookup rebuilding its own.
-    func songIndexSnapshot() async throws(NavidromeError) -> NativeSongIndexSnapshot {
-        guard let creds = credentials.load() else { throw NavidromeError.notConfigured }
-        if let cachedSongIndex, cachedSongIndexCredentials == creds {
-            return cachedSongIndex
-        }
-        if let inFlightSongIndexBuild, inFlightSongIndexCredentials == creds {
-            do {
-                return try await inFlightSongIndexBuild.value
-            } catch {
-                throw error as? NavidromeError ?? .transport("\(error)")
-            }
-        }
-
-        songIndexGeneration += 1
-        let generation = songIndexGeneration
-        let build = Task<NativeSongIndexSnapshot, Error> {
-            let query = PageQuery(
-                path: "song", sort: "id", order: "ASC",
-                extraQuery: [URLQueryItem(name: "missing", value: "false")], credentials: creds
-            )
-            let records = try await self.paginatedGet(query, pageSize: 500, as: NativeSongRecord.self)
-            return NativeSongIndexSnapshot(records: records)
-        }
-        inFlightSongIndexBuild = build
-        inFlightSongIndexCredentials = creds
-        do {
-            let snapshot = try await build.value
-            // Only the still-current build may finish the job: invalidation
-            // or a credential-scoped replacement may have retired this task,
-            // and its stale result must not overwrite the newer cache/state.
-            if generation == songIndexGeneration {
-                cachedSongIndex = snapshot
-                cachedSongIndexCredentials = creds
-                inFlightSongIndexBuild = nil
-                inFlightSongIndexCredentials = nil
-            }
-            return snapshot
-        } catch {
-            if generation == songIndexGeneration {
-                inFlightSongIndexBuild = nil
-                inFlightSongIndexCredentials = nil
-            }
-            throw error as? NavidromeError ?? .transport("\(error)")
-        }
-    }
-
-    /// Clears the cached song index and retires any in-flight build (so it
-    /// can't repopulate the cache once it completes), so the next
-    /// `songIndex()` call rebuilds from scratch (e.g. after a library scan —
-    /// the rebuild trigger itself is a later sub-issue's concern, not this
-    /// one's).
-    func invalidateSongIndex() {
-        cachedSongIndex = nil
-        cachedSongIndexCredentials = nil
-        songIndexGeneration += 1
-        inFlightSongIndexBuild = nil
-        inFlightSongIndexCredentials = nil
     }
 
     // MARK: - URL / request construction
@@ -365,15 +299,5 @@ actor NavidromeClient {
     static func apiPath(basePath: String, resource: String) -> String {
         let base = basePath.hasSuffix("/") ? String(basePath.dropLast()) : basePath
         return base + "/api/" + resource
-    }
-}
-
-// Kept in this file (not NavidromeClient+SongLookup.swift): `private` here
-// reaches `cachedToken`/`cachedTokenCredentials` only because Swift's file-
-// scoped access control still allows it from an extension in the same file.
-extension NavidromeClient {
-    private func invalidateCachedToken() {
-        cachedToken = nil
-        cachedTokenCredentials = nil
     }
 }

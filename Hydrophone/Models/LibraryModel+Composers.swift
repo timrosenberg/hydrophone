@@ -5,7 +5,7 @@ import Foundation
 /// LibraryModel for the type-body-length lint.
 extension LibraryModel {
     func songs(forComposer id: String) async -> [Song] {
-        guard let records = try? await navidrome.songs(byComposerId: id),
+        guard let records = try? await songIndex.songs(byComposerId: id),
               !records.isEmpty else { return [] }
         let starredDates = Dictionary(starredSongs.compactMap { song in
             song.starred.map { (song.id, $0) }

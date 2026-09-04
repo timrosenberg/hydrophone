@@ -53,23 +53,26 @@ final class LibraryModel {
         return false
     }
 
-    private(set) var starredSongs: [Song] = []
-    private(set) var starredAlbums: [Album] = []
+    // Internal setters (not private): load/toggle lifecycle lives in
+    // LibraryModel+Favorites.swift.
+    var starredSongs: [Song] = []
+    var starredAlbums: [Album] = []
     /// O(1) lookup mirror of `starredSongs`, rebuilt on every reload.
-    private var starredSongIDs: Set<String> = []
+    var starredSongIDs: Set<String> = []
     /// Optimistic star state (id → starred), shown until the write and the
     /// reconciling reload round-trip. All star surfaces read through
     /// `isStarred`, so a tap flips everywhere at once.
-    private var starOverrides: [String: Bool] = [:]
-    private var albumStarOverrides: [String: Bool] = [:]
+    var starOverrides: [String: Bool] = [:]
+    var albumStarOverrides: [String: Bool] = [:]
 
-    // Home shelves (getAlbumList2 list types).
-    private(set) var homeNewest: [Album] = []
-    private(set) var homeRecent: [Album] = []
-    private(set) var homeFrequent: [Album] = []
-    private(set) var homeRandom: [Album] = []
-    private(set) var homeLoaded = false
-    private var homeLoading = false
+    // Home shelves (getAlbumList2 list types). Internal setters (not
+    // private): load lifecycle lives in LibraryModel+Home.swift.
+    var homeNewest: [Album] = []
+    var homeRecent: [Album] = []
+    var homeFrequent: [Album] = []
+    var homeRandom: [Album] = []
+    var homeLoaded = false
+    var homeLoading = false
 
     // Internal setter (not private): playlist CRUD lives in
     // LibraryModel+Playlists.swift.
@@ -83,16 +86,41 @@ final class LibraryModel {
     // Native Navidrome access; work/movement join lives in
     // LibraryModel+WorkInfo.swift (#45, epic #13).
     let navidrome: NavidromeClient
-    let nativeFeaturesAvailable: () async -> Bool
+    let nativeFeaturesAvailable: @Sendable () async -> Bool
+
+    // Internal (not private): LibraryModel+Songs.swift, +WorkInfo.swift, and
+    // +Composers.swift call through it — the single owner of both
+    // full-library walks (Subsonic + native), consolidating what used to be
+    // split across SubsonicClient.cachedAllSongs and
+    // NavidromeClient.cachedSongIndex. See docs/05-data-and-caching.md's
+    // "Design decision (#140)".
+    let songIndex: LibrarySongIndex
+
+    /// Bumped by `reset()` (disconnect, credential change, or a successful
+    /// library scan). Loads for albums/artists/composers/genres/starred/home
+    /// capture this before their async fetch and check it's unchanged before
+    /// writing the result back, so a fetch already in flight when `reset()`
+    /// fires can't repopulate a collection with stale (wrong-server) data —
+    /// the same generation-guard shape `songsGeneration` already uses for
+    /// Songs specifically. Internal (not private): LibraryModel+Favorites.swift
+    /// and LibraryModel+Home.swift read it for their own generation guards.
+    var librarySessionGeneration = 0
 
     init(client: SubsonicClient, navidrome: NavidromeClient,
-         nativeFeaturesAvailable: @escaping () async -> Bool) {
+         nativeFeaturesAvailable: @escaping @Sendable () async -> Bool) {
         self.client = client
         self.navidrome = navidrome
         self.nativeFeaturesAvailable = nativeFeaturesAvailable
+        self.songIndex = LibrarySongIndex(client: client, navidrome: navidrome,
+                                          nativeFeaturesAvailable: nativeFeaturesAvailable)
     }
 
-    func reset() {
+    /// Async so callers (`ConnectionModel`'s invalidation hook) can be sure
+    /// the underlying `songIndex` actor cache is actually cleared before
+    /// they proceed — a fire-and-forget invalidation could let a subsequent
+    /// read race the actor call and observe stale (pre-reset) state.
+    func reset() async {
+        librarySessionGeneration += 1
         albums = []
         albumOffset = 0
         albumsExhausted = false
@@ -103,7 +131,7 @@ final class LibraryModel {
         composers = []
         composersState = .idle
         genres = []
-        invalidateSongs()
+        await invalidateSongs()
         starredSongs = []
         starredAlbums = []
         starredSongIDs = []
@@ -130,8 +158,10 @@ final class LibraryModel {
     func loadMoreAlbums() async {
         guard !albumsExhausted else { return }
         if case .loading = albumsState { return }
-        await load("album", into: \.albumsState) { () async throws(SubsonicError) in
+        let generation = librarySessionGeneration
+        await load("album", into: \.albumsState, generation: generation) { () async throws(SubsonicError) in
             let page = try await client.list(albumPageEndpoint(), of: Album.self)
+            guard generation == librarySessionGeneration else { return }
             albums.append(contentsOf: page)
             albumOffset += page.count
             albumsExhausted = page.count < Self.pageSize
@@ -141,22 +171,29 @@ final class LibraryModel {
     /// Owns the `.loading → .loaded/.failed` transition shared by the stateful
     /// loads; `label` names the load in the failure log. Loads whose failure
     /// semantics differ (genres keep `[]`, starred keeps stale data) stay out.
+    /// `generation` guards the state transition itself the same way callers
+    /// already guard their own data write inside `work` — see
+    /// `librarySessionGeneration`.
     private func load(_ label: String,
                       into state: ReferenceWritableKeyPath<LibraryModel, Load<Void>>,
+                      generation: Int,
                       _ work: () async throws(SubsonicError) -> Void) async {
         self[keyPath: state] = .loading
         do {
             try await work()
+            guard generation == librarySessionGeneration else { return }
             self[keyPath: state] = .loaded(())
         } catch {
+            guard generation == librarySessionGeneration else { return }
             self[keyPath: state] = .failed(error.userMessage)
             Self.log.error("\(label) load failed: \(error.userMessage)")
         }
     }
 
     /// Best-effort list fetch: failures resolve to `[]` (views show their
-    /// empty states instead of an error).
-    private func fetchList<Element: SubsonicListElement>(_ endpoint: Endpoint) async -> [Element] {
+    /// empty states instead of an error). Internal (not private): also used
+    /// by LibraryModel+Home.swift.
+    func fetchList<Element: SubsonicListElement>(_ endpoint: Endpoint) async -> [Element] {
         (try? await client.list(endpoint, of: Element.self)) ?? []
     }
 
@@ -202,9 +239,12 @@ final class LibraryModel {
     func loadArtistsIfNeeded() async {
         guard artists.isEmpty else { return }
         if case .loading = artistsState { return }
-        await load("artist", into: \.artistsState) { () async throws(SubsonicError) in
-            artists = try await client.list(.artists, of: ArtistIndex.self)
+        let generation = librarySessionGeneration
+        await load("artist", into: \.artistsState, generation: generation) { () async throws(SubsonicError) in
+            let fetched = try await client.list(.artists, of: ArtistIndex.self)
                 .flatMap { $0.artist ?? [] }
+            guard generation == librarySessionGeneration else { return }
+            artists = fetched
         }
     }
 
@@ -214,11 +254,15 @@ final class LibraryModel {
         guard composers.isEmpty else { return }
         if case .loading = composersState { return }
         guard await nativeFeaturesAvailable() else { return }
+        let generation = librarySessionGeneration
         composersState = .loading
         do {
-            composers = try await navidrome.composers()
+            let fetched = try await navidrome.composers()
+            guard generation == librarySessionGeneration else { return }
+            composers = fetched
             composersState = .loaded(())
         } catch {
+            guard generation == librarySessionGeneration else { return }
             composersState = .failed(error.userMessage)
             Self.log.error("composer load failed: \(error.userMessage)")
         }
@@ -242,99 +286,24 @@ final class LibraryModel {
         guard genres.isEmpty, !genresLoading else { return }
         genresLoading = true
         defer { genresLoading = false }
+        let generation = librarySessionGeneration
         do {
-            genres = try await client.list(.genres, of: Genre.self)
+            let fetched = try await client.list(.genres, of: Genre.self)
                 .sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
+            guard generation == librarySessionGeneration else { return }
+            genres = fetched
         } catch {
+            guard generation == librarySessionGeneration else { return }
             genres = []
         }
     }
 
-    // MARK: - Favorites
+    // MARK: - Favorites (load/toggle lifecycle in LibraryModel+Favorites.swift)
 
-    private var starredLoaded = false
-    private var starredLoading = false
-
-    func loadStarredIfNeeded() async {
-        // `starredLoaded` (not emptiness): a user with zero favorites would
-        // otherwise refetch on every appearance; the in-flight flag stops
-        // Favorites + an album detail from firing duplicate fetches.
-        guard !starredLoaded, !starredLoading else { return }
-        starredLoading = true
-        await reloadStarred()
-        starredLoading = false
-    }
-
-    @discardableResult
-    func reloadStarred() async -> Bool {
-        do {
-            let starred = try await client.object(.starred2, as: StarredContent.self)
-            starredAlbums = starred.album ?? []
-            var songs = starred.song ?? []
-            await joinWorkInfo(into: &songs)
-            starredSongs = songs
-            starredSongIDs = Set(starredSongs.map(\.id))
-            starredLoaded = true
-            return true
-        } catch {
-            // leave existing values; surfaced via UI empty state
-            return false
-        }
-    }
-
-    // MARK: - Favorite toggling (optimistic)
-
-    /// Star state for display: optimistic override > server truth once the
-    /// starred list is loaded > the row's own (possibly stale) flag before it.
-    func isStarred(_ song: Song) -> Bool {
-        if let pending = starOverrides[song.id] { return pending }
-        return starredLoaded ? starredSongIDs.contains(song.id) : song.isStarred
-    }
-
-    func isStarred(album: Album) -> Bool {
-        if let pending = albumStarOverrides[album.id] { return pending }
-        return starredLoaded ? starredAlbums.contains { $0.id == album.id } : album.isStarred
-    }
-
-    /// Changes whenever any star display state can change. Value-type views
-    /// (the AppKit-backed track table) take it as plain data so a toggle
-    /// re-renders them even though rows read stars through a closure.
-    var starSignature: Int {
-        var hasher = Hasher()
-        hasher.combine(starredLoaded)
-        hasher.combine(starredSongIDs)
-        hasher.combine(starOverrides)
-        return hasher.finalize()
-    }
-
-    /// Star/unstar songs optimistically: the star flips immediately, the
-    /// writes go out, and one reload reconciles. A refused write rolls its
-    /// override back; a failed reload keeps overrides for accepted writes.
-    func setStarred(_ starred: Bool, songIds: [String]) async {
-        guard !songIds.isEmpty else { return }
-        for id in songIds { starOverrides[id] = starred }
-        for id in songIds where (try? await client.sendStatus(.favorite(id: id, starred: starred))) == nil {
-            starOverrides[id] = nil
-        }
-        if await reloadStarred() {
-            for id in songIds { starOverrides[id] = nil }
-        }
-    }
-
-    func setAlbumStarred(_ starred: Bool, albumId: String) async {
-        albumStarOverrides[albumId] = starred
-        if (try? await client.sendStatus(.favorite(id: albumId, kind: .album, starred: starred))) == nil {
-            albumStarOverrides[albumId] = nil
-        }
-        if await reloadStarred() { albumStarOverrides[albumId] = nil }
-    }
-
-    /// Toggle one song's star from anywhere (⌘L); loads favorites first so
-    /// the flip is truthful.
-    func toggleStarred(_ song: Song) async {
-        await loadStarredIfNeeded()
-        await setStarred(!isStarred(song), songIds: [song.id])
-    }
+    // Internal (not private): LibraryModel+Favorites.swift's load/toggle
+    // methods manage these directly.
+    var starredLoaded = false
+    var starredLoading = false
 
     /// Fire a best-effort mutation, then refresh the affected collection —
     /// the shared shape of the playlist CRUD writes. Internal so
@@ -406,42 +375,5 @@ extension LibraryModel {
         let albums: [Album] = await fetchList(endpoint)
         if case .none = albumFilter { return albums }
         return Array(albums.shuffled().prefix(count))
-    }
-}
-
-// MARK: - Home shelves
-
-extension LibraryModel {
-    func loadHomeIfNeeded() async {
-        guard !homeLoaded, !homeLoading else { return }
-        await reloadHome()
-    }
-
-    /// The four shelves load concurrently; a shelf the server can't provide
-    /// simply stays empty (the view hides it).
-    func reloadHome() async {
-        guard !homeLoading else { return }
-        homeLoading = true
-        defer { homeLoading = false }
-        async let newest = albumList(type: "newest")
-        async let recent = albumList(type: "recent")
-        async let frequent = albumList(type: "frequent")
-        async let random = albumList(type: "random")
-        (homeNewest, homeRecent, homeFrequent, homeRandom)
-            = await (newest, recent, frequent, random)
-        // All-empty almost always means the fetches failed (offline at
-        // launch) — stay "unloaded" so the next appearance retries instead
-        // of showing an empty Home until relaunch.
-        homeLoaded = !(homeNewest.isEmpty && homeRecent.isEmpty
-                       && homeFrequent.isEmpty && homeRandom.isEmpty)
-    }
-
-    /// Re-roll just the Random shelf (the Home view's refresh button).
-    func rerollRandomAlbums() async {
-        homeRandom = await albumList(type: "random")
-    }
-
-    private func albumList(type: String) async -> [Album] {
-        await fetchList(.albumList2(type: type, size: 20, offset: 0))
     }
 }
