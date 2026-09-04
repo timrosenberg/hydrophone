@@ -27,6 +27,7 @@ extension NativeSongRecord {
             guard let role = credit.subRole, !role.isEmpty else { return credit.name }
             return "\(credit.name) (\(role))"
         }.joined(separator: " • ")
+        song.contributors = Self.contributors(from: participants)
         song.displayAlbumArtist = albumArtist
         song.comment = comment
         song.groupings = tags?["grouping"]
@@ -56,6 +57,25 @@ extension NativeSongRecord {
 
     private static func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    // Composer keeps its own pre-joined displayComposer string (unchanged,
+    // tested behavior); performer/conductor instead feed the same
+    // Song.contributors + nonEmptyDisplayPerformer/-Conductor path the
+    // regular Subsonic decode uses, so Get Info shows the same rows
+    // regardless of which fetch built the Song. See #103.
+    private static func contributors(from participants: Participants?) -> [Contributor]? {
+        let roled: [(String, [Credit]?)] = [
+            ("performer", participants?.performer),
+            ("conductor", participants?.conductor)
+        ]
+        let mapped = roled.flatMap { role, credits in
+            (credits ?? []).map { credit in
+                Contributor(role: role, subRole: credit.subRole,
+                            artist: .init(id: credit.id, name: credit.name))
+            }
+        }
+        return mapped.isEmpty ? nil : mapped
     }
 
     // Navidrome's default resources/mime_types.yaml. OS MIME aliases differ

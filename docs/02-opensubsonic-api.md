@@ -296,9 +296,23 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   a future rebuild (e.g. after a library scan; the trigger itself isn't wired
   up yet).
   `NativeSongRecord` carries optional row metadata as well as `id`/`title`,
-  `participants` (`composer`/`artist`/`albumartist`, each `[Credit]`), and raw
-  `tags` (`[String: [String]]`). It stays separate from `Song`
-  (`SubsonicModels.swift`), the playback pipeline's model.
+  `participants` (`composer`/`artist`/`albumartist`/`performer`/`conductor`,
+  each `[Credit]`), and raw `tags` (`[String: [String]]`). It stays separate
+  from `Song` (`SubsonicModels.swift`), the playback pipeline's model.
+- **Performer/Conductor (#103):** unlike composer, Navidrome sends no
+  pre-joined `displayPerformer`/`displayConductor` string. Both roles ride the
+  standard OpenSubsonic `contributors` array instead (`role` + optional
+  `subRole`, e.g. an instrument for `performer`), present on every regular
+  `getAlbum`/`getSong` response — no native `/api/song` walk needed the way
+  work/movement requires. `Song.contributors` decodes it directly;
+  `nonEmptyDisplayPerformer`/`nonEmptyDisplayConductor` filter+join client
+  side. `NativeSongRecord.asSong()` synthesizes the same shape from
+  `participants.performer`/`.conductor` so Songs built via the Composers
+  native path get the same rows. Confirmed against Navidrome's own
+  `model/participants.go` (role enum) and the OpenSubsonic `Contributor`
+  spec — no `ensemble` role exists anywhere in Navidrome (not in the role
+  enum, not in `resources/mappings.yaml`), so there is no data source for an
+  Ensemble row; it was dropped from #103's scope for that reason.
 - **Playable composer rows (#85):** `LibraryModel.songs(forComposer:)` maps
   the existing cached composer-filtered records directly to `Song`; there is
   no per-track `getSong` request or second library cache. Native fractional

@@ -117,6 +117,8 @@ struct NativeSongRecord: Identifiable, Sendable, Decodable {
         var composer: [Credit]?
         var artist: [Credit]?
         var albumartist: [Credit]?
+        var performer: [Credit]?
+        var conductor: [Credit]?
     }
 
     struct Credit: Sendable, Decodable {

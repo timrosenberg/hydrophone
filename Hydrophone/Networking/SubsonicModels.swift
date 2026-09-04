@@ -32,6 +32,14 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// OpenSubsonic display-ready composer string (the server joins multiple
     /// composers itself). Absent when the file/server has no composer tag.
     var displayComposer: String?
+    /// OpenSubsonic role-tagged credits (performer, conductor, composer,
+    /// etc.), each with an optional subRole (e.g. an instrument for
+    /// `performer`). Unlike `displayComposer`, the server sends no
+    /// pre-joined string for these roles, so `nonEmptyDisplayPerformer`/
+    /// `nonEmptyDisplayConductor` build one client-side. No `ensemble` role
+    /// exists in Navidrome (checked `model/participants.go` and
+    /// `resources/mappings.yaml`) — there is no field to surface for it. #103
+    var contributors: [Contributor]?
     /// OpenSubsonic loudness tags, carried through by Navidrome when the
     /// files are tagged. Drives volume normalization (see ReplayGainMode).
     var replayGain: ReplayGainInfo?
@@ -77,6 +85,22 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         return displayComposer
     }
 
+    /// Performer credits for display, joined the same way `displayComposer`
+    /// is server-joined: "Name (subRole)" per credit, " • "-separated.
+    var nonEmptyDisplayPerformer: String? { Self.joinedCredits(contributors, role: "performer") }
+    /// Conductor credits for display, same join convention as performer.
+    var nonEmptyDisplayConductor: String? { Self.joinedCredits(contributors, role: "conductor") }
+
+    private static func joinedCredits(_ contributors: [Contributor]?, role: String) -> String? {
+        let matches = (contributors ?? []).filter { $0.role == role }
+        guard !matches.isEmpty else { return nil }
+        let joined = matches.map { credit in
+            guard let subRole = credit.subRole, !subRole.isEmpty else { return credit.artist.name }
+            return "\(credit.artist.name) (\(subRole))"
+        }.joined(separator: " • ")
+        return joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : joined
+    }
+
     /// File suffixes of lossless encodings, where the format says more than the
     /// (high, variable) bit rate.
     private static let losslessSuffixes: Set<String> = [
@@ -116,9 +140,22 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, title, artist, artistId, album, albumId, coverArt, duration
         case track, discNumber, year, genre, genres, bitRate, suffix, contentType, size, starred
-        case displayComposer
+        case displayComposer, contributors
         case replayGain
         case displayAlbumArtist, comment, groupings, created, played, playCount, samplingRate, sortName
+    }
+}
+
+/// OpenSubsonic contributor credit: a role-tagged artist with an optional
+/// subRole (e.g. an instrument for the `performer` role). See `Song.contributors`.
+struct Contributor: Codable, Sendable, Hashable {
+    var role: String
+    var subRole: String?
+    var artist: ContributorArtist
+
+    struct ContributorArtist: Codable, Sendable, Hashable {
+        var id: String
+        var name: String
     }
 }
 
