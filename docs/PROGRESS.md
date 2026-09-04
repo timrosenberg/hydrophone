@@ -70,6 +70,29 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #134: balanced transport/volume toolbar bubble padding (2026-09-04) ✅
+
+- Replaced the transport's one-sided 16pt leading inset and the volume/panel
+  cluster's one-sided 16pt trailing inset with 8pt horizontal padding. Each
+  toolbar item retains the same 16pt total inset, so the system-drawn bubble
+  widths and the established transport, loading-status, centered-LCD, and
+  trailing-item layout remain unchanged while the controls sit centrally
+  inside their bubbles.
+- Test seam: macOS owns the toolbar bubble chrome and does not expose stable
+  geometry to a hermetic unit test. With Tim's approval, this targeted visual
+  correction uses before/after app captures instead of a contrived source-text
+  assertion; the existing automated suite remains the regression gate.
+- Gate: unsigned build succeeds with zero compiler diagnostics; full suite
+  **341 test cases / 361 executions, 0 failures/skips** (canonical xcresult
+  summary); SwiftLint 0 violations and `git diff --check` passes.
+- Live (2026-09-04): uniquely named baseline and candidate builds against the
+  configured Navidrome server verified light and dark appearances at the
+  default 1,180pt and minimum 1,000pt window widths, with the Now Playing panel
+  both closed and open and the library status idle/loading. The controls moved
+  8pt toward each bubble's visual center without changing bubble or LCD
+  placement. The pre-existing minimum-width loading-status/transport overlap
+  is unchanged and remains outside #134.
+
 ## Issue #118: Songs library walk now starts at launch, not on first visit (2026-09-04) ✅
 
 - `AppModel` now wires `ConnectionModel`'s successful persisted-connection
@@ -112,7 +135,6 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   time Demo Server flow. Without opening Songs, the toolbar showed "Loading
   songs…", advanced to "500 songs loaded", and then cleared when the complete
   walk finished.
-
 ## Issue #102: library-loading spinner moved into the top toolbar (2026-09-04) ✅
 
 - The "Loading songs…" / "N songs loaded" status no longer renders in a
