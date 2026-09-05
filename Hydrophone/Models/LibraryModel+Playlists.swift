@@ -5,7 +5,8 @@ import Foundation
 /// Split from LibraryModel for the type-body-length lint.
 extension LibraryModel {
     func loadPlaylistsIfNeeded() async {
-        guard playlists.isEmpty else { return }
+        guard await metadataAllowsLoading() else { return }
+        guard playlists.isEmpty || seededPlaylists else { return }
         let generation = librarySessionGeneration
         guard playlistsLoadingGeneration != generation else { return }
         playlistsLoadingGeneration = generation
@@ -16,12 +17,15 @@ extension LibraryModel {
     }
 
     func reloadPlaylists() async {
+        guard await metadataAllowsLoading() else { return }
         let generation = librarySessionGeneration
         do {
             let fetched = try await client.list(.playlists, of: Playlist.self)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             guard generation == librarySessionGeneration else { return }
             playlists = fetched
+            seededPlaylists = false
+            persistMetadata(.playlists(fetched), generation: generation)
         } catch {
             // keep existing
         }
@@ -31,7 +35,12 @@ extension LibraryModel {
     /// work/movement/bit-depth lookup, so the caller can render tracks before
     /// paying for `joinWorkInfo(intoPlaylist:)`'s cold-cache cost. See #124.
     func playlist(id: String) async -> Playlist? {
-        try? await client.object(.playlist(id: id), as: Playlist.self)
+        guard await metadataAllowsLoading() else { return nil }
+        let generation = librarySessionGeneration
+        guard let fetched = try? await client.object(.playlist(id: id), as: Playlist.self),
+              generation == librarySessionGeneration else { return nil }
+        persistMetadata(.playlist(fetched), generation: generation)
+        return fetched
     }
 
     /// Non-blocking work/movement + bit-depth enrichment pass for an
@@ -39,10 +48,12 @@ extension LibraryModel {
     /// native song-index cache (a full `/api/song` walk) never delays the
     /// playlist's own tracks from appearing. See #124.
     func joinWorkInfo(intoPlaylist playlist: Playlist) async -> Playlist {
+        let generation = librarySessionGeneration
         var updated = playlist
         var songs = updated.entry ?? []
         await joinWorkInfo(into: &songs)
         updated.entry = songs
+        persistMetadata(.playlist(updated), generation: generation)
         return updated
     }
 
@@ -52,8 +63,11 @@ extension LibraryModel {
     /// playlist (when the server echoes it) so callers can select it.
     @discardableResult
     func createPlaylist(name: String, songIds: [String] = []) async -> Playlist? {
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials else { return nil }
         let created = try? await client.object(.createPlaylist(name: name, songIds: songIds),
-                                               as: Playlist.self)
+                                               using: credentials, as: Playlist.self)
+        guard generation == librarySessionGeneration else { return nil }
         await reloadPlaylists()
         return created
     }

@@ -23,7 +23,7 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
-M2 ✅ (UI/data live-verified; original offline metadata proposal dropped;
+M2 ✅ (UI/data live-verified; persistent metadata warm-start is now wired;
 #128 warm-start persistence foundation implemented in #146, not yet app-wired;
 artwork cached on disk; Songs and selected genres paginate to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
@@ -113,6 +113,31 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   live verification used build-command-only ad-hoc signing overrides. No
   project signing settings changed. No production metadata container opens
   in this foundation PR; schema persistence is verified by hermetic tests.
+
+## Issue #128 continuation: persistent metadata warm start (2026-09-04)
+
+- The continuation branch wires the #146 schema through an actor-owned
+  `LibraryMetadataStore`, scoped by normalized server/account identity. A
+  verified ping is required before opening and reading a seed; disconnect and
+  credential changes retire sessions while retaining disk data for a later
+  reconnect. Accepted writes are serialized and best-effort.
+- `LibraryModel` presents seeded songs, albums, artists, genres, playlists,
+  and favorites before live requests. Successful live results replace or
+  reconcile those rows while generation checks prevent stale sessions from
+  repopulating the UI. A complete song walk is required before full-sync
+  pruning; random fallback, cancellation, repeated pages, and failed pages
+  remain non-authoritative.
+- Full reconciliation is transactional and replays newer favorites/playlist
+  writes over the fetched snapshot. Manual library scans poll until the server
+  reports completion, then run the same complete refresh. No periodic timer or
+  new network endpoint was added beyond `getScanStatus`.
+- Hermetic store coverage includes disk reopen, account/API-key isolation,
+  corrupt/unwritable roots, rollback, stale sessions, graph validation,
+  deletion pruning, write replay, native-field preservation/clearing, and a
+  14,000-to-7,000 song reconciliation. The independent Swift runtime suite
+  passes **15 tests**; app integration tests and the full Xcode gate remain
+  pending because the current environment's macro plugin sandbox failed during
+  compilation.
 
 ## Issue #141: implement song-index consolidation & cache abstraction (2026-09-04)
 

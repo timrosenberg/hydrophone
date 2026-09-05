@@ -5,7 +5,8 @@ shippable-internally increment. The hardest item — streaming gapless via
 `AVAudioEngine` — is isolated as a spike (M4) and de-risked by landing simpler
 playback first (M3).
 
-> **Live status:** M0–M6 ✅ (M2's SwiftData cache was dropped by design;
+> **Live status:** M0–M6 ✅ (M2's SwiftData metadata warm start is wired on the
+> #128 continuation branch;
 > gapless human-verified 2026-07-03; playlist reorder verified vs Navidrome;
 > output-device switching human-verified vs a USB DAC 2026-07-05, incl.
 > hardware sample-rate matching) · M7 ✅ (shortcuts, full restoration incl.

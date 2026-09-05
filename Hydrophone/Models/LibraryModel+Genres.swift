@@ -2,6 +2,8 @@ extension LibraryModel {
     private static let genrePageSize = 500
 
     func songs(forGenre genre: String) async -> [Song] {
+        guard await metadataAllowsLoading() else { return [] }
+        let generation = librarySessionGeneration
         var songs: [Song] = []
         var offset = 0
         while true {
@@ -12,6 +14,8 @@ extension LibraryModel {
             offset += page.count
         }
         await joinWorkInfo(into: &songs)
+        guard generation == librarySessionGeneration else { return [] }
+        persistMetadata(.songs(songs), generation: generation)
         return songs
     }
 }

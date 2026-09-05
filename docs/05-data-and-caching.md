@@ -1,17 +1,38 @@
 # 05 — Local Metadata & Artwork Caching
 
-> **Decision (#128 / #146):** Persistent library metadata is being added as
-> a warm-start speed optimization. The server remains authoritative and a
-> verified connection is still required. #146 supplies the versioned SwiftData
-> schema and value mappings only; the running app still fetches metadata per
-> session. Store lifecycle, seeding, write-behind, and sync follow in #147–151.
+> **Decision (#128 / #146):** Persistent library metadata is a warm-start
+> speed optimization. The server remains authoritative and a verified
+> connection is still required. #146 supplies the versioned SwiftData schema;
+> #147–151 add the actor-owned store lifecycle, seed, write-behind, and full
+> reconciliation path.
 
-**Currently persisted by the running app:** artwork only. The metadata
-foundation below is exercised with hermetic test containers, not opened or
-written by the app. No audio is cached or downloaded by this feature; every
-play continues to stream from the server.
+**Persisted by the running app:** artwork and server-scoped library metadata.
+Metadata never bypasses connection verification, and a failed or incomplete
+refresh cannot prune the last complete disk snapshot. No audio is cached or
+downloaded by this feature; every play continues to stream from the server.
 
 ## In-memory metadata caches
+
+## Persistent metadata store
+
+`LibraryMetadataStore` is an actor over the versioned SwiftData schema in
+`Models/MetadataStore`. Its root is under the app Caches directory, with a
+hashed scope for normalized server URL, username, and API-key identity. It
+never stores passwords or API-key material. `open(for:)` is called only after
+the connection ping succeeds; a session token gates every read, write, and
+sync completion. `close()` retires the session but leaves the disk snapshot
+available for the next verified connection.
+
+The connection hook reads the snapshot before starting live library loads.
+Seeded rows are marked separately from completed live collections, so a
+nonempty seed never suppresses the server refresh. Live fetches publish to the
+observable model first and enqueue serialized, best-effort writes. Summary
+values preserve richer detail when fields are omitted, while explicit empty
+relationships clear prior detail. Full refresh uses an exhausted, credential-
+bound song walk plus all collection roots; only a successful complete graph is
+reconciled in one transaction. Writes accepted during that walk replay over
+the fetched snapshot before commit. Manual library rescan waits for
+`getScanStatus` to report completion and then runs the same refresh once.
 
 This section audits every in-memory cache and cache-like load/session state in
 the client and model layer, as implemented after #139 (inventory) → #140
@@ -105,11 +126,11 @@ disk-persisted, already documented).
 Everything above is **session-only, in-memory, and non-authoritative** — it
 exists purely so a view doesn't re-walk the network on every appearance; the
 server remains the source of truth every time a cache misses. #128 adds a
-disk-backed, cross-session persistent layer (the #146 schema foundation is
-described below) and addresses a different lifetime:
-it needs to survive relaunch, while this layer resets with the connection
-session. Persistent seeds still require a verified connection. The two layers are not expected to merge; §140.4 below states how
-#128 should plug into the design decided here instead of rediscovering it.
+disk-backed, cross-session persistent layer (the #146 schema and actor store
+described above). It survives relaunch, while this layer resets with the
+connection session. The two layers remain separate: the observable model is
+the session projection, and the actor store is its warm-start and
+reconciliation backing store.
 
 ## Design decision (#140), implemented in #141: song-index consolidation & cache abstraction
 
@@ -546,14 +567,12 @@ SwiftData records are context-confined, **not inherently MainActor-bound**;
 the future store may use a `ModelActor`. A hermetic test exercises that boundary
 by fetching in a separate model actor and returning only `[Song]`.
 
-### Remaining epic boundaries
+### Persistent metadata epic boundaries
 
-- #147: store location, server/account isolation, container open/close.
-- #148: seed existing collections once after connection verification; distinguish
-  seeded data from completed live loads so nonempty guards do not suppress refresh.
-- #149: best-effort writes from successful live fetches and mutations.
-- #150: full background walk, transactional reconciliation and deletion pruning.
-- #151: manual-rescan integration and final cache inventory reconciliation.
+Issues #147–151 are implemented together on the continuation branch: store
+location and isolation, verified seed, write-behind, complete transactional
+reconciliation, and manual-rescan integration. Review and landing remain
+deferred until the epic is complete.
 
 The existing `LibrarySongIndex` join point and session invalidation remain in
 place. #146 adds no UI behavior, network request, audio persistence, or launch

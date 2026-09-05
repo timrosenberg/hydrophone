@@ -66,6 +66,7 @@ struct Endpoint: Sendable {
     /// Ask the server to rescan its music folders (Settings → Connection,
     /// File → Update Server Library).
     static let startScan = Endpoint("startScan")
+    static let scanStatus = Endpoint("getScanStatus")
 
     // MARK: Library
     /// `genre` requires `type == "byGenre"`; `fromYear`/`toYear` require

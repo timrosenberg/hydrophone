@@ -5,6 +5,7 @@ import Foundation
 /// LibraryModel+Playlists.swift.
 extension LibraryModel {
     func loadHomeIfNeeded() async {
+        guard await metadataAllowsLoading() else { return }
         guard !homeLoaded else { return }
         await reloadHome()
     }
@@ -12,6 +13,7 @@ extension LibraryModel {
     /// The four shelves load concurrently; a shelf the server can't provide
     /// simply stays empty (the view hides it).
     func reloadHome() async {
+        guard await metadataAllowsLoading() else { return }
         let generation = librarySessionGeneration
         guard homeLoadingGeneration != generation else { return }
         homeLoadingGeneration = generation

@@ -24,7 +24,7 @@ final class LibrarySongIndex: Sendable {
     private let navidrome: NavidromeClient
     private let nativeFeaturesAvailable: @Sendable () async -> Bool
 
-    private let subsonicCache = CredentialScopedCache<[Song]>()
+    private let subsonicCache = CredentialScopedCache<AllSongsOutcome>()
     private let nativeCache = CredentialScopedCache<NativeSongIndexSnapshot>()
 
     private static let pageLimiter = AsyncLimiter(limit: 6)
@@ -58,18 +58,50 @@ final class LibrarySongIndex: Sendable {
         onProgress: (@Sendable ([Song]) async -> Void)? = nil
     ) async throws(SubsonicError) -> [Song] {
         guard let creds = await client.currentCredentials else { throw .notConfigured }
-        let songs: [Song]
+        let outcome: AllSongsOutcome
         do {
-            songs = try await subsonicCache.resolve(using: creds) { () async throws -> ([Song], Bool) in
+            outcome = try await subsonicCache.resolve(using: creds) { () async throws -> (AllSongsOutcome, Bool) in
                 let outcome = try await self.buildAllSongs(using: creds, onProgress: onProgress)
-                return (outcome.songs, outcome.isComplete)
+                return (outcome, outcome.isComplete)
             }
         } catch {
             throw error as? SubsonicError ?? .transport(error.localizedDescription)
         }
-        var joined = songs
+        var joined = outcome.songs
         await join(into: &joined)
         return joined
+    }
+
+    /// A pruning authority must represent an exhausted walk, never the browsing
+    /// fallback. Coalesces with the normal walk and reuses its completed cache.
+    func completeSongs(using creds: ServerCredentials) async throws -> [Song] {
+        guard !Task.isCancelled, await client.currentCredentials == creds else {
+            throw CancellationError()
+        }
+        let outcome = try await subsonicCache.resolve(using: creds) {
+            let result = try await self.buildAllSongs(using: creds, onProgress: nil)
+            return (result, result.isComplete)
+        }
+        guard outcome.isComplete else { throw SubsonicError.decoding("Incomplete library walk") }
+        var songs = outcome.songs
+        if await nativeFeaturesAvailable() {
+            // Unlike the display-only join, a failed native walk cannot silently
+            // become a complete snapshot that erases persisted work metadata.
+            let native = try await songIndexSnapshot()
+            for index in songs.indices {
+                let record = native.record(id: songs[index].id)
+                let work = record.flatMap(Self.workInfo(from:))
+                songs[index].work = work?.work
+                songs[index].movementName = work?.movementName
+                songs[index].movementNumber = work?.movementNumber
+                songs[index].movementTotal = work?.movementTotal
+                songs[index].bitDepth = record?.bitDepth
+            }
+        }
+        guard !Task.isCancelled, await client.currentCredentials == creds else {
+            throw CancellationError()
+        }
+        return songs
     }
 
     /// Walks the library and falls back to the existing random-sample
@@ -97,8 +129,7 @@ final class LibrarySongIndex: Sendable {
             trackedProgress = nil
         }
         do {
-            let songs = try await walkAllSongs(using: creds, onProgress: trackedProgress)
-            return AllSongsOutcome(songs: songs, isComplete: true)
+            return try await walkAllSongs(using: creds, onProgress: trackedProgress)
         } catch {
             if let marker, await marker.published {
                 throw error
@@ -122,14 +153,15 @@ final class LibrarySongIndex: Sendable {
     private func walkAllSongs(
         using creds: ServerCredentials,
         onProgress: (@Sendable ([Song]) async -> Void)?
-    ) async throws(SubsonicError) -> [Song] {
+    ) async throws(SubsonicError) -> AllSongsOutcome {
         let pageSize = Self.pageSize
         let first = try await client.object(
             .allSongs(count: pageSize, offset: 0), using: creds,
             as: SearchContent.self
         ).song ?? []
         if first.isEmpty {
-            return try await client.list(.randomSongs(size: pageSize), using: creds, of: Song.self)
+            let sample = try await client.list(.randomSongs(size: pageSize), using: creds, of: Song.self)
+            return AllSongsOutcome(songs: sample, isComplete: sample.isEmpty)
         }
         // Checked before the short-page return below too: a buggy server
         // that dumps its whole catalog (or repeats an id) on page one must
@@ -139,7 +171,7 @@ final class LibrarySongIndex: Sendable {
             throw .decoding("search3 pagination returned duplicate song ids")
         }
         await publishAllSongsProgress(first, afterAppending: first, onProgress: onProgress)
-        guard first.count == pageSize else { return first }
+        guard first.count == pageSize else { return AllSongsOutcome(songs: first, isComplete: true) }
 
         var songs = first
         var nextOffset = pageSize
@@ -179,7 +211,7 @@ final class LibrarySongIndex: Sendable {
                 songs.append(contentsOf: page)
                 seenIDs.formUnion(pageIDs)
                 await publishAllSongsProgress(songs, afterAppending: page, onProgress: onProgress)
-                if page.count < pageSize { return songs }
+                if page.count < pageSize { return AllSongsOutcome(songs: songs, isComplete: true) }
             }
             nextOffset += pageSize * offsets.count
         }

@@ -5,6 +5,7 @@ import Foundation
 /// LibraryModel+Playlists.swift.
 extension LibraryModel {
     func loadStarredIfNeeded() async {
+        guard await metadataAllowsLoading() else { return }
         // `starredLoaded` (not emptiness): a user with zero favorites would
         // otherwise refetch on every appearance; the generation-owned
         // in-flight identity stops same-session callers from duplicating it.
@@ -19,6 +20,7 @@ extension LibraryModel {
 
     @discardableResult
     func reloadStarred() async -> Bool {
+        guard await metadataAllowsLoading() else { return false }
         let generation = librarySessionGeneration
         do {
             let starred = try await client.object(.starred2, as: StarredContent.self)
@@ -29,6 +31,7 @@ extension LibraryModel {
             starredSongs = songs
             starredSongIDs = Set(starredSongs.map(\.id))
             starredLoaded = true
+            persistMetadata(.favorites(MetadataFavorites(songs: songs, albums: starredAlbums)), generation: generation)
             return true
         } catch {
             // leave existing values; surfaced via UI empty state
@@ -66,20 +69,32 @@ extension LibraryModel {
     /// override back; a failed reload keeps overrides for accepted writes.
     func setStarred(_ starred: Bool, songIds: [String]) async {
         guard !songIds.isEmpty else { return }
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials else { return }
         for id in songIds { starOverrides[id] = starred }
-        for id in songIds where (try? await client.sendStatus(.favorite(id: id, starred: starred))) == nil {
-            starOverrides[id] = nil
+        for id in songIds {
+            let succeeded = (try? await client.sendStatus(
+                .favorite(id: id, starred: starred), using: credentials
+            )) != nil
+            if !succeeded { starOverrides[id] = nil }
         }
+        guard generation == librarySessionGeneration else { return }
         if await reloadStarred() {
             for id in songIds { starOverrides[id] = nil }
         }
     }
 
     func setAlbumStarred(_ starred: Bool, albumId: String) async {
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials else { return }
         albumStarOverrides[albumId] = starred
-        if (try? await client.sendStatus(.favorite(id: albumId, kind: .album, starred: starred))) == nil {
+        let succeeded = (try? await client.sendStatus(
+            .favorite(id: albumId, kind: .album, starred: starred), using: credentials
+        )) != nil
+        if !succeeded {
             albumStarOverrides[albumId] = nil
         }
+        guard generation == librarySessionGeneration else { return }
         if await reloadStarred() { albumStarOverrides[albumId] = nil }
     }
 
