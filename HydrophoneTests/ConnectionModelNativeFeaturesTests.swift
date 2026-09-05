@@ -216,7 +216,9 @@ struct ConnectionModelNativeFeaturesTests {
         await model.disconnect()
 
         #expect(model.nativeFeaturesState == .unknown)
-        #expect(invalidations == 1)
+        // Refresh invalidates before opening the verified session; disconnect
+        // retires that session as a second lifecycle boundary.
+        #expect(invalidations == 2)
     }
 
     // MARK: - Scan → library invalidation (#24, #140/#141)
