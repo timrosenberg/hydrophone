@@ -25,9 +25,11 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; persistent metadata warm-start is now wired;
 #128 warm-start persistence foundation implemented in #146, not yet app-wired;
-artwork cached on disk; Songs and selected genres paginate to exhaustion;
+artwork and server metadata cached on disk; Songs and selected genres paginate
+to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
-final #82 review-fix live recheck passed on 2026-08-28) ·
+final #82 review-fix live recheck passed on 2026-08-28; #128 warm-start
+continuation is implemented and live-verified on 2026-09-04) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
