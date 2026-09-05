@@ -135,9 +135,19 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   corrupt/unwritable roots, rollback, stale sessions, graph validation,
   deletion pruning, write replay, native-field preservation/clearing, and a
   14,000-to-7,000 song reconciliation. The independent Swift runtime suite
-  passes **15 tests**; app integration tests and the full Xcode gate remain
-  pending because the current environment's macro plugin sandbox failed during
-  compilation.
+-  passes **15 tests**; the full app suite passes **398 tests / 398 executions,
+  0 failures, 0 skips** (canonical `xcresulttool` summary at
+  `/tmp/hydrophone-128-final.xcresult`). SwiftLint is clean and
+  `git diff --check` is clean. The unsigned app build passes; only the normal
+  no-AppIntents metadata notice is emitted.
+- Live verification: 2026-09-04, Tim's configured Navidrome server, exact
+  executable `/private/tmp/hydrophone-128-dd-escalated/Build/Products/Debug/Hydrophone.app`.
+  First branch launch showed the connected library while the walk progressed
+  (6,500 songs visible); after the walk, a warm relaunch rendered Albums and
+  showed **14,231 songs loaded** in about **0.88 s** from the app launch call.
+  The server-scoped store was nonempty at
+  `~/Library/Caches/app.hydrophone/Metadata/.../metadata.store` (**14,393,344
+  bytes**). No audio claim was made during this metadata check.
 
 ## Issue #141: implement song-index consolidation & cache abstraction (2026-09-04)
 
