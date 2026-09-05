@@ -5,16 +5,27 @@ final class BrowserLibraryProtocol: URLProtocol, @unchecked Sendable {
     actor State {
         var classicalRequests = 0
         var firstGenreDelivered = false
+        var searchRequests = 0
+        var firstSearchResumed = false
+        private var holdFirstSearch = false
+        private var firstSearch: CheckedContinuation<Void, Never>?
         private var holdFirstGenre = false
         private var firstGenre: CheckedContinuation<Void, Never>?
 
-        func reset(holdFirstGenre: Bool = false) {
+        func reset(holdFirstGenre: Bool = false, holdFirstSearch: Bool = false) {
             firstGenre?.resume()
             firstGenre = nil
             classicalRequests = 0
             firstGenreDelivered = false
             self.holdFirstGenre = holdFirstGenre
+            firstSearch?.resume()
+            firstSearch = nil
+            searchRequests = 0
+            firstSearchResumed = false
+            self.holdFirstSearch = holdFirstSearch
         }
+
+        func releaseFirstSearch() { firstSearch?.resume(); firstSearch = nil }
 
         func releaseFirstGenre() {
             firstGenre?.resume()
@@ -38,6 +49,11 @@ final class BrowserLibraryProtocol: URLProtocol, @unchecked Sendable {
                     ["value": "Jazz", "songCount": 1, "albumCount": 1]
                 ]]]
             case "search3.view":
+                searchRequests += 1
+                if holdFirstSearch, searchRequests == 1 {
+                    await withCheckedContinuation { firstSearch = $0 }
+                    firstSearchResumed = true
+                }
                 payload = ["searchResult3": ["song": Self.page(offset: offset, count: count)]]
             case "getSongsByGenre.view":
                 if value("genre") == "Jazz" {

@@ -138,7 +138,15 @@ final class AppModel {
         self.library = library
         self.player = player
         connection.setLibraryInvalidationHandler { [weak library] in await library?.reset() }
-        connection.setSongsLoadHandler { [weak library] in await library?.loadSongsIfNeeded() }
+        connection.setLibraryConnectionHandler { [weak library] credentials in
+            await library?.prepareMetadata(using: credentials)
+        }
+        connection.setSongsLoadHandler { [weak library] in await library?.startConnectedLoads() }
+        if library.metadata != nil {
+            connection.setLibraryRescanHandler { [weak library] credentials in
+                await library?.refreshMetadataAfterScan(using: credentials)
+            }
+        }
     }
 
     convenience init() {
@@ -156,7 +164,7 @@ final class AppModel {
         let library = LibraryModel(client: client, navidrome: navidrome,
                                    nativeFeaturesAvailable: {
             await connection.nativeFeaturesAvailable()
-        })
+        }, metadata: LibraryMetadataStore())
 
         let player = PlayerModel(playback: playback, nowPlaying: nowPlaying,
                                   scrobbler: { id, submission in

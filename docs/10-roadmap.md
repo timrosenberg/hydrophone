@@ -5,7 +5,8 @@ shippable-internally increment. The hardest item — streaming gapless via
 `AVAudioEngine` — is isolated as a spike (M4) and de-risked by landing simpler
 playback first (M3).
 
-> **Live status:** M0–M6 ✅ (M2's SwiftData cache was dropped by design;
+> **Live status:** M0–M6 ✅ (M2's SwiftData metadata warm start is wired on the
+> #128 continuation branch;
 > gapless human-verified 2026-07-03; playlist reorder verified vs Navidrome;
 > output-device switching human-verified vs a USB DAC 2026-07-05, incl.
 > hardware sample-rate matching) · M7 ✅ (shortcuts, full restoration incl.
@@ -40,9 +41,11 @@ playback first (M3).
 - **Exit:** Test Connection succeeds against a Navidrome server; auth failures
   surface a clear re-auth path.
 
-## M2 — Library browse ✅ (SwiftData cache dropped by design)
-- Paginated fetch for Albums/Artists/Songs/Genres (the planned SwiftData
-  `LibraryStore` was dropped — in-memory `LibraryModel` instead) — `05`/`02`.
+## M2 — Library browse ✅
+- Paginated fetch for Albums/Artists/Songs/Genres through the observable
+  `LibraryModel`. The original offline store proposal was dropped; #128 now
+  adds SwiftData metadata seeding for faster verified, connected launches,
+  followed by live refresh and complete reconciliation — `05`/`02`.
 - Sidebar (Library group), dense sortable `Table`, basic now-playing header
   (non-functional transport), artwork thumbnails via `ArtworkCache` — `04`/`05`.
 - **Exit:** browse a large library smoothly with pagination; sort columns;

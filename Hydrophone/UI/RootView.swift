@@ -179,7 +179,8 @@ struct RootView: View {
         // Drive section loading here rather than from each detail view's own
         // `.task`: the detail root view didn't reliably run its `.task` on
         // initial launch, which left the first screen blank.
-        .task(id: selectionRaw) {
+        .task(id: LibraryViewLoadID(selection: selectionRaw, generation: library.librarySessionGeneration,
+                                    ready: library.metadataReadiness == .ready)) {
             await load(selection)
         }
     }
@@ -259,4 +260,13 @@ struct RootView: View {
         }
         .background(.background)
     }
+}
+
+/// Restart the selected section after connection seeding or a manual rescan.
+/// Its launch-time task may have been retired while the connection was verified.
+struct LibraryViewLoadID: Equatable {
+    let selection: String
+    let generation: Int
+    let ready: Bool
+    var revision = 0
 }

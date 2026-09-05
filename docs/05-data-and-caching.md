@@ -1,15 +1,80 @@
 # 05 — Local Metadata & Artwork Caching
 
-> **Decision (#128 / #146):** Persistent library metadata is being added as
-> a warm-start speed optimization. The server remains authoritative and a
-> verified connection is still required. #146 supplies the versioned SwiftData
-> schema and value mappings only; the running app still fetches metadata per
-> session. Store lifecycle, seeding, write-behind, and sync follow in #147–151.
+> **Decision (#128 / #146):** Persistent library metadata is a warm-start
+> speed optimization. The server remains authoritative and a verified
+> connection is still required. #146 supplies the versioned SwiftData schema;
+> #147–151 add the actor-owned store lifecycle, seed, write-behind, and full
+> reconciliation path.
 
-**Currently persisted by the running app:** artwork only. The metadata
-foundation below is exercised with hermetic test containers, not opened or
-written by the app. No audio is cached or downloaded by this feature; every
-play continues to stream from the server.
+**Persisted by the running app:** artwork and server-scoped library metadata.
+Metadata never bypasses connection verification, and a failed or incomplete
+refresh cannot prune the last complete disk snapshot. No audio is cached or
+downloaded by this feature; every play continues to stream from the server.
+
+## Persistent metadata store
+
+`LibraryMetadataStore` is an actor over the versioned SwiftData schema in
+`Models/MetadataStore`. Its root is under the app Caches directory, with a
+hashed scope for normalized server URL, username, and API-key identity. It
+never stores passwords or API-key material. `open(for:)` is called only after
+the connection ping succeeds; a session token gates every read, write, and
+sync completion. `close()` retires the session but leaves the disk snapshot
+available for the next verified connection.
+
+The connection hook reads the snapshot before starting live library loads.
+Seeded rows are marked separately from completed live collections, so a
+nonempty seed never suppresses the server refresh. Live fetches publish to the
+observable model first and enqueue serialized, best-effort writes. Summary
+values preserve richer detail when fields are omitted, while explicit empty
+relationships clear prior detail. Full refresh uses an exhausted, credential-
+bound song walk plus all collection roots; only a successful complete graph is
+reconciled in one transaction. Writes accepted during that walk replay over
+the fetched snapshot before commit; initial live-load writes are drained before
+the walk starts so older responses cannot overwrite its newer snapshot.
+`getStarred2` alone establishes favorite membership once loaded; ordinary
+song/album/detail writes preserve that authority. Playlist fetches are guarded
+against subsequent edits and reloads, and delayed view enrichment cannot write
+an obsolete playlist back to disk. Manual library rescan waits for
+`getScanStatus` to report completion and then runs the same refresh once.
+Selected-section and playlist-detail tasks restart when the library session or
+metadata readiness changes, including launch directly into a saved playlist.
+Ordinary playlist listing generations are separate from mutation revisions so
+background listing cannot retire an otherwise valid detail request.
+
+### Review hardening (#153)
+
+- Settings **Test Connection** validates only the unsaved form. Failure reports
+  an error without retiring the current library/store or changing the persisted
+  connection generation. Persisted connect/refresh failures still invalidate.
+- An empty `search3` followed by a random-sample fallback is never a complete
+  inventory, even when the sample is empty. It cannot authorize song deletion
+  and is not cached as a completed walk. A truly empty server therefore retains
+  any older disk inventory until completeness can be established by a supported
+  authoritative path; an ambiguous fallback cannot erase it.
+- A failed playlist detail retries the complete playlist listing and all details
+  once. Re-reading the listing handles deletion during the first attempt. If the
+  retry also fails, the entire reconciliation remains canceled and the prior
+  complete snapshot is retained. Partial playlists never authorize pruning;
+  reconnect/manual rescan can attempt a new pass.
+- Detail revisions and completed-edit reload triggers are keyed by playlist ID.
+  Editing B cannot retire A's pending detail. The selected playlist refreshes
+  after its own edit finishes, retaining optimistic rows during the round-trip.
+- The genre browser reloads its selected genre on session/readiness changes,
+  without requiring another click. Retired account rows remain rejected by the
+  model; returning them merely to avoid an empty pane would break isolation.
+- A replacement native probe leaves waiters pending while `.checking`; only
+  success, failure or disconnect resolves them.
+
+### Deferred write-cost optimization
+
+`LibraryMetadataStoreBatch` currently fetches all five entity tables and builds
+canonical identity maps for every write, including a small album/detail fetch.
+This work runs on the store actor and does not delay UI publication, but its
+cost scales with the full library. Keeping canonical graphs correct during
+upsert/rollback/replay takes priority in this change. A follow-up should profile
+routine small writes at 14k+ songs and evaluate targeted identity fetches or
+coalesced writes while preserving relationship identity and transactional
+rollback. This is a performance limitation, not a redundant cache to remove.
 
 ## In-memory metadata caches
 
@@ -24,7 +89,7 @@ a page is fetched.
 
 | Owner · state | Scope/key | Source endpoint(s) | Consumers | Warm trigger | Coalescing / stale guard | Invalidation | Retry/failure | Class |
 |---|---|---|---|---|---|---|---|---|
-| `LibrarySongIndex`'s Subsonic cache (`CredentialScopedCache<[Song]>`) | exact `ServerCredentials` | `search3` (empty query, paginated) | `LibraryModel.loadSongsIfNeeded()` (Songs tab, Shuffle All fallback paths) | `LibraryModel.loadSongsIfNeeded()`, driven eager by `ConnectionModel`'s `songsLoadHandler` on connect (#118) | `CredentialScopedCache`'s generation counter + in-flight coalescing; a completion whose generation is stale is dropped, never written back | Explicit: `LibrarySongIndex.invalidate()`, called by `LibraryModel.invalidateSongs()` (awaited directly, not fire-and-forget) from `reset()` | Only a walk that reaches exhaustion is cached (`resolve`'s cacheable-tuple form); a mid-walk failure after partial progress propagates the error uncached (never silently swapped for a random sample) | Authoritative fetched data |
+| `LibrarySongIndex`'s Subsonic cache (`CredentialScopedCache<AllSongsOutcome>`) | exact `ServerCredentials` | `search3` (empty query, paginated) | `LibraryModel.loadSongsIfNeeded()` (Songs tab, Shuffle All fallback paths) | `LibraryModel.loadSongsIfNeeded()`, driven eager by `ConnectionModel`'s `songsLoadHandler` on connect (#118) | `CredentialScopedCache`'s generation counter + in-flight coalescing; a completion whose generation is stale is dropped, never written back | Explicit: `LibrarySongIndex.invalidate()`, called by `LibraryModel.invalidateSongs()` (awaited directly, not fire-and-forget) from `reset()` | Only a walk that reaches exhaustion is cached (`resolve`'s cacheable-tuple form); a mid-walk failure after partial progress propagates the error uncached (never silently swapped for a random sample) | Authoritative fetched data |
 | `SubsonicClient.formPostSupport` | base URL only (not full credentials) | `getOpenSubsonicExtensions` | internal `perform(_:using:)` (routes flagged endpoints to POST) | Lazily, first flagged endpoint call per base URL | None (single cached tuple); a probe failure resolves `false` for that call *without* caching it, so one hiccup can't wedge POST off for the session | None explicit — reconnecting to the same base URL under different credentials keeps the old flag; correct today because form-post support is a server capability, not an account one | Failure (network, non-OpenSubsonic server, missing payload) resolves to `false`, uncached | Capability/auth state |
 | `NavidromeClient.tokenCache` (`CredentialScopedCache<NavidromeToken>`) | exact `ServerCredentials` | `POST /auth/login` | `ensureValidToken(using:)`, used by every native `/api/*` page fetch | First native call needing a token (composer load, song-index build, `probeNativeFeatures()`) | `peek(matching:)` checks expiry first (the primitive's own cache-hit check is credentials-only, not expiry-aware) and explicitly invalidates an expired entry before `resolve`; concurrent callers under a genuinely cold token now coalesce onto one `login()` instead of each starting their own | Explicit `invalidate()` on a `401` during `fetchPage`; `login()` (the forced-fresh entry point, e.g. `probeNativeFeatures()`) seeds the cache via `store(_:for:)` after its own unconditional network call, so a later `ensureValidToken` reuses it without a second login | One transparent retry on `401` (invalidate token, relogin, retry once) | Capability/auth state |
 | `LibrarySongIndex`'s native cache (`CredentialScopedCache<NativeSongIndexSnapshot>`) | exact `ServerCredentials` | `/api/song?missing=false` (paginated, via `NavidromeClient`'s pinned `paginatedGet(...using:as:)`) | `songIndex()`, `songs(byComposerId:)`, `workMetadata(songId:)`, `workInfo(forSongIds:)`, `bitDepths(forSongIds:)`, `join(into:)` | First caller needing native song data (Composers tab, `join(into:)`, playlist detail's non-blocking join pass — #124) | Same `CredentialScopedCache` shape as the Subsonic cache above | Explicit: `LibrarySongIndex.invalidate()` clears **both** caches together — called from `ConnectionModel.startLibraryScan()` and (via `LibraryModel.invalidateSongs()`) from `reset()`, so disconnect now invalidates it too (fixes the asymmetry #139 flagged) | Errors propagate to the caller uncached; no fallback sample (unlike the Subsonic cache) since there's no meaningful partial substitute for native data | Authoritative fetched data |
@@ -105,11 +170,30 @@ disk-persisted, already documented).
 Everything above is **session-only, in-memory, and non-authoritative** — it
 exists purely so a view doesn't re-walk the network on every appearance; the
 server remains the source of truth every time a cache misses. #128 adds a
-disk-backed, cross-session persistent layer (the #146 schema foundation is
-described below) and addresses a different lifetime:
-it needs to survive relaunch, while this layer resets with the connection
-session. Persistent seeds still require a verified connection. The two layers are not expected to merge; §140.4 below states how
-#128 should plug into the design decided here instead of rediscovering it.
+disk-backed, cross-session persistent layer (the #146 schema and actor store
+described above). It survives relaunch, while this layer resets with the
+connection session. The two layers remain separate: the observable model is
+the session projection, and the actor store is its warm-start and
+reconciliation backing store.
+
+The #151 consolidation review retains the following distinct responsibilities:
+
+| Retained state | Why the persistent store does not replace it |
+|---|---|
+| `LibrarySongIndex` Subsonic outcome and native snapshot | Coalesces a session's live walks and provides complete-walk evidence plus indexed native joins. A disk seed may be stale and cannot authorize pruning or replace live validation. |
+| `CredentialScopedCache` | Guards in-flight requests by exact credentials and generation. Disk session tokens guard persistence operations, not network completion. |
+| `LibraryModel` collections, pagination, load states and generations | Observable UI projections, selected filters/order, progressive results and cancellation state. SwiftData records never cross into views. |
+| Favorite overrides and playlist revisions | Track pending server round-trips and reject stale completions. The cache stores only accepted server values. |
+| Native auth token and form-POST capability | Authentication/transport behavior, with expiry and server-capability semantics; neither belongs in the metadata database. |
+| Artwork memory/disk tiers | Encoded images and decoded size variants with separate budgets and prefetch rules, not library metadata. |
+
+No additional cache is made redundant by the warm-start layer. The former
+`cachedAllSongs`/`cachedSongIndex` duplication was already removed in #141.
+There is consequently no cache-removal follow-up from this review. The matrix
+above describes live state; persisted metadata adds a verified initial seed,
+then the same live loaders and once-per-session reconciliation refresh it.
+The Subsonic cache now stores `AllSongsOutcome` (songs plus completeness), not
+a bare array. Complete sync rejects random fallback and incomplete pagination.
 
 ## Design decision (#140), implemented in #141: song-index consolidation & cache abstraction
 
@@ -478,12 +562,13 @@ pixel size`:
   hash. (`previews/` filenames are the one exception to the SHA-256 naming
   above.) Consumed by `NowPlayingPanel` via `.quickLookPreview`.
 
-## Persistence: SwiftData foundation (#146)
+## Persistence: SwiftData schema and runtime (#146–151)
 
 The former offline-browsing proposal was dropped. #128 introduces metadata
-persistence for faster connected launches instead. #146 implements only the
-schema/mapping foundation in `Hydrophone/Models/MetadataStore/`; no production
-container or application read/write path is wired yet.
+persistence for faster connected launches instead. #146 supplies the
+schema/mapping foundation in `Hydrophone/Models/MetadataStore/`; #147–151 wire
+the production actor-owned container, verified seed reads, write-behind and
+transactional full sync described at the top of this document.
 
 ### Schema and migration boundary
 
@@ -509,18 +594,18 @@ persisted shape; structural evolution gets another version and explicit stages.
   no separate ID), with optional song/album counts.
 - `LibrarySyncState`: one unique collection key, offset, generation, and
   optional `lastSyncedAt`, mapped to `LibrarySyncSnapshot`. Completion policy
-  belongs to #150; a stored offset alone never establishes a completed sync.
+  is implemented by #150; a stored offset alone never establishes a completed sync.
 
 Artists, albums, songs, and playlists use unique **server IDs**; no random
 client IDs are assigned. Relationship ID arrays record server ordering for
 artist albums, album tracks, and playlist entries. `nil` means detail has not
 been fetched; `[]` means a fetched empty list. Neither becomes the other on a
 round-trip. Deleting a collection nullifies its links and does not delete
-shared songs/albums; pruning belongs to the later full-sync transaction.
+shared songs/albums; pruning belongs to the complete full-sync transaction.
 
 Nested contributor, ReplayGain, genre, and disc-title values use explicit JSON
 `Data` attributes. Scalar fields stay queryable. Decoding malformed nested
-metadata or resolving a missing related ID throws, allowing the future seed
+metadata or resolving a missing related ID throws, allowing the seed
 reader to discard an unusable seed instead of silently omitting rows/credits.
 
 ### Value mapping and context ownership
@@ -537,23 +622,21 @@ service: they do not create containers, save, schedule work, or fetch network
 data. The caller owns the transaction and must roll back on mapping/save
 failure. Inputs replace the represented snapshot, including optional fields
 and unfetched relationship state; combining partial endpoint results with
-already-enriched metadata is a caller policy for #149, not inferred here.
+already-enriched metadata is implemented in `LibraryMetadataStoreBatch`, not inferred here.
 `@Attribute(.unique)` additionally enforces identity at the store boundary.
 
 Call each record's `value()` inside its owning context to obtain the existing
 `Sendable` API value (or `LibrarySyncSnapshot`) before crossing actors.
 SwiftData records are context-confined, **not inherently MainActor-bound**;
-the future store may use a `ModelActor`. A hermetic test exercises that boundary
+the runtime store confines its context to `LibraryMetadataStore`. A hermetic test exercises that boundary
 by fetching in a separate model actor and returning only `[Song]`.
 
-### Remaining epic boundaries
+### Persistent metadata epic boundaries
 
-- #147: store location, server/account isolation, container open/close.
-- #148: seed existing collections once after connection verification; distinguish
-  seeded data from completed live loads so nonempty guards do not suppress refresh.
-- #149: best-effort writes from successful live fetches and mutations.
-- #150: full background walk, transactional reconciliation and deletion pruning.
-- #151: manual-rescan integration and final cache inventory reconciliation.
+Issues #147–151 are implemented together on the continuation branch: store
+location and isolation, verified seed, write-behind, complete transactional
+reconciliation, and manual-rescan integration. Review and landing remain
+deferred until the epic is complete.
 
 The existing `LibrarySongIndex` join point and session invalidation remain in
 place. #146 adds no UI behavior, network request, audio persistence, or launch

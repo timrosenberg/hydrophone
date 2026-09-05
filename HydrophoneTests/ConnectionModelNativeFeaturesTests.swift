@@ -216,7 +216,9 @@ struct ConnectionModelNativeFeaturesTests {
         await model.disconnect()
 
         #expect(model.nativeFeaturesState == .unknown)
-        #expect(invalidations == 1)
+        // Refresh invalidates before opening the verified session; disconnect
+        // retires that session as a second lifecycle boundary.
+        #expect(invalidations == 2)
     }
 
     // MARK: - Scan → library invalidation (#24, #140/#141)
@@ -319,12 +321,20 @@ final class ConnectionProbeMockProtocol: URLProtocol, @unchecked Sendable {
 
     private actor State {
         var handler: (@Sendable (URLRequest) -> Response)?
+        var asyncHandler: (@Sendable (URLRequest) async -> Response)?
         var requests: [URLRequest] = []
 
         func setHandler(_ handler: @escaping @Sendable (URLRequest) -> Response) { self.handler = handler }
-        func reset() { handler = nil; requests = [] }
+        func setAsyncHandler(_ handler: @escaping @Sendable (URLRequest) async -> Response) {
+            asyncHandler = handler
+        }
+        func reset() { handler = nil; asyncHandler = nil; requests = [] }
         func record(_ request: URLRequest) { requests.append(request) }
         func respond(to request: URLRequest) -> Response? { handler?(request) }
+        func respondAsync(to request: URLRequest) async -> Response? {
+            if let asyncHandler { return await asyncHandler(request) }
+            return handler?(request)
+        }
         func matchingRequests(pathSuffix: String) -> [URLRequest] {
             requests.filter { ($0.url?.path ?? "").hasSuffix(pathSuffix) }
         }
@@ -334,6 +344,10 @@ final class ConnectionProbeMockProtocol: URLProtocol, @unchecked Sendable {
 
     static func setHandler(_ handler: @escaping @Sendable (URLRequest) -> Response) async {
         await state.setHandler(handler)
+    }
+
+    static func setAsyncHandler(_ handler: @escaping @Sendable (URLRequest) async -> Response) async {
+        await state.setAsyncHandler(handler)
     }
 
     static func reset() async { await state.reset() }
@@ -352,7 +366,7 @@ final class ConnectionProbeMockProtocol: URLProtocol, @unchecked Sendable {
         let req = request
         Task { @Sendable [self] in
             await Self.state.record(req)
-            guard let response = await Self.state.respond(to: req), let url = req.url else {
+            guard let response = await Self.state.respondAsync(to: req), let url = req.url else {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))
                 return
             }

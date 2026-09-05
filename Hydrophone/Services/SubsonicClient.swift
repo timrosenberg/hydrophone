@@ -66,6 +66,12 @@ actor SubsonicClient {
         return wrapper.response.info
     }
 
+    @discardableResult
+    func sendStatus(_ endpoint: Endpoint, using creds: ServerCredentials) async throws(SubsonicError) -> ServerInfo {
+        let wrapper: SubsonicResponseWrapper<EmptyBody> = try await perform(endpoint, using: creds)
+        return wrapper.response.info
+    }
+
     /// Connection test. Returns server identity (type/version/openSubsonic).
     func ping() async throws(SubsonicError) -> ServerInfo {
         try await sendStatus(.ping)

@@ -3,9 +3,8 @@ import Observation
 import os
 
 /// Observable library-browsing state. Loads albums/artists/songs/genres from
-/// the server with pagination. The SwiftData cache layer is layered in during
-/// M2 (docs/05-data-and-caching.md); this model currently fetches directly via
-/// the client and holds results in memory.
+/// the server with pagination, seeding from the optional metadata store only
+/// after connection verification. Live values remain authoritative.
 @MainActor
 @Observable
 final class LibraryModel {
@@ -16,10 +15,10 @@ final class LibraryModel {
         case failed(String)
     }
 
-    private(set) var albums: [Album] = []
-    private(set) var albumsState: Load<Void> = .idle
-    private var albumOffset = 0
-    private var albumsExhausted = false
+    var albums: [Album] = []
+    var albumsState: Load<Void> = .idle
+    var albumOffset = 0
+    var albumsExhausted = false
     var albumSortType = "alphabeticalByName"
     private(set) var albumFilter: AlbumFilter = .none
 
@@ -31,13 +30,13 @@ final class LibraryModel {
         case years(from: Int, through: Int)
     }
 
-    private(set) var artists: [Artist] = []
-    private(set) var artistsState: Load<Void> = .idle
+    var artists: [Artist] = []
+    var artistsState: Load<Void> = .idle
 
     private(set) var composers: [Composer] = []
     private(set) var composersState: Load<Void> = .idle
 
-    private(set) var genres: [Genre] = []
+    var genres: [Genre] = []
 
     // Internal setter (not private): load/invalidate logic lives in
     // LibraryModel+Songs.swift.
@@ -78,6 +77,10 @@ final class LibraryModel {
     // LibraryModel+Playlists.swift.
     var playlists: [Playlist] = []
     var playlistsLoadingGeneration: Int?
+    var playlistRevision = 0
+    var playlistDetailRevisions: [String: Int] = [:]
+    var playlistReloadRevisions: [String: Int] = [:]
+    var playlistListingGeneration = 0
 
     static let pageSize = 100
 
@@ -106,9 +109,27 @@ final class LibraryModel {
     /// for Songs specifically. Internal (not private): the Favorites, Home,
     /// and Playlists extensions read it for their own generation guards.
     var librarySessionGeneration = 0
+    let metadata: (any MetadataPersistence)?
+    @ObservationIgnored var metadataSession: MetadataSession?
+    @ObservationIgnored var metadataRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var metadataWriteTask: Task<Void, Never>?
+    @ObservationIgnored var metadataWaiters: [CheckedContinuation<Bool, Never>] = []
+    enum MetadataReadiness { case waiting, ready, disconnected }
+    var metadataReadiness: MetadataReadiness
+    var seededSongs = false
+    var seededAlbums = false
+    var seededArtists = false
+    var seededGenres = false
+    var seededPlaylists = false
+    var liveAlbumPages: [Album] = []
+    var albumLoadGeneration = 0
+    var metadataWriteRevision = 0
 
     init(client: SubsonicClient, navidrome: NavidromeClient,
-         nativeFeaturesAvailable: @escaping @Sendable () async -> Bool) {
+         nativeFeaturesAvailable: @escaping @Sendable () async -> Bool,
+         metadata: (any MetadataPersistence)? = nil) {
+        self.metadata = metadata
+        self.metadataReadiness = metadata == nil ? .ready : .waiting
         self.client = client
         self.navidrome = navidrome
         self.nativeFeaturesAvailable = nativeFeaturesAvailable
@@ -122,6 +143,10 @@ final class LibraryModel {
     /// read race the actor call and observe stale (pre-reset) state.
     func reset() async {
         librarySessionGeneration += 1
+        let generation = librarySessionGeneration
+        retireMetadataSession()
+        albumLoadGeneration += 1
+        liveAlbumPages = []
         albums = []
         albumOffset = 0
         albumsExhausted = false
@@ -133,7 +158,6 @@ final class LibraryModel {
         composersState = .idle
         genres = []
         playlists = []
-        await invalidateSongs()
         starredSongs = []
         starredAlbums = []
         starredSongIDs = []
@@ -145,6 +169,9 @@ final class LibraryModel {
         homeFrequent = []
         homeRandom = []
         homeLoaded = false
+        await invalidateSongs()
+        guard generation == librarySessionGeneration else { return }
+        await metadata?.close()
     }
 
     // MARK: - Albums (paginated)
@@ -152,21 +179,34 @@ final class LibraryModel {
     func loadAlbumsIfNeeded() async {
         // Retry when empty unless a request is already in flight, so a transient
         // failure (e.g. a network timeout) doesn't blank the grid until relaunch.
-        guard albums.isEmpty else { return }
+        guard await metadataAllowsLoading(), albums.isEmpty || seededAlbums else { return }
         if case .loading = albumsState { return }
         await loadMoreAlbums()
     }
 
     func loadMoreAlbums() async {
-        guard !albumsExhausted else { return }
+        guard await metadataAllowsLoading(), !albumsExhausted else { return }
         if case .loading = albumsState { return }
         let generation = librarySessionGeneration
+        let albumGeneration = albumLoadGeneration
         await load("album", into: \.albumsState, generation: generation) { () async throws(SubsonicError) in
             let page = try await client.list(albumPageEndpoint(), of: Album.self)
-            guard generation == librarySessionGeneration else { return }
-            albums.append(contentsOf: page)
+            guard generation == librarySessionGeneration, albumGeneration == albumLoadGeneration else { return }
+            if seededAlbums {
+                liveAlbumPages.append(contentsOf: page)
+                let fetchedIDs = Set(liveAlbumPages.map(\.id))
+                albums = liveAlbumPages + albums.filter { !fetchedIDs.contains($0.id) }
+            } else {
+                albums.append(contentsOf: page)
+            }
             albumOffset += page.count
             albumsExhausted = page.count < Self.pageSize
+            if seededAlbums, albumsExhausted {
+                albums = liveAlbumPages
+                seededAlbums = false
+                liveAlbumPages = []
+            }
+            persistMetadata(.albums(page), generation: generation)
         }
     }
 
@@ -229,6 +269,9 @@ final class LibraryModel {
     }
 
     private func reloadAlbums() async {
+        albumLoadGeneration += 1
+        seededAlbums = false
+        liveAlbumPages = []
         albums = []
         albumOffset = 0
         albumsExhausted = false
@@ -239,7 +282,7 @@ final class LibraryModel {
     // MARK: - Artists
 
     func loadArtistsIfNeeded() async {
-        guard artists.isEmpty else { return }
+        guard await metadataAllowsLoading(), artists.isEmpty || seededArtists else { return }
         if case .loading = artistsState { return }
         let generation = librarySessionGeneration
         await load("artist", into: \.artistsState, generation: generation) { () async throws(SubsonicError) in
@@ -247,13 +290,15 @@ final class LibraryModel {
                 .flatMap { $0.artist ?? [] }
             guard generation == librarySessionGeneration else { return }
             artists = fetched
+            seededArtists = false
+            persistMetadata(.artists(fetched), generation: generation)
         }
     }
 
     // MARK: - Composers
 
     func loadComposersIfNeeded() async {
-        guard composers.isEmpty else { return }
+        guard await metadataAllowsLoading(), composers.isEmpty else { return }
         if case .loading = composersState { return }
         guard await nativeFeaturesAvailable() else { return }
         let generation = librarySessionGeneration
@@ -270,23 +315,15 @@ final class LibraryModel {
         }
     }
 
-    // MARK: - Songs (load/invalidate lifecycle in LibraryModel+Songs.swift)
-
-    /// A fresh random batch for whole-library shuffle (Shuffle All). Distinct
-    /// from the Songs sample above so the visible list isn't disturbed.
-    /// Best-effort: an empty result simply leaves playback untouched.
-    func randomBatch(size: Int = 500) async -> [Song] {
-        await fetchList(.randomSongs(size: size))
-    }
-
     // MARK: - Genres
 
     private var genresLoadingGeneration: Int?
 
     func loadGenresIfNeeded() async {
         // Albums and the column browser can both request genres at once.
+        guard await metadataAllowsLoading() else { return }
         let generation = librarySessionGeneration
-        guard genres.isEmpty, genresLoadingGeneration != generation else { return }
+        guard genres.isEmpty || seededGenres, genresLoadingGeneration != generation else { return }
         genresLoadingGeneration = generation
         defer {
             if genresLoadingGeneration == generation { genresLoadingGeneration = nil }
@@ -296,9 +333,11 @@ final class LibraryModel {
                 .sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
             guard generation == librarySessionGeneration else { return }
             genres = fetched
+            seededGenres = false
+            persistMetadata(.genres(fetched), generation: generation)
         } catch {
             guard generation == librarySessionGeneration else { return }
-            genres = []
+            if !seededGenres { genres = [] }
         }
     }
 
@@ -313,7 +352,10 @@ final class LibraryModel {
     /// the shared shape of the playlist CRUD writes. Internal so
     /// LibraryModel+Playlists can send through it.
     func mutate(_ endpoint: Endpoint, thenReload reload: () async -> Void) async {
-        _ = try? await client.sendStatus(endpoint)
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials else { return }
+        _ = try? await client.sendStatus(endpoint, using: credentials)
+        guard generation == librarySessionGeneration else { return }
         await reload()
     }
 }
@@ -322,23 +364,36 @@ final class LibraryModel {
 
 extension LibraryModel {
     func songs(forAlbum id: String) async -> [Song] {
+        guard await metadataAllowsLoading() else { return [] }
+        let generation = librarySessionGeneration
         var songs = (try? await client.object(.album(id: id), as: Album.self))?.song ?? []
         await joinWorkInfo(into: &songs)
+        guard generation == librarySessionGeneration else { return [] }
+        persistMetadata(.songs(songs), generation: generation)
         return songs
     }
 
     /// The full album record for an id — used by "Go to Album" from a track,
     /// where only the song's `albumId` is at hand.
     func album(id: String) async -> Album? {
+        guard await metadataAllowsLoading() else { return nil }
+        let generation = librarySessionGeneration
         guard var album = try? await client.object(.album(id: id), as: Album.self) else { return nil }
         var songs = album.song ?? []
         await joinWorkInfo(into: &songs)
+        guard generation == librarySessionGeneration else { return nil }
         album.song = songs
+        persistMetadata(.albums([album]), generation: generation)
         return album
     }
 
     func albums(forArtist id: String) async -> [Album] {
-        (try? await client.object(.artist(id: id), as: Artist.self))?.album ?? []
+        guard await metadataAllowsLoading() else { return [] }
+        let generation = librarySessionGeneration
+        let albums = (try? await client.object(.artist(id: id), as: Artist.self))?.album ?? []
+        guard generation == librarySessionGeneration else { return [] }
+        persistMetadata(.albums(albums), generation: generation)
+        return albums
     }
 
 }

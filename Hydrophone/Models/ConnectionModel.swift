@@ -76,6 +76,9 @@ final class ConnectionModel {
     private let navidrome: NavidromeClient
     private let credentials: CredentialStore
     @ObservationIgnored private var libraryInvalidationHandler: @MainActor () async -> Void = {}
+    private var connectionGeneration = 0
+    @ObservationIgnored private var libraryConnectionHandler: @MainActor (ServerCredentials) async -> Void = { _ in }
+    @ObservationIgnored private var libraryRescanHandler: (@MainActor (ServerCredentials) async -> Void)?
     @ObservationIgnored private var songsLoadHandler: @MainActor () async -> Void = {}
 
     init(client: SubsonicClient, navidrome: NavidromeClient, credentials: CredentialStore) {
@@ -116,6 +119,14 @@ final class ConnectionModel {
         songsLoadHandler = handler
     }
 
+    func setLibraryConnectionHandler(_ handler: @escaping @MainActor (ServerCredentials) async -> Void) {
+        libraryConnectionHandler = handler
+    }
+
+    func setLibraryRescanHandler(_ handler: @escaping @MainActor (ServerCredentials) async -> Void) {
+        libraryRescanHandler = handler
+    }
+
     private func invalidateLibrary() async {
         await libraryInvalidationHandler()
     }
@@ -150,38 +161,67 @@ final class ConnectionModel {
 
     /// Verify the current form against the server without persisting.
     func testConnection() async {
-        if let (_, info) = await verifyForm() { state = .connected(info) }
+        // A form test must not abandon a persisted connection's native probe
+        // or the metadata loads waiting on it.
+        guard state != .connecting, nativeFeaturesState != .checking else { return }
+        let generation = connectionGeneration
+        if let (_, info) = await verifyForm(generation: generation), generation == connectionGeneration {
+            state = .connected(info)
+        }
     }
 
-    /// Test then persist the credentials to the Keychain on success.
+    /// Verify, persist, then seed before allowing the session's live loads.
     func saveAndConnect() async {
-        let previousCredentials = credentials.load()
-        guard let (candidate, info) = await verifyForm() else { return }
+        connectionGeneration += 1
+        let generation = connectionGeneration
+        settleNativeFeatures(.checking)
+        guard let (candidate, info) = await verifyForm(generation: generation),
+              generation == connectionGeneration else {
+            guard generation == connectionGeneration else { return }
+            await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
+            return
+        }
         do {
             try credentials.save(candidate)
-            if previousCredentials != candidate { await invalidateLibrary() }
             persistTranscodePrefs()
-            // Re-scope the artwork cache to the (possibly new) server.
-            ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
-            state = .connected(info)
-            await probeNativeFeatures()
-            await songsLoadHandler()
+            await completeConnection(candidate, info: info, generation: generation)
         } catch {
+            guard generation == connectionGeneration else { return }
+            await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             state = .failed(error.localizedDescription)
         }
     }
 
+    private func completeConnection(_ candidate: ServerCredentials, info: ServerInfo, generation: Int) async {
+        await invalidateLibrary()
+        guard generation == connectionGeneration, credentials.load() == candidate else { return }
+        await libraryConnectionHandler(candidate)
+        guard generation == connectionGeneration, credentials.load() == candidate else { return }
+        ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
+        state = .connected(info)
+        await probeNativeFeatures(generation: generation)
+        guard generation == connectionGeneration else { return }
+        await songsLoadHandler()
+    }
+
     /// Shared preamble of the two calls above: validate the form fields and
     /// verify them against the server, reporting failures via `state`.
-    private func verifyForm() async -> (ServerCredentials, ServerInfo)? {
+    private func verifyForm(generation: Int) async -> (ServerCredentials, ServerInfo)? {
         guard let candidate = formCredentials() else {
             state = .failed("Enter a valid server address (including http:// or https://).")
             return nil
         }
         state = .connecting
         do {
-            return (candidate, try await client.testConnection(candidate))
+            let info = try await client.testConnection(candidate)
+            guard generation == connectionGeneration else { return nil }
+            return (candidate, info)
         } catch {
+            guard generation == connectionGeneration else { return nil }
             state = .failed(error.userMessage)
             return nil
         }
@@ -189,14 +229,26 @@ final class ConnectionModel {
 
     /// Re-verify already-saved credentials (e.g. at launch).
     func refresh() async {
-        guard isConfigured else { state = .unconfigured; return }
+        connectionGeneration += 1
+        let generation = connectionGeneration
+        settleNativeFeatures(.checking)
+        guard let candidate = credentials.load() else {
+            await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
+            state = .unconfigured
+            return
+        }
         state = .connecting
         do {
-            let info = try await client.ping()
-            state = .connected(info)
-            await probeNativeFeatures()
-            await songsLoadHandler()
+            let info = try await client.testConnection(candidate)
+            guard generation == connectionGeneration else { return }
+            await completeConnection(candidate, info: info, generation: generation)
         } catch {
+            guard generation == connectionGeneration else { return }
+            await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             state = .failed(error.userMessage)
         }
     }
@@ -207,28 +259,34 @@ final class ConnectionModel {
     /// (`saveAndConnect`/`refresh`), not from `testConnection` — that call
     /// verifies unsaved form credentials, while `login()` always reads the
     /// persisted store, so probing there would check the wrong server.
-    private func probeNativeFeatures() async {
-        nativeFeaturesState = .checking
+    private func probeNativeFeatures(generation: Int) async {
         let available: Bool
         do {
             _ = try await navidrome.login()
-            nativeFeaturesState = .available
+            guard generation == connectionGeneration else { return }
             available = true
         } catch {
-            nativeFeaturesState = .unavailable
+            guard generation == connectionGeneration else { return }
             available = false
         }
+        settleNativeFeatures(available ? .available : .unavailable)
+    }
+
+    private func settleNativeFeatures(_ state: NativeFeaturesState) {
+        nativeFeaturesState = state
+        guard state != .checking else { return }
         let waiters = nativeFeatureWaiters
         nativeFeatureWaiters = []
-        for waiter in waiters { waiter.resume(returning: available) }
+        for waiter in waiters { waiter.resume(returning: state == .available) }
     }
 
     func disconnect() async {
+        connectionGeneration += 1
+        settleNativeFeatures(.unknown)
         try? credentials.clear()
         await invalidateLibrary()
         ArtworkCache.shared.setServer(baseURL: nil)
         state = .unconfigured
-        nativeFeaturesState = .unknown
     }
 
     /// Feedback from the last library-scan trigger (shown in Settings).
@@ -241,14 +299,33 @@ final class ConnectionModel {
     /// view should rebuild from scratch rather than serve a now-stale
     /// in-memory snapshot.
     func startLibraryScan() async {
+        let generation = connectionGeneration
+        guard let candidate = credentials.load() else { return }
         scanMessage = "Requesting scan…"
         do {
-            let status = try await client.object(.startScan, as: ScanStatus.self)
+            var status = try await client.object(.startScan, using: candidate, as: ScanStatus.self)
+            let deadline = ContinuousClock.now.advanced(by: .seconds(300))
+            // Only the persistent path needs a completed server snapshot. Legacy
+            // callers retain the previous trigger-and-invalidate behavior.
+            while status.scanning, libraryRescanHandler != nil {
+                guard generation == connectionGeneration, !Task.isCancelled else { return }
+                scanMessage = "Scanning…"
+                guard ContinuousClock.now < deadline else {
+                    scanMessage = "Server scan is still running. Try refreshing again when it finishes."
+                    return
+                }
+                try await Task.sleep(for: .seconds(1))
+                status = try await client.object(.scanStatus, using: candidate, as: ScanStatus.self)
+            }
+            guard generation == connectionGeneration, credentials.load() == candidate else { return }
             let count = status.count.map { " — \($0) items" } ?? ""
             scanMessage = (status.scanning ? "Scanning" : "Scan finished") + count
             await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            await libraryRescanHandler?(candidate)
         } catch {
-            scanMessage = error.userMessage
+            guard generation == connectionGeneration else { return }
+            scanMessage = (error as? SubsonicError)?.userMessage ?? error.localizedDescription
         }
     }
 

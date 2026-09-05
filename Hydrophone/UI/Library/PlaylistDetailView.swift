@@ -9,6 +9,7 @@ struct PlaylistDetailView: View {
     @Environment(LibraryModel.self) private var library
     @State private var playlist: Playlist?
     @State private var loadGeneration = 0
+    @State private var loadedSession: Int?
     @State private var renameText = ""
     @State private var showRename = false
 
@@ -34,7 +35,14 @@ struct PlaylistDetailView: View {
             }
         }
         .navigationTitle(playlist?.name ?? "Playlist")
-        .task(id: playlistID) { await reload() }
+        .task(id: LibraryViewLoadID(selection: playlistID, generation: library.librarySessionGeneration,
+                                    ready: library.metadataReadiness == .ready,
+                                    revision: library.playlistReloadRevisions[playlistID, default: 0])) {
+            if playlist?.id != playlistID || loadedSession != library.librarySessionGeneration
+                || library.metadataReadiness != .ready { playlist = nil }
+            loadedSession = library.librarySessionGeneration
+            await reload()
+        }
         .alert("Rename Playlist", isPresented: $showRename) {
             TextField("Name", text: $renameText)
             Button("Save") {
@@ -42,7 +50,6 @@ struct PlaylistDetailView: View {
                 guard !name.isEmpty else { return }
                 Task {
                     await library.renamePlaylist(id: playlistID, to: name)
-                    await reload()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -107,7 +114,6 @@ struct PlaylistDetailView: View {
         playlist?.entry?.remove(atOffsets: offsets) // optimistic
         Task {
             await library.removeFromPlaylist(id: playlistID, indexes: indexes)
-            await reload()
         }
     }
 
@@ -120,7 +126,6 @@ struct PlaylistDetailView: View {
         let name = playlist?.name ?? ""
         Task {
             await library.reorderPlaylist(id: playlistID, name: name, songIds: ids)
-            await reload()
         }
     }
 }

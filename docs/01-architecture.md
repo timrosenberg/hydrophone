@@ -82,11 +82,17 @@ metadata can never disagree with the UI.
   node, the streaming decode pipeline, gapless scheduling, output-device
   routing/recovery, and a throttled position publisher. Exposes async intent
   methods and an `AsyncStream<PlaybackEvent>` back to `PlayerModel`. See `03`.
-- **`LibraryModel`** — in-memory library state (albums/artists/songs/genres/
-  playlists/starred), fetched per session with pagination. The planned
-  SwiftData `LibraryStore` was dropped — the app is network-required by
-  design. See `05`.
+- **`LibraryModel`** — observable library state (albums/artists/songs/genres/
+  playlists/starred), seeded from the actor-owned SwiftData metadata store
+  only after a verified connection, then refreshed from the server with
+  pagination. The server remains authoritative; the store is a warm-start
+  optimization. See `05`.
 - **`ArtworkCache`** — two-tier (memory + disk), server-scoped, resized image
+  cache. See `05`.
+- **`LibraryMetadataStore` (actor)** — account-scoped SwiftData containers,
+  value-only snapshots and atomic complete-sync reconciliation. Owns disk I/O;
+  `LibrarySongIndex` remains the session's live walk and native-join owner.
+  `LibraryMetadataSync` coordinates the complete fetch before pruning the
   cache. See `05`.
 - **`CredentialStore`** — Keychain read/write of server URL, username, and
   password (token+salt) or API key; an in-memory variant backs tests/previews.
