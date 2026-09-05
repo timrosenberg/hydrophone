@@ -24,7 +24,6 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
 M2 ✅ (UI/data live-verified; persistent metadata warm-start is now wired;
-#128 warm-start persistence foundation implemented in #146, not yet app-wired;
 artwork and server metadata cached on disk; Songs and selected genres paginate
 to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
