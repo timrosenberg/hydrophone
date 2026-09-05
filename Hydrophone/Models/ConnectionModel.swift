@@ -163,9 +163,7 @@ final class ConnectionModel {
     func testConnection() async {
         // A form test must not abandon a persisted connection's native probe
         // or the metadata loads waiting on it.
-        if case .connecting = state { return }
-        guard nativeFeaturesState != .checking else { return }
-        connectionGeneration += 1
+        guard state != .connecting, nativeFeaturesState != .checking else { return }
         let generation = connectionGeneration
         if let (_, info) = await verifyForm(generation: generation), generation == connectionGeneration {
             state = .connected(info)
@@ -179,7 +177,10 @@ final class ConnectionModel {
         settleNativeFeatures(.checking)
         guard let (candidate, info) = await verifyForm(generation: generation),
               generation == connectionGeneration else {
-            if generation == connectionGeneration { settleNativeFeatures(.unavailable) }
+            guard generation == connectionGeneration else { return }
+            await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             return
         }
         do {
@@ -221,8 +222,6 @@ final class ConnectionModel {
             return (candidate, info)
         } catch {
             guard generation == connectionGeneration else { return nil }
-            await invalidateLibrary()
-            guard generation == connectionGeneration else { return nil }
             state = .failed(error.userMessage)
             return nil
         }
@@ -261,7 +260,6 @@ final class ConnectionModel {
     /// verifies unsaved form credentials, while `login()` always reads the
     /// persisted store, so probing there would check the wrong server.
     private func probeNativeFeatures(generation: Int) async {
-        nativeFeaturesState = .checking
         let available: Bool
         do {
             _ = try await navidrome.login()
@@ -276,6 +274,7 @@ final class ConnectionModel {
 
     private func settleNativeFeatures(_ state: NativeFeaturesState) {
         nativeFeaturesState = state
+        guard state != .checking else { return }
         let waiters = nativeFeatureWaiters
         nativeFeatureWaiters = []
         for waiter in waiters { waiter.resume(returning: state == .available) }

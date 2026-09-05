@@ -9,6 +9,7 @@ struct PlaylistDetailView: View {
     @Environment(LibraryModel.self) private var library
     @State private var playlist: Playlist?
     @State private var loadGeneration = 0
+    @State private var loadedSession: Int?
     @State private var renameText = ""
     @State private var showRename = false
 
@@ -35,8 +36,11 @@ struct PlaylistDetailView: View {
         }
         .navigationTitle(playlist?.name ?? "Playlist")
         .task(id: LibraryViewLoadID(selection: playlistID, generation: library.librarySessionGeneration,
-                                    ready: library.metadataReadiness == .ready)) {
-            playlist = nil
+                                    ready: library.metadataReadiness == .ready,
+                                    revision: library.playlistReloadRevisions[playlistID, default: 0])) {
+            if playlist?.id != playlistID || loadedSession != library.librarySessionGeneration
+                || library.metadataReadiness != .ready { playlist = nil }
+            loadedSession = library.librarySessionGeneration
             await reload()
         }
         .alert("Rename Playlist", isPresented: $showRename) {

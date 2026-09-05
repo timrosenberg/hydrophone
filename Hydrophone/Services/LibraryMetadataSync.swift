@@ -72,6 +72,18 @@ struct LibraryMetadataSync: Sendable {
     }
 
     private func allPlaylists(using credentials: ServerCredentials) async throws -> [Playlist] {
+        do {
+            return try await playlistInventory(using: credentials)
+        } catch {
+            try Task.checkCancellation()
+            guard await client.currentCredentials == credentials else { throw CancellationError() }
+            // Retry the listing too: a detail 404 may mean the playlist was
+            // deleted mid-walk. Never turn a failed detail into pruning authority.
+            return try await playlistInventory(using: credentials)
+        }
+    }
+
+    private func playlistInventory(using credentials: ServerCredentials) async throws -> [Playlist] {
         let listing = try await client.list(.playlists, using: credentials, of: Playlist.self)
         let limiter = AsyncLimiter(limit: 4)
         return try await withThrowingTaskGroup(of: Playlist.self) { group in

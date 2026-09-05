@@ -32,7 +32,6 @@ struct ColumnBrowserView: View {
                 storedArtist = ""
                 storedAlbum = ""
                 storedComposer = ""
-                Task { await loadGenre(genre.isEmpty ? nil : genre) }
             })
     }
 
@@ -130,14 +129,15 @@ struct ColumnBrowserView: View {
                                columnsCustomizable: true)
             }
         }
-        .task {
+        .task(id: LibraryViewLoadID(selection: storedGenre, generation: library.librarySessionGeneration,
+                                    ready: library.metadataReadiness == .ready)) {
+            songs = []
+            genreLoadGeneration += 1
             await library.loadSongsIfNeeded()
             await library.loadGenresIfNeeded()
             // Restore: a persisted genre needs its songs loaded (without the
             // cascade — the restored artist/album selections must survive).
-            if selectedGenre != nil, songs.isEmpty {
-                await loadGenre(selectedGenre)
-            }
+            await loadGenre(selectedGenre)
         }
     }
 
@@ -151,13 +151,14 @@ struct ColumnBrowserView: View {
         guard selectedGenre == genre else { return }
         genreLoadGeneration += 1
         let generation = genreLoadGeneration
+        let session = library.librarySessionGeneration
         guard let genre else { songs = []; isLoading = false; return }
         isLoading = true
         let fetched = await library.songs(forGenre: genre)
-        // The Binding-setter Task isn't cancelled by a newer selection —
-        // two rapid genre clicks race, and the slower fetch must never land
-        // under the newer selection, even after an A -> B -> A round trip.
-        guard generation == genreLoadGeneration, storedGenre == genre else { return }
+        // A canceled or retired request cannot publish into a newer selection
+        // or account, including an A -> B -> A genre round trip.
+        guard generation == genreLoadGeneration, storedGenre == genre,
+              session == library.librarySessionGeneration, !Task.isCancelled else { return }
         songs = fetched
         isLoading = false
     }

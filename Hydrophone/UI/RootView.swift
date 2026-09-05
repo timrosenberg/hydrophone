@@ -268,4 +268,5 @@ struct LibraryViewLoadID: Equatable {
     let selection: String
     let generation: Int
     let ready: Bool
+    var revision = 0
 }

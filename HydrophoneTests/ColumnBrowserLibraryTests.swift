@@ -6,6 +6,26 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ColumnBrowserLibraryTests {
+    @Test func selectedGenreReloadsAfterSessionResetWithoutAnotherClick() async throws {
+        await BrowserLibraryProtocol.state.reset(holdFirstGenre: true)
+        let fixture = BrowserLibraryFixture()
+        defer {
+            fixture.close()
+            Task { await BrowserLibraryProtocol.state.releaseFirstGenre() }
+        }
+        fixture.show()
+        try await fixture.waitForTracks(1_003)
+        try fixture.click(pane: 0, row: 1)
+        try await fixture.waitUntil { await BrowserLibraryProtocol.state.classicalRequests == 1 }
+        await fixture.library.reset()
+        try await fixture.waitForTracks(2)
+        #expect(fixture.defaults.string(forKey: "browser.genre") == "Classical")
+        await BrowserLibraryProtocol.state.releaseFirstGenre()
+        try await fixture.waitUntil { await BrowserLibraryProtocol.state.firstGenreDelivered }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(fixture.displayed.map(\.id) == ["new-0", "new-1"])
+    }
+
     @Test func browserFixtureDoesNotReplaceSharedArtworkClient() {
         let original = ArtworkCache.shared.clientBox
         let fixture = BrowserLibraryFixture()

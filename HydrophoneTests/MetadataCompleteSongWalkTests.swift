@@ -30,10 +30,12 @@ extension SubsonicAllSongsTests {
         await #expect(throws: SubsonicError.self) { try await index.completeSongs(using: credentials) }
     }
 
-    @Test func metadataSyncAcceptsVerifiedEmptyLibrary() async throws {
+    @Test func metadataSyncRejectsEmptyFallbackAndRetriesTheWalk() async throws {
         await AllSongsMockProtocol.reset(songCount: 0)
         let (index, store) = makeIndex()
         let credentials = try #require(store.load())
-        #expect(try await index.completeSongs(using: credentials).isEmpty)
+        await #expect(throws: SubsonicError.self) { try await index.completeSongs(using: credentials) }
+        await #expect(throws: SubsonicError.self) { try await index.completeSongs(using: credentials) }
+        #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 2)
     }
 }

@@ -161,7 +161,7 @@ final class LibrarySongIndex: Sendable {
         ).song ?? []
         if first.isEmpty {
             let sample = try await client.list(.randomSongs(size: pageSize), using: creds, of: Song.self)
-            return AllSongsOutcome(songs: sample, isComplete: sample.isEmpty)
+            return AllSongsOutcome(songs: sample, isComplete: false)
         }
         // Checked before the short-page return below too: a buggy server
         // that dumps its whole catalog (or repeats an id) on page one must

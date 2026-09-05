@@ -41,9 +41,10 @@ extension LibraryModel {
     func playlist(id: String) async -> Playlist? {
         guard await metadataAllowsLoading() else { return nil }
         let generation = librarySessionGeneration
-        let revision = playlistRevision
+        let revision = playlistDetailRevisions[id, default: 0]
         guard let fetched = try? await client.object(.playlist(id: id), as: Playlist.self),
-              generation == librarySessionGeneration, revision == playlistRevision else { return nil }
+              generation == librarySessionGeneration,
+              revision == playlistDetailRevisions[id, default: 0] else { return nil }
         persistMetadata(.playlist(fetched), generation: generation)
         return fetched
     }
@@ -76,35 +77,39 @@ extension LibraryModel {
     }
 
     func deletePlaylist(id: String) async {
-        playlistRevision += 1
-        await mutate(.deletePlaylist(id: id)) { await reloadPlaylists() }
+        await mutatePlaylist(id: id, endpoint: .deletePlaylist(id: id))
     }
 
     func renamePlaylist(id: String, to name: String) async {
-        playlistRevision += 1
-        await mutate(.updatePlaylist(id: id, name: name)) { await reloadPlaylists() }
+        await mutatePlaylist(id: id, endpoint: .updatePlaylist(id: id, name: name))
     }
 
     func addToPlaylist(id: String, songIds: [String]) async {
         guard !songIds.isEmpty else { return }
-        playlistRevision += 1
-        await mutate(.updatePlaylist(id: id, songIdsToAdd: songIds)) { await reloadPlaylists() }
+        await mutatePlaylist(id: id, endpoint: .updatePlaylist(id: id, songIdsToAdd: songIds))
     }
 
     func removeFromPlaylist(id: String, indexes: [Int]) async {
         guard !indexes.isEmpty else { return }
-        playlistRevision += 1
-        await mutate(.updatePlaylist(id: id, songIndexesToRemove: indexes)) { await reloadPlaylists() }
+        await mutatePlaylist(id: id, endpoint: .updatePlaylist(id: id, songIndexesToRemove: indexes))
     }
 
     /// Reorder by replacing the playlist's contents with `songIds` in the new
     /// order — `updatePlaylist` can only append, so the full-replace form of
     /// `createPlaylist` is the canonical reorder mechanism.
     func reorderPlaylist(id: String, name: String, songIds: [String]) async {
-        playlistRevision += 1
-        await mutate(.createPlaylist(name: name, playlistId: id, songIds: songIds)) {
-            await reloadPlaylists()
-        }
+        await mutatePlaylist(id: id, endpoint: .createPlaylist(name: name, playlistId: id, songIds: songIds))
     }
 
+    private func mutatePlaylist(id: String, endpoint: Endpoint) async {
+        let generation = librarySessionGeneration
+        playlistRevision += 1
+        playlistDetailRevisions[id, default: 0] += 1
+        await mutate(endpoint) { await reloadPlaylists() }
+        guard generation == librarySessionGeneration else { return }
+        // Retire details fetched during the mutation and reload the selected
+        // playlist after its server round-trip, including a rejected edit.
+        playlistDetailRevisions[id, default: 0] += 1
+        playlistReloadRevisions[id, default: 0] += 1
+    }
 }

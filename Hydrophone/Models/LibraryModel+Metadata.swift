@@ -10,6 +10,8 @@ extension LibraryModel {
     }
 
     func retireMetadataSession() {
+        playlistDetailRevisions = [:]
+        playlistReloadRevisions = [:]
         metadataRefreshTask?.cancel()
         metadataRefreshTask = nil
         metadataWriteTask?.cancel()

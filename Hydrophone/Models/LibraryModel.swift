@@ -78,6 +78,8 @@ final class LibraryModel {
     var playlists: [Playlist] = []
     var playlistsLoadingGeneration: Int?
     var playlistRevision = 0
+    var playlistDetailRevisions: [String: Int] = [:]
+    var playlistReloadRevisions: [String: Int] = [:]
     var playlistListingGeneration = 0
 
     static let pageSize = 100
@@ -183,8 +185,7 @@ final class LibraryModel {
     }
 
     func loadMoreAlbums() async {
-        guard await metadataAllowsLoading() else { return }
-        guard !albumsExhausted else { return }
+        guard await metadataAllowsLoading(), !albumsExhausted else { return }
         if case .loading = albumsState { return }
         let generation = librarySessionGeneration
         let albumGeneration = albumLoadGeneration
@@ -297,8 +298,7 @@ final class LibraryModel {
     // MARK: - Composers
 
     func loadComposersIfNeeded() async {
-        guard await metadataAllowsLoading() else { return }
-        guard composers.isEmpty else { return }
+        guard await metadataAllowsLoading(), composers.isEmpty else { return }
         if case .loading = composersState { return }
         guard await nativeFeaturesAvailable() else { return }
         let generation = librarySessionGeneration
