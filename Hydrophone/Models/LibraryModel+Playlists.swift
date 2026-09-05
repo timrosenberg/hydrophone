@@ -19,12 +19,14 @@ extension LibraryModel {
     func reloadPlaylists() async {
         guard await metadataAllowsLoading() else { return }
         let generation = librarySessionGeneration
-        playlistRevision += 1
+        playlistListingGeneration += 1
+        let requestGeneration = playlistListingGeneration
         let revision = playlistRevision
         do {
             let fetched = try await client.list(.playlists, of: Playlist.self)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            guard generation == librarySessionGeneration, revision == playlistRevision else { return }
+            guard generation == librarySessionGeneration, revision == playlistRevision,
+                  requestGeneration == playlistListingGeneration else { return }
             playlists = fetched
             seededPlaylists = false
             persistMetadata(.playlists(fetched), generation: generation)

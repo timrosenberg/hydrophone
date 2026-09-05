@@ -78,6 +78,7 @@ final class LibraryModel {
     var playlists: [Playlist] = []
     var playlistsLoadingGeneration: Int?
     var playlistRevision = 0
+    var playlistListingGeneration = 0
 
     static let pageSize = 100
 
@@ -176,8 +177,7 @@ final class LibraryModel {
     func loadAlbumsIfNeeded() async {
         // Retry when empty unless a request is already in flight, so a transient
         // failure (e.g. a network timeout) doesn't blank the grid until relaunch.
-        guard await metadataAllowsLoading() else { return }
-        guard albums.isEmpty || seededAlbums else { return }
+        guard await metadataAllowsLoading(), albums.isEmpty || seededAlbums else { return }
         if case .loading = albumsState { return }
         await loadMoreAlbums()
     }

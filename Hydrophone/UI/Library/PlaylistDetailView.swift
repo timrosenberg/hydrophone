@@ -34,7 +34,11 @@ struct PlaylistDetailView: View {
             }
         }
         .navigationTitle(playlist?.name ?? "Playlist")
-        .task(id: playlistID) { await reload() }
+        .task(id: LibraryViewLoadID(selection: playlistID, generation: library.librarySessionGeneration,
+                                    ready: library.metadataReadiness == .ready)) {
+            playlist = nil
+            await reload()
+        }
         .alert("Rename Playlist", isPresented: $showRename) {
             TextField("Name", text: $renameText)
             Button("Save") {

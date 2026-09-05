@@ -264,7 +264,7 @@ struct RootView: View {
 
 /// Restart the selected section after connection seeding or a manual rescan.
 /// Its launch-time task may have been retired while the connection was verified.
-private struct LibraryViewLoadID: Equatable {
+struct LibraryViewLoadID: Equatable {
     let selection: String
     let generation: Int
     let ready: Bool

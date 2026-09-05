@@ -3,6 +3,34 @@ import Testing
 @testable import Hydrophone
 
 extension ConnectionModelNativeFeaturesTests {
+    @Test(.timeLimit(.minutes(1))) func ordinaryPlaylistListingDoesNotRetireASelectedDetail() async throws {
+        let persistence = MetadataIntegrationStore()
+        let gate = MetadataIntegrationGate()
+        await ConnectionProbeMockProtocol.reset()
+        await ConnectionProbeMockProtocol.setHandler(Self.metadataResponse)
+        let (connection, library) = makeMetadataModels(persistence)
+        await connection.refresh()
+        await library.metadataRefreshTask?.value
+        await ConnectionProbeMockProtocol.setAsyncHandler { request in
+            if request.url?.path.hasSuffix("getPlaylist.view") == true {
+                await gate.wait()
+                return Self.response(status: 200, body: Data(
+                    #"""
+                    {"subsonic-response":{"status":"ok","version":"1.16.1","playlist":{
+                    "id":"selected","name":"Selected","entry":[]}}}
+                    """#.utf8
+                ))
+            }
+            return Self.metadataResponse(request)
+        }
+        let detail = Task { await library.playlist(id: "selected") }
+        await gate.waitUntilEntered()
+        await library.reloadPlaylists()
+        await gate.release()
+        #expect(await detail.value?.id == "selected")
+        await connection.disconnect()
+    }
+
     @Test(.timeLimit(.minutes(1))) func fullSyncRecoversAnInitialCollectionFailure() async throws {
         let root = LibraryMetadataStoreTests.root()
         defer { try? FileManager.default.removeItem(at: root) }
