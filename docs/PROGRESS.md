@@ -23,8 +23,9 @@ milestone first. See `10-roadmap.md` for the full milestone plan.
 
 ## Milestone status
 M0 ✅ · M1 ✅ (auth/endpoints live-verified vs Navidrome 0.62) ·
-M2 ✅ (UI/data live-verified; SwiftData cache dropped — network-required by
-design; artwork cached on disk; Songs and selected genres paginate to exhaustion;
+M2 ✅ (UI/data live-verified; original offline metadata proposal dropped;
+#128 warm-start persistence foundation implemented in #146, not yet app-wired;
+artwork cached on disk; Songs and selected genres paginate to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
 final #82 review-fix live recheck passed on 2026-08-28) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
@@ -69,6 +70,49 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #146: versioned metadata schema foundation (2026-09-04)
+
+- Adds `MetadataSchemaV1` (1.0.0) and `MetadataMigrationPlan` with six cached
+  entity families. #128 is now started; production store lifecycle and reads/
+  writes remain in #147–151. No launch-speed improvement is claimed by #146.
+- Preserves every current Song/Album/Artist/Genre/Playlist value field,
+  including Song's native work/movement/bit-depth fields that its wire
+  `CodingKeys` omit. Nested metadata uses explicit JSON attributes; decoding
+  corruption or missing referenced rows rejects the seed rather than dropping
+  credits/tracks silently. Sync bookkeeping maps to `LibrarySyncSnapshot`.
+- Stores exact server IDs (genre name for genres; collection key for sync),
+  explicit relationship ordering, repeated playlist entries, and unfetched
+  versus fetched-empty detail. Deleting an album/playlist does not cascade
+  into shared songs. Models stay context-confined; only Sendable values cross
+  actor boundaries.
+- `MetadataRecords` supplies context-confined upsert mapping, with no save,
+  network, container lifecycle, or scheduling. It reuses canonical records
+  before linking graphs: implicit SwiftData unique merging of separate album/
+  playlist graphs failed on SQLite. The corrected disk round-trip and pending
+  overlapping-graph tests cover that case. Inputs map complete represented
+  snapshots; partial-fetch merge and transaction policies belong to #149.
+- Added 16 tests covering rich/sparse values, disk reopen through the v1
+  migration plan, all stable keys, ordering, duplicate entries, deletion
+  safety, invalid seeds, and a ModelActor value boundary. The pending-graph
+  case runs against both memory and disk stores after read-only review.
+- Verification: unsigned app build succeeds with **zero warnings**; full suite
+  **375 tests / 396 executions, 0 failures, 0 skips** (canonical
+  `xcresulttool` top-level count, `/tmp/hydrophone-146-final.xcresult`);
+  SwiftLint **0 violations in 152 files**; `git diff --check` clean.
+  Baseline was 359 tests; its clean test compilation emitted a pre-existing
+  `ArtworkCacheTests.swift:223` weak-variable warning. Final test run emitted
+  only the no-AppIntents-dependency tooling notice, no compiler warnings.
+- Live regression smoke: 2026-09-04, Tim's configured Navidrome server,
+  exact worktree build verified by executable path. Launch walk reached
+  **14,231 songs**; Brad Mehldau's *After Bach* loaded **12 songs / 69:16**
+  with composer metadata. Played *Before Bach: Benediction*, observed
+  **0:09 / 5:25**, **ALAC 16/44.1k**, and Pause state, then paused playback.
+  No audio-quality claim beyond the observed stream/progress state.
+- The repository's configured Developer ID certificate was unavailable;
+  live verification used build-command-only ad-hoc signing overrides. No
+  project signing settings changed. No production metadata container opens
+  in this foundation PR; schema persistence is verified by hermetic tests.
 
 ## Issue #141: implement song-index consolidation & cache abstraction (2026-09-04)
 
@@ -3952,6 +3996,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #146 (2026-09-04): unsigned app build zero warnings; **375 tests /
+  396 executions, 0 failures/skips**; SwiftLint 0 violations (152 files).
+  In-memory and disk persistence regressions pass, including canonical
+  identity reuse across overlapping unsaved graphs. Live on Tim's configured
+  Navidrome server: 14,231 songs loaded, *After Bach* rendered 12 tracks with
+  composer metadata, *Before Bach: Benediction* streamed to 0:09 with the
+  ALAC 16/44.1k badge; playback paused afterward. Ad-hoc test-build signing
+  only; production persistence wiring remains #147–151.
 - ✅ Issue #124 (2026-09-04): unsigned build has zero compiler warnings; full
   suite passes; SwiftLint clean. Live on Tim's configured Navidrome server:
   a 10-song playlist rendered instantly on a cold native-index cache; the

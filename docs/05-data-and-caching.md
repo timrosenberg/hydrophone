@@ -1,20 +1,15 @@
 # 05 — Local Metadata & Artwork Caching
 
-> **Decision (updated):** The **SwiftData metadata cache was dropped.** The app
-> is network-required by design — you can't stream music with the server down,
-> so caching library *metadata* for offline browsing adds complexity for little
-> value. Library metadata stays **in-memory**, fetched per session, owned by
-> `LibrarySongIndex` (both full-library walks), `NavidromeClient` (the auth
-> token), and `LibraryModel` (everything else) rather than held in one place —
-> see "In-memory metadata caches" for the full lifecycle breakdown. The one
-> thing we *do* cache **persistently** (disk, across launches) is **artwork**
-> (immutable) — see "Artwork cache". The SwiftData section below is retained
-> as historical context and is **not implemented**.
+> **Decision (#128 / #146):** Persistent library metadata is being added as
+> a warm-start speed optimization. The server remains authoritative and a
+> verified connection is still required. #146 supplies the versioned SwiftData
+> schema and value mappings only; the running app still fetches metadata per
+> session. Store lifecycle, seeding, write-behind, and sync follow in #147–151.
 
-**Persistent** (disk, survives relaunch) caching here is **artwork only** —
-there is **no audio/offline caching**. Library **metadata** does have a real
-in-memory caching layer, session-scoped only; it is inventoried below rather
-than persisted (streaming-only, network-required).
+**Currently persisted by the running app:** artwork only. The metadata
+foundation below is exercised with hermetic test containers, not opened or
+written by the app. No audio is cached or downloaded by this feature; every
+play continues to stream from the server.
 
 ## In-memory metadata caches
 
@@ -109,11 +104,11 @@ disk-persisted, already documented).
 
 Everything above is **session-only, in-memory, and non-authoritative** — it
 exists purely so a view doesn't re-walk the network on every appearance; the
-server remains the source of truth every time a cache misses. #128 proposes a
-disk-backed, cross-session persistent layer (the dropped-SwiftData shape
-further down this file was its predecessor idea) and is a different problem:
-it needs to survive relaunch, this layer explicitly must not (network-required
-by design). The two layers are not expected to merge; §140.4 below states how
+server remains the source of truth every time a cache misses. #128 adds a
+disk-backed, cross-session persistent layer (the #146 schema foundation is
+described below) and addresses a different lifetime:
+it needs to survive relaunch, while this layer resets with the connection
+session. Persistent seeds still require a verified connection. The two layers are not expected to merge; §140.4 below states how
 #128 should plug into the design decided here instead of rediscovering it.
 
 ## Design decision (#140), implemented in #141: song-index consolidation & cache abstraction
@@ -483,35 +478,86 @@ pixel size`:
   hash. (`previews/` filenames are the one exception to the SHA-256 naming
   above.) Consumed by `NowPlayingPanel` via `.quickLookPreview`.
 
-## Persistence: SwiftData 🔶 (dropped — historical)
+## Persistence: SwiftData foundation (#146)
 
-*(Not implemented. Kept for context.)* Originally we planned **SwiftData** for a
-metadata cache:
-- Modern, value-/macro-based, pairs cleanly with `@Observable` and SwiftUI.
-- macOS 15 deployment supported it; schema small and read-mostly.
-- Core Data was the escape hatch if a hard limitation surfaced.
+The former offline-browsing proposal was dropped. #128 introduces metadata
+persistence for faster connected launches instead. #146 implements only the
+schema/mapping foundation in `Hydrophone/Models/MetadataStore/`; no production
+container or application read/write path is wired yet.
 
-### Model schema (cached server metadata)
+### Schema and migration boundary
 
-`@Model` classes mirroring the API value types, keyed by the server `id`:
+`MetadataSchemaV1` declares version **1.0.0** and all six model types.
+`MetadataMigrationPlan` lists v1 and has no migration stages because no older
+metadata store exists. Tests create an on-disk v1 store, save every entity
+family, release the writer, and reopen through the plan. This proves v1
+compatibility, not a migration to an invented v2. Once released, preserve v1's
+persisted shape; structural evolution gets another version and explicit stages.
 
-- `CachedArtist` — id, name, albumCount, starred, sort key.
-- `CachedAlbum` — id, name, artist(+id), year, genre, coverArtId, songCount,
-  duration, starred; relationship → songs.
-- `CachedSong` — id, title, artist(+id), album(+id), track, disc, year, genre,
-  duration, bitRate, suffix, contentType, coverArtId, starred.
-- `CachedGenre` — name, songCount, albumCount.
-- `CachedPlaylist` — id, name, owner, public, songCount, duration, changed;
-  ordered relationship → entries (song ids).
-- `LibrarySyncState` — per-list offsets/timestamps for pagination + staleness.
+- `CachedSong`: every stored field in the current `Song` value, including
+  composer/contributors, ReplayGain, multi-genre/grouping tags, sort and play
+  metadata, work/movement, and bit depth. Native fields are explicit columns:
+  encoding `Song` directly would omit them through its wire `CodingKeys`.
+- `CachedAlbum`: all current album fields, genre/disc-title metadata, and a
+  nullifying relationship to canonical songs.
+- `CachedArtist`: all current artist fields and a nullifying relationship to
+  canonical albums. The API value has no artist sort-key field to persist.
+- `CachedPlaylist`: all current playlist fields and a nullifying relationship
+  to canonical songs, plus explicit ordered entry IDs. Duplicate songs retain
+  their positions without duplicating song records.
+- `CachedGenre`: exact server genre name as the unique key (the API provides
+  no separate ID), with optional song/album counts.
+- `LibrarySyncState`: one unique collection key, offset, generation, and
+  optional `lastSyncedAt`, mapped to `LibrarySyncSnapshot`. Completion policy
+  belongs to #150; a stored offset alone never establishes a completed sync.
 
-Notes:
-- Store the server `id` as the unique key; upsert on fetch.
-- Keep these as a **cache, not the source of truth** — the server is
-  authoritative. Refresh on connect and on demand; treat entries as
-  invalidatable.
-- Map `@Model` objects to `Sendable` value types before crossing actor
-  boundaries (`@Model` types are `@MainActor`-bound).
+Artists, albums, songs, and playlists use unique **server IDs**; no random
+client IDs are assigned. Relationship ID arrays record server ordering for
+artist albums, album tracks, and playlist entries. `nil` means detail has not
+been fetched; `[]` means a fetched empty list. Neither becomes the other on a
+round-trip. Deleting a collection nullifies its links and does not delete
+shared songs/albums; pruning belongs to the later full-sync transaction.
+
+Nested contributor, ReplayGain, genre, and disc-title values use explicit JSON
+`Data` attributes. Scalar fields stay queryable. Decoding malformed nested
+metadata or resolving a missing related ID throws, allowing the future seed
+reader to discard an unusable seed instead of silently omitting rows/credits.
+
+### Value mapping and context ownership
+
+Use `MetadataRecords.upsert(value, in: context)` for `Song`, `Album`, `Artist`,
+`Playlist`, `Genre`, and `LibrarySyncSnapshot`. It resolves existing records by
+identity before assigning relationships, including records inserted earlier in
+the same unsaved batch. Relying on implicit unique-constraint merging of fresh
+object graphs failed a real disk test when a playlist reused an album's song;
+canonical context-owned references avoid that collision.
+
+These are context-confined schema mapping helpers, not the write-behind
+service: they do not create containers, save, schedule work, or fetch network
+data. The caller owns the transaction and must roll back on mapping/save
+failure. Inputs replace the represented snapshot, including optional fields
+and unfetched relationship state; combining partial endpoint results with
+already-enriched metadata is a caller policy for #149, not inferred here.
+`@Attribute(.unique)` additionally enforces identity at the store boundary.
+
+Call each record's `value()` inside its owning context to obtain the existing
+`Sendable` API value (or `LibrarySyncSnapshot`) before crossing actors.
+SwiftData records are context-confined, **not inherently MainActor-bound**;
+the future store may use a `ModelActor`. A hermetic test exercises that boundary
+by fetching in a separate model actor and returning only `[Song]`.
+
+### Remaining epic boundaries
+
+- #147: store location, server/account isolation, container open/close.
+- #148: seed existing collections once after connection verification; distinguish
+  seeded data from completed live loads so nonempty guards do not suppress refresh.
+- #149: best-effort writes from successful live fetches and mutations.
+- #150: full background walk, transactional reconciliation and deletion pruning.
+- #151: manual-rescan integration and final cache inventory reconciliation.
+
+The existing `LibrarySongIndex` join point and session invalidation remain in
+place. #146 adds no UI behavior, network request, audio persistence, or launch
+speed improvement by itself.
 
 ## Pagination & lazy loading ✅
 
