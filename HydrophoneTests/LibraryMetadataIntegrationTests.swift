@@ -8,7 +8,7 @@ extension ConnectionModelNativeFeaturesTests {
         let persistence = MetadataIntegrationStore()
         await persistence.setSeed(LibraryMetadataSnapshot(songs: [Song(id: "seed", title: "Warm")]))
         await ConnectionProbeMockProtocol.reset()
-        await ConnectionProbeMockProtocol.setHandler { request in
+        await ConnectionProbeMockProtocol.setAsyncHandler { request in
             if request.url?.path.hasSuffix("search3.view") == true { await gate.wait() }
             return Self.metadataResponse(request)
         }
@@ -28,7 +28,7 @@ extension ConnectionModelNativeFeaturesTests {
         await persistence.setSeed(LibraryMetadataSnapshot(songs: [Song(id: "private", title: "Private")]))
         await ConnectionProbeMockProtocol.reset()
         await ConnectionProbeMockProtocol.setHandler { _ in
-            (401, Data())
+            Self.response(status: 401)
         }
         let (connection, library) = makeMetadataModels(persistence)
         await connection.refresh()
@@ -54,7 +54,7 @@ extension ConnectionModelNativeFeaturesTests {
         let persistence = MetadataIntegrationStore()
         await persistence.setSeed(LibraryMetadataSnapshot(songs: [Song(id: "seed", title: "Warm")]))
         await ConnectionProbeMockProtocol.reset()
-        await ConnectionProbeMockProtocol.setHandler { request in
+        await ConnectionProbeMockProtocol.setAsyncHandler { request in
             if request.url?.path.hasSuffix("search3.view") == true { await gate.wait() }
             return Self.metadataResponse(request)
         }
@@ -87,9 +87,9 @@ extension ConnectionModelNativeFeaturesTests {
         return (connection, library)
     }
 
-    private static func metadataResponse(_ request: URLRequest) -> (Int, Data) {
+    private static func metadataResponse(_ request: URLRequest) -> ConnectionProbeMockProtocol.Response {
         let path = request.url?.path ?? ""
-        if path.hasSuffix("/auth/login") { return (401, Data()) }
+        if path.hasSuffix("/auth/login") { return response(status: 401) }
         let payload: String
         if path.hasSuffix("search3.view") {
             payload = #""searchResult3":{"song":[{"id":"live","title":"Live"}]}"#
@@ -106,7 +106,14 @@ extension ConnectionModelNativeFeaturesTests {
         } else if path.hasSuffix("startScan.view") || path.hasSuffix("getScanStatus.view") {
             payload = #""scanStatus":{"scanning":false,"count":1}"#
         } else { payload = #""type":"navidrome""# }
-        return (200, Data("{\"subsonic-response\":{\"status\":\"ok\",\"version\":\"1.16.1\",\(payload)}}".utf8))
+        return response(status: 200,
+                        body: Data(
+                            "{\"subsonic-response\":{\"status\":\"ok\",\"version\":\"1.16.1\",\(payload)}}".utf8
+                        ))
+    }
+
+    private static func response(status: Int, body: Data = Data()) -> ConnectionProbeMockProtocol.Response {
+        .init(status: status, headers: ["Content-Type": "application/json"], body: body)
     }
 }
 
