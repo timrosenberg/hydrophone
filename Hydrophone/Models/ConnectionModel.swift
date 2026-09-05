@@ -313,7 +313,7 @@ final class ConnectionModel {
             await libraryRescanHandler?(candidate)
         } catch {
             guard generation == connectionGeneration else { return }
-            scanMessage = error.userMessage
+            scanMessage = (error as? SubsonicError)?.userMessage ?? error.localizedDescription
         }
     }
 
