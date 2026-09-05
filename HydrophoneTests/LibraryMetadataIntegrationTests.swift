@@ -87,7 +87,7 @@ extension ConnectionModelNativeFeaturesTests {
         return (connection, library)
     }
 
-    private static func metadataResponse(_ request: URLRequest) -> ConnectionProbeMockProtocol.Response {
+    private nonisolated static func metadataResponse(_ request: URLRequest) -> ConnectionProbeMockProtocol.Response {
         let path = request.url?.path ?? ""
         if path.hasSuffix("/auth/login") { return response(status: 401) }
         let payload: String
@@ -112,7 +112,7 @@ extension ConnectionModelNativeFeaturesTests {
                         ))
     }
 
-    private static func response(status: Int, body: Data = Data()) -> ConnectionProbeMockProtocol.Response {
+    private nonisolated static func response(status: Int, body: Data = Data()) -> ConnectionProbeMockProtocol.Response {
         .init(status: status, headers: ["Content-Type": "application/json"], body: body)
     }
 }
