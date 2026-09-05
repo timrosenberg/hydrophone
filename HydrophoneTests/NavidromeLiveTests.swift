@@ -79,15 +79,21 @@ struct NavidromeLiveTests {
         try #require(http.statusCode == 200)
         let filteredTotal = try #require(http.value(forHTTPHeaderField: "X-Total-Count").flatMap(Int.init))
 
+        let sharedIndex = LibrarySongIndex(
+            client: SubsonicClient(credentials: InMemoryCredentialStore()),
+            navidrome: sharedClient,
+            nativeFeaturesAvailable: { true }
+        )
+
         let start = Date()
-        let index = try await sharedClient.songIndex()
+        let index = try await sharedIndex.songIndex()
         let elapsed = Date().timeIntervalSince(start)
         print("songIndex(): \(index.count) songs in \(String(format: "%.1f", elapsed))s")
         #expect(!index.isEmpty)
         #expect(index.count == filteredTotal)
 
         let cachedStart = Date()
-        let cached = try await sharedClient.songIndex()
+        let cached = try await sharedIndex.songIndex()
         let cachedElapsed = Date().timeIntervalSince(cachedStart)
         print("songIndex() cached: \(cached.count) songs in \(String(format: "%.3f", cachedElapsed))s")
         #expect(cached.count == index.count)

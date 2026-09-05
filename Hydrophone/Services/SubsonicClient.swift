@@ -9,17 +9,9 @@ actor SubsonicClient {
     static let protocolVersion = "1.16.1"
     static let clientName = "Hydrophone"
 
-    // Internal (not private): the complete-library load lives in
-    // SubsonicClient+AllSongs.swift.
     let credentials: CredentialStore
     private let session: URLSession
     private let decoder: JSONDecoder
-
-    // Internal (not private): the complete-library cache lives in
-    // SubsonicClient+AllSongs.swift.
-    var cachedAllSongs: (songs: [Song], credentials: ServerCredentials)?
-    var inFlightAllSongs: (task: Task<AllSongsOutcome, Error>, credentials: ServerCredentials)?
-    var allSongsGeneration = 0
 
     /// Whether the current server supports the OpenSubsonic `formPost`
     /// extension, resolved lazily on the first flagged endpoint and cached
@@ -35,6 +27,12 @@ actor SubsonicClient {
     // MARK: - Public API
 
     var isConfigured: Bool { credentials.load() != nil }
+
+    /// The currently persisted credentials snapshot, if any — exposed so
+    /// `LibrarySongIndex` and `LibraryModel`'s credential-scoped caches can
+    /// get a `ServerCredentials` to key by without each needing their own
+    /// `CredentialStore` reference.
+    var currentCredentials: ServerCredentials? { credentials.load() }
 
     /// Performs an endpoint call and returns the decoded body.
     func send<Body: Decodable & Sendable>(_ endpoint: Endpoint, as _: Body.Type) async throws(SubsonicError) -> Body {

@@ -4,8 +4,9 @@ import Foundation
 
 /// Hermetic coverage for `ConnectionModel`'s native-feature-detection probe
 /// (#26): after a successful Subsonic connect, a real `NavidromeClient.login()`
-/// call decides `nativeFeaturesState`, and a library scan invalidates the
-/// cached song index (#24's `invalidateSongIndex()`). Stubs both
+/// call decides `nativeFeaturesState`, and a library scan fires the library
+/// invalidation handler (#24, #140/#141 — the underlying cache invalidation
+/// itself is covered by `LibrarySongIndex`'s own tests). Stubs both
 /// `SubsonicClient`'s `/rest/...` calls and `NavidromeClient`'s
 /// `/auth/login`/`/api/...` calls behind one shared `URLProtocol`, so no live
 /// server is needed. Live behavior (real server, real demo/bad-password
@@ -192,7 +193,7 @@ struct ConnectionModelNativeFeaturesTests {
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
         let (model, _) = makeModel(creds())
         var invalidations = 0
-        model.setSongsInvalidationHandler { invalidations += 1 }
+        model.setLibraryInvalidationHandler { invalidations += 1 }
         model.serverAddress = "https://second.example.com"
         model.username = "other"
         model.secret = "different"
@@ -208,34 +209,33 @@ struct ConnectionModelNativeFeaturesTests {
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
         let (model, _) = makeModel(creds())
         var invalidations = 0
-        model.setSongsInvalidationHandler { invalidations += 1 }
+        model.setLibraryInvalidationHandler { invalidations += 1 }
         await model.refresh()
         #expect(model.nativeFeaturesState == .available)
 
-        model.disconnect()
+        await model.disconnect()
 
         #expect(model.nativeFeaturesState == .unknown)
         #expect(invalidations == 1)
     }
 
-    // MARK: - Scan → song-index invalidation (#24 hook)
+    // MARK: - Scan → library invalidation (#24, #140/#141)
 
-    @Test func startLibraryScanInvalidatesCachedSongIndex() async throws {
+    /// `ConnectionModel` no longer touches a song-index cache directly (that
+    /// state moved to `LibrarySongIndex` — see docs/05's "Design decision
+    /// (#140)"); this just proves a successful scan fires the library
+    /// invalidation handler exactly once. `LibrarySongIndex`'s own tests
+    /// cover that `invalidate()` actually clears its caches.
+    @Test func startLibraryScanFiresLibraryInvalidationHandlerOnce() async {
         await ConnectionProbeMockProtocol.reset()
         await ConnectionProbeMockProtocol.setHandler(Self.makeHandler())
-        let (model, navidrome) = makeModel(creds())
-
-        _ = try await navidrome.songIndex()
-        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/api/song") == 1)
-
-        _ = try await navidrome.songIndex() // cached — no new request
-        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/api/song") == 1)
+        let (model, _) = makeModel(creds())
+        var invalidations = 0
+        model.setLibraryInvalidationHandler { invalidations += 1 }
 
         await model.startLibraryScan()
-        _ = try await navidrome.songIndex()
 
-        // Invalidated by the scan, so this call had to refetch.
-        #expect(await ConnectionProbeMockProtocol.count(pathSuffix: "/api/song") == 2)
+        #expect(invalidations == 1)
     }
 
     // MARK: - Mock handler

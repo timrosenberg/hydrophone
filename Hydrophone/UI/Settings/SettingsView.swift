@@ -47,7 +47,7 @@ private struct ConnectionSettingsView: View {
                     .buttonStyle(.borderedProminent)
                     Spacer()
                     if connection.isConfigured {
-                        Button("Disconnect", role: .destructive) { connection.disconnect() }
+                        Button("Disconnect", role: .destructive) { Task { await connection.disconnect() } }
                     }
                 }
                 statusRow

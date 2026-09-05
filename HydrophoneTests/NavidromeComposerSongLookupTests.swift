@@ -60,6 +60,17 @@ extension NavidromeClientNetworkTests {
         NavidromeClient(credentials: InMemoryCredentialStore(songLookupCredentials()), session: makeSongLookupSession())
     }
 
+    /// The native song-index cache lives on `LibrarySongIndex` now (#140/#141),
+    /// not `NavidromeClient` directly. The `SubsonicClient` half is never
+    /// called by any test in this file, so a plain unconfigured one is enough.
+    private func songLookupIndex() -> LibrarySongIndex {
+        LibrarySongIndex(
+            client: SubsonicClient(credentials: InMemoryCredentialStore()),
+            navidrome: songLookupClient(),
+            nativeFeaturesAvailable: { true }
+        )
+    }
+
     private func makeSongLookupSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NavidromeMockProtocol.self]
@@ -86,7 +97,7 @@ extension NavidromeClientNetworkTests {
     @Test func songsByComposerIdIncludesJointCredits() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let brahmsSongs = try await client.songs(byComposerId: "c-brahms")
         #expect(brahmsSongs.map(\.id) == ["joint-song"])
@@ -97,7 +108,7 @@ extension NavidromeClientNetworkTests {
     @Test func songsByComposerIdExcludesNonMatchingAndUncreditedSongs() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let songs = try await client.songs(byComposerId: "c-beethoven")
         #expect(songs.map(\.id) == ["beethoven-song"])
@@ -109,7 +120,7 @@ extension NavidromeClientNetworkTests {
     @Test func songsByComposerIdDoesNotRefetchTheSongIndex() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         _ = try await client.songIndex()
         _ = try await client.songs(byComposerId: "c-beethoven")
@@ -121,7 +132,7 @@ extension NavidromeClientNetworkTests {
     @Test func workMetadataParsesMovementAndMovementTotalAsSeparateInts() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let info = try await client.workMetadata(songId: "schubert-song")
         #expect(info == WorkInfo(
@@ -135,7 +146,7 @@ extension NavidromeClientNetworkTests {
     @Test func workMetadataHandlesWorkWithoutNumberedMovement() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let info = try await client.workMetadata(songId: "single-movement-song")
         let expected = WorkInfo(work: "Some Sonata", movementName: "Some Sonata",
@@ -146,7 +157,7 @@ extension NavidromeClientNetworkTests {
     @Test func workMetadataIsNilForSongWithNoWorkTagsOrUnknownId() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         #expect(try await client.workMetadata(songId: "no-composer-song") == nil) // no tags at all
         #expect(try await client.workMetadata(songId: "does-not-exist") == nil) // not in the index
@@ -155,7 +166,7 @@ extension NavidromeClientNetworkTests {
     @Test func workInfoForSongIdsJoinsMultipleSongsInOneBatch() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let ids = ["schubert-song", "single-movement-song", "no-composer-song", "does-not-exist"]
         let info = try await client.workInfo(forSongIds: ids)
@@ -177,7 +188,7 @@ extension NavidromeClientNetworkTests {
     @Test func workInfoForSongIdsDoesNotRefetchTheSongIndex() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         _ = try await client.songIndex()
         _ = try await client.workInfo(forSongIds: ["schubert-song", "single-movement-song"])
@@ -189,7 +200,7 @@ extension NavidromeClientNetworkTests {
     @Test func workInfoForSongIdsIsEmptyForEmptyInput() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let info = try await client.workInfo(forSongIds: [])
         #expect(info.isEmpty)
@@ -202,7 +213,7 @@ extension NavidromeClientNetworkTests {
     @Test func bitDepthsForSongIdsJoinsMultipleSongsInOneBatch() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let ids = ["beethoven-song", "schubert-song", "joint-song", "single-movement-song", "does-not-exist"]
         let depths = try await client.bitDepths(forSongIds: ids)
@@ -219,7 +230,7 @@ extension NavidromeClientNetworkTests {
     @Test func bitDepthsForSongIdsDoesNotRefetchTheSongIndex() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         _ = try await client.songIndex()
         _ = try await client.bitDepths(forSongIds: ["beethoven-song", "schubert-song"])
@@ -231,7 +242,7 @@ extension NavidromeClientNetworkTests {
     @Test func bitDepthsForSongIdsIsEmptyForEmptyInput() async throws {
         await NavidromeMockProtocol.reset()
         await NavidromeMockProtocol.setHandler(songLookupFixtureHandler())
-        let client = songLookupClient()
+        let client = songLookupIndex()
 
         let depths = try await client.bitDepths(forSongIds: [])
         #expect(depths.isEmpty)

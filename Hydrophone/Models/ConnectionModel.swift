@@ -75,7 +75,7 @@ final class ConnectionModel {
     private let client: SubsonicClient
     private let navidrome: NavidromeClient
     private let credentials: CredentialStore
-    @ObservationIgnored private var songsInvalidationHandler: @MainActor () -> Void = {}
+    @ObservationIgnored private var libraryInvalidationHandler: @MainActor () async -> Void = {}
     @ObservationIgnored private var songsLoadHandler: @MainActor () async -> Void = {}
 
     init(client: SubsonicClient, navidrome: NavidromeClient, credentials: CredentialStore) {
@@ -100,10 +100,13 @@ final class ConnectionModel {
 
     var isConfigured: Bool { credentials.load() != nil }
 
-    /// Composition-root hook that clears the visible Songs snapshot whenever
-    /// the credentials or server library behind it changes.
-    func setSongsInvalidationHandler(_ handler: @escaping @MainActor () -> Void) {
-        songsInvalidationHandler = handler
+    /// Composition-root hook that clears every credential-scoped library
+    /// collection (Songs, Albums, Artists, Composers, Genres, Favorites, Home,
+    /// Playlists)
+    /// whenever the credentials, server, or library contents behind them
+    /// change — wired to `LibraryModel.reset()`.
+    func setLibraryInvalidationHandler(_ handler: @escaping @MainActor () async -> Void) {
+        libraryInvalidationHandler = handler
     }
 
     /// Composition-root hook that starts the complete Songs walk after a
@@ -113,9 +116,8 @@ final class ConnectionModel {
         songsLoadHandler = handler
     }
 
-    private func invalidateSongs() async {
-        await client.invalidateAllSongs()
-        songsInvalidationHandler()
+    private func invalidateLibrary() async {
+        await libraryInvalidationHandler()
     }
 
     /// Build credentials from the current form, or nil if the form is invalid.
@@ -157,7 +159,7 @@ final class ConnectionModel {
         guard let (candidate, info) = await verifyForm() else { return }
         do {
             try credentials.save(candidate)
-            if previousCredentials != candidate { await invalidateSongs() }
+            if previousCredentials != candidate { await invalidateLibrary() }
             persistTranscodePrefs()
             // Re-scope the artwork cache to the (possibly new) server.
             ArtworkCache.shared.setServer(baseURL: candidate.baseURL)
@@ -221,10 +223,9 @@ final class ConnectionModel {
         for waiter in waiters { waiter.resume(returning: available) }
     }
 
-    func disconnect() {
+    func disconnect() async {
         try? credentials.clear()
-        songsInvalidationHandler()
-        Task { await client.invalidateAllSongs() }
+        await invalidateLibrary()
         ArtworkCache.shared.setServer(baseURL: nil)
         state = .unconfigured
         nativeFeaturesState = .unknown
@@ -235,17 +236,17 @@ final class ConnectionModel {
 
     /// Ask the server to rescan its music folders. The scan itself runs
     /// server-side and asynchronously; this only kicks it off. On success,
-    /// also invalidates the cached native song index (#24) — a rescan can
-    /// add, remove, or retag songs, so the next Composers-view open should
-    /// rebuild from scratch rather than serve a now-stale in-memory snapshot.
+    /// also invalidates every library projection (#24, #139, #141) — a
+    /// rescan can add, remove, or retag songs *and* albums/artists, so every
+    /// view should rebuild from scratch rather than serve a now-stale
+    /// in-memory snapshot.
     func startLibraryScan() async {
         scanMessage = "Requesting scan…"
         do {
             let status = try await client.object(.startScan, as: ScanStatus.self)
             let count = status.count.map { " — \($0) items" } ?? ""
             scanMessage = (status.scanning ? "Scanning" : "Scan finished") + count
-            await navidrome.invalidateSongIndex()
-            await invalidateSongs()
+            await invalidateLibrary()
         } catch {
             scanMessage = error.userMessage
         }

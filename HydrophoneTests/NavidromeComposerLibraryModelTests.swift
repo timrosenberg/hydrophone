@@ -30,7 +30,7 @@ extension NavidromeClientNetworkTests {
         let library = Self.makeComposerLibrary()
         await library.loadComposersIfNeeded()
 
-        library.reset()
+        await library.reset()
 
         #expect(library.composers.isEmpty)
         if case .idle = library.composersState {

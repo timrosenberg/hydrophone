@@ -5,11 +5,11 @@ import Testing
 extension SubsonicAllSongsTests {
     @Test func publishesTheFirstPageBeforeDelayedLaterPagesFinish() async throws {
         await AllSongsMockProtocol.reset(songCount: 1_003, responseDelay: .milliseconds(80))
-        let client = makeClient().client
+        let index = makeIndex().index
         let recorder = AllSongsProgressRecorder()
 
         let load = Task {
-            try await client.allSongs { songs in
+            try await index.allSongs { songs in
                 await recorder.append(songs.count)
             }
         }
@@ -47,10 +47,10 @@ extension SubsonicAllSongsTests {
             rejectAtOffset: 500,
             randomSongCount: 2
         )
-        let client = makeClient().client
+        let index = makeIndex().index
 
         await #expect(throws: SubsonicError.self) {
-            _ = try await client.allSongs { _ in }
+            _ = try await index.allSongs { _ in }
         }
 
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/getRandomSongs.view") == 0)

@@ -7,7 +7,7 @@ import Testing
 /// so assertions exercise the client rather than a pagination test double.
 @Suite(.serialized)
 struct SubsonicAllSongsTests {
-    func makeClient() -> (client: SubsonicClient, store: InMemoryCredentialStore) {
+    func makeIndex() -> (index: LibrarySongIndex, store: InMemoryCredentialStore) {
         let credentials = ServerCredentials(
             baseURL: URL(string: "https://music.example.com")!,
             username: "tim",
@@ -17,14 +17,19 @@ struct SubsonicAllSongsTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AllSongsMockProtocol.self]
         let store = InMemoryCredentialStore(credentials)
-        return (SubsonicClient(credentials: store,
-                              session: URLSession(configuration: configuration)), store)
+        let session = URLSession(configuration: configuration)
+        let index = LibrarySongIndex(
+            client: SubsonicClient(credentials: store, session: session),
+            navidrome: NavidromeClient(credentials: store, session: session),
+            nativeFeaturesAvailable: { false }
+        )
+        return (index, store)
     }
 
     @Test func walksEveryPageToTheFirstShortPageInOffsetOrder() async throws {
         await AllSongsMockProtocol.reset(songCount: 1_003)
 
-        let songs = try await makeClient().client.allSongs()
+        let songs = try await makeIndex().index.allSongs()
 
         #expect(songs.count == 1_003)
         #expect(songs.first?.id == "song-0")
@@ -34,9 +39,14 @@ struct SubsonicAllSongsTests {
     }
 
     @Test func fetchesPagesAfterTheProbeConcurrently() async throws {
-        await AllSongsMockProtocol.reset(songCount: 1_501, responseDelay: .milliseconds(40))
+        // The walk now hops from `LibrarySongIndex` to `SubsonicClient` per
+        // page (#140/#141) instead of a same-actor call; under heavy
+        // full-suite scheduling load that hop can eat into a too-tight
+        // artificial delay, so this uses the same margin already proven
+        // stable elsewhere in this file (`firstPageDelay: .milliseconds(80)`).
+        await AllSongsMockProtocol.reset(songCount: 1_501, responseDelay: .milliseconds(80))
 
-        _ = try await makeClient().client.allSongs()
+        _ = try await makeIndex().index.allSongs()
 
         #expect(await AllSongsMockProtocol.maximumConcurrentRequests() > 1)
     }
@@ -48,7 +58,7 @@ struct SubsonicAllSongsTests {
             randomSongCount: 3
         )
 
-        let songs = try await makeClient().client.allSongs()
+        let songs = try await makeIndex().index.allSongs()
 
         #expect(songs.map(\.id) == ["random-0", "random-1", "random-2"])
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 1)
@@ -62,7 +72,7 @@ struct SubsonicAllSongsTests {
             randomSongCount: 2
         )
 
-        let songs = try await makeClient().client.allSongs()
+        let songs = try await makeIndex().index.allSongs()
 
         #expect(songs.map(\.id) == ["random-0", "random-1"])
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 1)
@@ -76,7 +86,7 @@ struct SubsonicAllSongsTests {
             randomSongCount: 2
         )
 
-        let songs = try await makeClient().client.allSongs()
+        let songs = try await makeIndex().index.allSongs()
 
         #expect(songs.map(\.id) == ["random-0", "random-1"])
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/getRandomSongs.view") == 1)
@@ -90,7 +100,7 @@ struct SubsonicAllSongsTests {
             randomSongCount: 2
         )
 
-        let songs = try await makeClient().client.allSongs()
+        let songs = try await makeIndex().index.allSongs()
 
         #expect(songs.map(\.id) == ["random-0", "random-1"])
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 7)
@@ -98,20 +108,20 @@ struct SubsonicAllSongsTests {
 
     @Test func repeatedCallsReuseTheCredentialBoundCache() async throws {
         await AllSongsMockProtocol.reset(songCount: 3)
-        let client = makeClient().client
+        let index = makeIndex().index
 
-        _ = try await client.allSongs()
-        _ = try await client.allSongs()
+        _ = try await index.allSongs()
+        _ = try await index.allSongs()
 
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 1)
     }
 
     @Test func concurrentCallsCoalesceOneWalk() async throws {
         await AllSongsMockProtocol.reset(songCount: 3, firstPageDelay: .milliseconds(80))
-        let client = makeClient().client
+        let index = makeIndex().index
 
-        async let first = client.allSongs()
-        async let second = client.allSongs()
+        async let first = index.allSongs()
+        async let second = index.allSongs()
         _ = try await (first, second)
 
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 1)
@@ -119,9 +129,9 @@ struct SubsonicAllSongsTests {
 
     @Test func changedCredentialsUseANewWalkAndStayConsistentWithinEachWalk() async throws {
         await AllSongsMockProtocol.reset(songCount: 1_003, firstPageDelay: .milliseconds(80))
-        let (client, store) = makeClient()
+        let (index, store) = makeIndex()
 
-        let first = Task { try await client.allSongs() }
+        let first = Task { try await index.allSongs() }
         while await AllSongsMockProtocol.requestedOffsets().isEmpty { await Task.yield() }
         try store.save(ServerCredentials(
             baseURL: URL(string: "https://second.example.com")!,
@@ -130,7 +140,7 @@ struct SubsonicAllSongsTests {
             authMethod: .apiKey
         ))
         _ = try await first.value
-        _ = try await client.allSongs()
+        _ = try await index.allSongs()
 
         let hosts = await AllSongsMockProtocol.requestedHosts()
         #expect(hosts.prefix(7).allSatisfy { $0 == "music.example.com" })
@@ -139,24 +149,24 @@ struct SubsonicAllSongsTests {
 
     @Test func explicitInvalidationForcesANewWalk() async throws {
         await AllSongsMockProtocol.reset(songCount: 3)
-        let client = makeClient().client
+        let index = makeIndex().index
 
-        _ = try await client.allSongs()
-        await client.invalidateAllSongs()
-        _ = try await client.allSongs()
+        _ = try await index.allSongs()
+        await index.invalidate()
+        _ = try await index.allSongs()
 
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 2)
     }
 
     @Test func invalidatedInFlightWalkCannotRepopulateTheCache() async throws {
         await AllSongsMockProtocol.reset(songCount: 3, firstPageDelay: .milliseconds(80))
-        let client = makeClient().client
+        let index = makeIndex().index
 
-        let stale = Task { try await client.allSongs() }
+        let stale = Task { try await index.allSongs() }
         while await AllSongsMockProtocol.requestedOffsets().isEmpty { await Task.yield() }
-        await client.invalidateAllSongs()
+        await index.invalidate()
         _ = try await stale.value
-        _ = try await client.allSongs()
+        _ = try await index.allSongs()
 
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 2)
     }
@@ -185,7 +195,7 @@ struct SubsonicAllSongsTests {
 
         #expect(library.songs.count == 1_003)
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/getRandomSongs.view") == 0)
-        library.reset()
+        await library.reset()
         #expect(library.songs.isEmpty)
         if case .idle = library.songsState {} else { Issue.record("Expected idle songs state") }
     }
@@ -209,11 +219,11 @@ struct SubsonicAllSongsTests {
                                    nativeFeaturesAvailable: { false })
         let connection = ConnectionModel(client: client, navidrome: navidrome,
                                          credentials: store)
-        connection.setSongsInvalidationHandler { library.invalidateSongs() }
+        connection.setLibraryInvalidationHandler { await library.reset() }
         await library.loadSongsIfNeeded()
 
         await connection.startLibraryScan()
-        _ = try await client.allSongs()
+        _ = try await library.songIndex.allSongs()
 
         #expect(library.songs.isEmpty)
         #expect(await AllSongsMockProtocol.requestCount(pathSuffix: "/rest/search3.view") == 2)
@@ -240,7 +250,7 @@ struct SubsonicAllSongsTests {
 
         let stale = Task { await library.loadSongsIfNeeded() }
         while await AllSongsMockProtocol.requestedOffsets().isEmpty { await Task.yield() }
-        library.invalidateSongs()
+        await library.invalidateSongs()
         await stale.value
 
         #expect(library.songs.isEmpty)

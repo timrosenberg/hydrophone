@@ -137,7 +137,7 @@ final class AppModel {
         self.connection = connection
         self.library = library
         self.player = player
-        connection.setSongsInvalidationHandler { [weak library] in library?.invalidateSongs() }
+        connection.setLibraryInvalidationHandler { [weak library] in await library?.reset() }
         connection.setSongsLoadHandler { [weak library] in await library?.loadSongsIfNeeded() }
     }
 

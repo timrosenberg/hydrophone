@@ -5,11 +5,17 @@ import Foundation
 /// PlayerModel's extension split).
 extension LibraryModel {
     /// Drops the rendered song snapshot so the next Songs-view load rebuilds
-    /// it from the client's credential-bound full-library cache.
-    func invalidateSongs() {
+    /// it from `songIndex`'s credential-bound full-library cache, and retires
+    /// that underlying cache (both the Subsonic and native side) too — a
+    /// stale in-flight build from before this call can't repopulate it. Async
+    /// (awaits the actor call directly) so a caller can be sure the cache is
+    /// actually cleared before proceeding, rather than racing a fire-and-forget
+    /// invalidation against a subsequent read.
+    func invalidateSongs() async {
         songsGeneration += 1
         songs = []
         songsState = .idle
+        await songIndex.invalidate()
     }
 
     func loadSongsIfNeeded() async {
@@ -22,10 +28,12 @@ extension LibraryModel {
         let generation = songsGeneration
         songsState = .loading
         do {
-            var fetched = try await client.allSongs { [weak self] partial in
+            // The native work/movement/bitDepth join now happens inside
+            // `allSongs()` itself (once, after the walk completes) — see
+            // `LibrarySongIndex`.
+            let fetched = try await songIndex.allSongs { [weak self] partial in
                 await self?.publishPartialSongs(partial, generation: generation)
             }
-            await joinWorkInfo(into: &fetched)
             guard generation == songsGeneration else { return }
             songs = fetched
             songsState = .loaded(())

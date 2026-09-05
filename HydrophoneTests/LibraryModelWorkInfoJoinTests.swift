@@ -23,7 +23,7 @@ struct LibraryModelWorkInfoJoinTests {
         return URLSession(configuration: config)
     }
 
-    private func makeLibrary(nativeFeaturesAvailable: @escaping () async -> Bool) -> LibraryModel {
+    private func makeLibrary(nativeFeaturesAvailable: @escaping @Sendable () async -> Bool) -> LibraryModel {
         let creds = ServerCredentials(baseURL: URL(string: "https://music.example.com")!,
                                       username: "tim", secret: "sesame", authMethod: .tokenSalt)
         let store = InMemoryCredentialStore(creds)
