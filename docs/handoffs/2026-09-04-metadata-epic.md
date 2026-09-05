@@ -68,7 +68,7 @@ Continuation: `issue-128-metadata-warm-start`, based on that foundation.
 The earlier 0.88-second relaunch claim was invalid and is withdrawn. It observed
 an existing process. The final live verification uses a confirmed process exit
 and new PID; it is a functional restart check, not a launch-speed benchmark.
-The final full gate is **407 tests / 428 executions**, zero failures/skips,
+The post-review final gate is **413 tests / 436 executions**, zero failures/skips,
 an unsigned app build with zero warnings, SwiftLint zero violations and a clean
 diff check. Live verification on Navidrome 0.63.2 includes Home seed-to-live,
 direct saved-playlist restart, and a manual scan followed by an updated disk
