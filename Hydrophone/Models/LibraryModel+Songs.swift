@@ -55,8 +55,9 @@ extension LibraryModel {
             songsState = .loaded(())
         } catch {
             guard generation == songsGeneration else { return }
-            songsState = .failed(error.userMessage)
-            Self.log.error("song load failed: \(error.userMessage)")
+            let message = (error as? SubsonicError)?.userMessage ?? error.localizedDescription
+            songsState = .failed(message)
+            Self.log.error("song load failed: \(message)")
         }
     }
 
