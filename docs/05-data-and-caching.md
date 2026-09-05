@@ -41,6 +41,41 @@ metadata readiness changes, including launch directly into a saved playlist.
 Ordinary playlist listing generations are separate from mutation revisions so
 background listing cannot retire an otherwise valid detail request.
 
+### Review hardening (#153)
+
+- Settings **Test Connection** validates only the unsaved form. Failure reports
+  an error without retiring the current library/store or changing the persisted
+  connection generation. Persisted connect/refresh failures still invalidate.
+- An empty `search3` followed by a random-sample fallback is never a complete
+  inventory, even when the sample is empty. It cannot authorize song deletion
+  and is not cached as a completed walk. A truly empty server therefore retains
+  any older disk inventory until completeness can be established by a supported
+  authoritative path; an ambiguous fallback cannot erase it.
+- A failed playlist detail retries the complete playlist listing and all details
+  once. Re-reading the listing handles deletion during the first attempt. If the
+  retry also fails, the entire reconciliation remains canceled and the prior
+  complete snapshot is retained. Partial playlists never authorize pruning;
+  reconnect/manual rescan can attempt a new pass.
+- Detail revisions and completed-edit reload triggers are keyed by playlist ID.
+  Editing B cannot retire A's pending detail. The selected playlist refreshes
+  after its own edit finishes, retaining optimistic rows during the round-trip.
+- The genre browser reloads its selected genre on session/readiness changes,
+  without requiring another click. Retired account rows remain rejected by the
+  model; returning them merely to avoid an empty pane would break isolation.
+- A replacement native probe leaves waiters pending while `.checking`; only
+  success, failure or disconnect resolves them.
+
+### Deferred write-cost optimization
+
+`LibraryMetadataStoreBatch` currently fetches all five entity tables and builds
+canonical identity maps for every write, including a small album/detail fetch.
+This work runs on the store actor and does not delay UI publication, but its
+cost scales with the full library. Keeping canonical graphs correct during
+upsert/rollback/replay takes priority in this change. A follow-up should profile
+routine small writes at 14k+ songs and evaluate targeted identity fetches or
+coalesced writes while preserving relationship identity and transactional
+rollback. This is a performance limitation, not a redundant cache to remove.
+
 ## In-memory metadata caches
 
 This section audits every in-memory cache and cache-like load/session state in

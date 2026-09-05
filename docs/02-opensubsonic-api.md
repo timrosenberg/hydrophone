@@ -276,8 +276,9 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   form credentials, while `login()` always reads the persisted credential
   store, so probing there would check the wrong server. Settings → Connection
   shows the result as a read-only status line. A form test does not interrupt an
-  active persisted connect/probe; failed or superseded connection attempts settle
-  native waiters so metadata loading cannot remain stranded in `.checking`.
+  active persisted connect/probe, and a failed unsaved form test does not retire
+  the current library/store. A replacement probe keeps native waiters pending
+  through `.checking`; only a terminal result or disconnect resolves them.
   See #26.
 - **Song-index invalidation on scan:** `ConnectionModel.startLibraryScan()`
   calls the composition-root invalidation hook after server scan completion.

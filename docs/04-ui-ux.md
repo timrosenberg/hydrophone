@@ -100,6 +100,10 @@ Grouped like iTunes, using `Section`s and SF Symbols:
     a session reset/rescan. Detail tracks render before native Work enrichment;
     canceled or superseded detail work cannot restore an edited/deleted playlist
     in the persistent store.
+  - Detail invalidation is per playlist: editing another playlist does not
+    cancel the selected detail. Its own completed edits trigger a fresh load.
+    The genre column browser likewise reloads the selected genre after a session
+    reset or rescan, while retaining restored downstream filters.
 
 Selection drives the detail area. `LibraryModel` backs the content.
 Selection appearances are **custom-drawn** (the backing tables' system

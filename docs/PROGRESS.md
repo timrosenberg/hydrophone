@@ -29,7 +29,7 @@ to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
 final #82 review-fix live recheck passed on 2026-08-28; #128 warm-start
 continuation and all six sub-issues are implemented and verified on 2026-09-05,
-pending joint review and landing) ·
+including PR #153 review remediation; pending joint review and landing) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -72,6 +72,45 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## PR #153: review remediation (2026-09-05)
+
+- Evaluated all seven inline findings at `7003d3b`. The connection, empty
+  fallback, playlist-detail revision, genre reload and native-waiter findings
+  reproduced in regression tests before their fixes.
+- Failed unsaved form tests now preserve the verified library/store and the
+  persisted session generation; failed persisted connect paths still invalidate.
+  Empty random fallback never establishes completeness, even with zero rows.
+  Replacement native probes leave existing waiters pending until a terminal
+  result instead of reporting unavailable while still checking.
+- Playlist details are guarded per ID, so editing B cannot retire A. A completed
+  edit triggers one selected-detail reload while optimistic rows remain visible.
+  The genre browser follows selection/session/readiness changes and rejects
+  canceled predecessors before they can alter the replacement load's state.
+- For a failed playlist detail, added one bounded retry of the entire playlist
+  listing/detail inventory. This recovers transient failure and deletion during
+  sync without accepting a partial snapshot. Persistent failure still cancels
+  reconciliation and retains the prior complete snapshot. Returning stale genre
+  or album rows was rejected as a remedy because it would break account isolation.
+- Whole-table identity-map construction on each small write is confirmed as a
+  performance limitation and documented in `docs/05` for targeted profiling and
+  optimization. No persistence redesign or new cache is included in this repair.
+- Full gate: **413 tests / 436 executions, 0 failures/skips**, canonical bundle
+  `/tmp/hydrophone-153-review-final.xcresult`; unsigned app build **zero warnings**;
+  SwiftLint **0 violations**; `git diff --check` clean. Rendered tests cover the
+  session-reset genre reload, canceled initial walk and optimistic playlist
+  removal. The full gate caught a duplicate post-edit reload; it was corrected
+  before this passing run. Independent follow-up review found no remaining issue
+  within the repair scope.
+- Live: 2026-09-05, Tim's configured Navidrome 0.63.2, exact executable
+  `/private/tmp/hydrophone-153-review-dd/Build/Products/Debug/Hydrophone.app`,
+  PID **25134**. An unsaved invalid path on the same server produced the expected
+  Test Connection error; the selected Jazz pane remained populated afterward.
+  Restored the original form address and verified it successfully without Save
+  & Connect. A real scan reported **Scan finished — 14231 items**; the existing
+  Jazz filter repopulated the track table without another genre click. Restored
+  the original All Genres selection afterward. Stored credentials were not
+  changed; playback remained paused.
 
 ## Issue #128: acceptance completion and lifecycle review (2026-09-05)
 
@@ -4073,6 +4112,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ PR #153 review repair (2026-09-05): **413 tests / 436 executions, no
+  failures/skips**, unsigned build zero warnings, lint/diff checks clean.
+  Confirmed the failed unsaved form test retains the populated live library;
+  bounded retry and stale/canceled-load regressions pass. Whole-table small-write
+  cost remains a documented performance follow-up.
 - ✅ Epic #128 / #146–151 (2026-09-05): all implementation and acceptance work
   complete, pending joint review/landing. Unsigned app build zero warnings;
   **407 tests / 428 executions, 0 failures/skips**; SwiftLint 0 violations;
