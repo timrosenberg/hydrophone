@@ -89,6 +89,11 @@ metadata can never disagree with the UI.
   optimization. See `05`.
 - **`ArtworkCache`** — two-tier (memory + disk), server-scoped, resized image
   cache. See `05`.
+- **`LibraryMetadataStore` (actor)** — account-scoped SwiftData containers,
+  value-only snapshots and atomic complete-sync reconciliation. Owns disk I/O;
+  `LibrarySongIndex` remains the session's live walk and native-join owner.
+  `LibraryMetadataSync` coordinates the complete fetch before pruning the
+  cache. See `05`.
 - **`CredentialStore`** — Keychain read/write of server URL, username, and
   password (token+salt) or API key; an in-memory variant backs tests/previews.
   See `02`/`07`.

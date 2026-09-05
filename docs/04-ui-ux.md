@@ -96,6 +96,10 @@ Grouped like iTunes, using `Section`s and SF Symbols:
 - **Playlists**
   - The user's server playlists (live from `getPlaylists`), each selectable;
     context menu for rename/delete; "+" to create.
+  - Saved playlist selection reloads after verified metadata seeding and after
+    a session reset/rescan. Detail tracks render before native Work enrichment;
+    canceled or superseded detail work cannot restore an edited/deleted playlist
+    in the persistent store.
 
 Selection drives the detail area. `LibraryModel` backs the content.
 Selection appearances are **custom-drawn** (the backing tables' system

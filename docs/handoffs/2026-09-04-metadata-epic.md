@@ -54,6 +54,27 @@ Continuation: `issue-128-metadata-warm-start`, based on that foundation.
    completions, partial/failing stores, deletion pruning, concurrent writes, manual
    rescan, and server-observed cold versus warm launch behavior.
 
+## Acceptance evidence (2026-09-05)
+
+| Issue | Implementation and verification |
+|---|---|
+| #146 | Versioned v1 schema and migration plan; rich/sparse mappings, ordered repeated playlist entries, disk reopen and actor-boundary tests in #152. |
+| #147 | Account-scoped actor containers and session tokens; A/B/A, disconnect retention, API-key separation and unavailable/corrupt store tests. |
+| #148 | Verified seed precedes held live rows, then replaces without duplicates; rejected connection never opens the store; unavailable store keeps live loading. Section and playlist tasks follow session/readiness changes. |
+| #149 | Real disk writes from fetch completions; held and failed backend tests prove live publication completes independently; concurrent upsert, authoritative favorites and stale playlist-detail tests. |
+| #150 | Complete-walk validation and one session refresh; atomic pruning, failed mapping rollback, cancellation, incomplete pagination rejection, accepted-write replay, native-field clearing and 14k-to-7k tests. A later successful full sync also recovers an initial collection fetch failure. |
+| #151 | A held server scan leaves current rows intact; completing it awaits a second full metadata commit with new rows. Cache inventory in docs/05 records distinct retained responsibilities and no redundant-cache removal follow-up. |
+
+The earlier 0.88-second relaunch claim was invalid and is withdrawn. It observed
+an existing process. The final live verification uses a confirmed process exit
+and new PID; it is a functional restart check, not a launch-speed benchmark.
+The final full gate is **407 tests / 428 executions**, zero failures/skips,
+an unsigned app build with zero warnings, SwiftLint zero violations and a clean
+diff check. Live verification on Navidrome 0.63.2 includes Home seed-to-live,
+direct saved-playlist restart, and a manual scan followed by an updated disk
+sync timestamp/generation and restored playlist Work metadata. See PROGRESS
+for the exact executable, PIDs, result bundle and observations.
+
 ## Review/landing order
 
 Review #152 plus the final continuation together. Land the foundation before

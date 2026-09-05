@@ -84,8 +84,10 @@ otherwise; see `SubsonicClient.formPostRequest`).
   2026-07-08, resurrected 2026-07-15 for `formPost`.
 - ~~`getMusicFolders`~~ — not needed; the app queries the whole library.
 - `startScan` — kick off a server-side library rescan (Settings →
-  Connection "Scan Library", File → Update Server Library). Fire-and-forget;
-  the returned scanning/count is surfaced once in Settings.
+  Connection "Scan Library", File → Update Server Library). The persistent
+  metadata path polls `getScanStatus` once per second until completion (up to
+  five minutes), then invalidates the session and awaits a full metadata refresh.
+  Requests stay pinned to the starting credentials and retire on session change.
 - `scrobble` — play reporting: `submission=false` ("now playing") at each
   track start, `submission=true` once playback passes half the track or
   4 minutes (tracks ≥ 30s; the Last.fm rules Navidrome mirrors). Drives the
@@ -273,15 +275,16 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   "Test Connection" button) deliberately never probes — it verifies unsaved
   form credentials, while `login()` always reads the persisted credential
   store, so probing there would check the wrong server. Settings → Connection
-  shows the result as a read-only status line. See #26.
+  shows the result as a read-only status line. A form test does not interrupt an
+  active persisted connect/probe; failed or superseded connection attempts settle
+  native waiters so metadata loading cannot remain stranded in `.checking`.
+  See #26.
 - **Song-index invalidation on scan:** `ConnectionModel.startLibraryScan()`
-  calls `NavidromeClient.invalidateSongIndex()` (#24) after a successful scan
-  request, so a rescan's adds/removes/retags aren't served stale by the
-  in-memory song-index cache — the next consumer rebuilds it from scratch.
-  `LibraryModel`'s work/movement join (#45) reads through this cache, so a
-  rescan's retagged work/movement data is picked up on the next fetch too. No
-  UI yet *displays* work/movement data (E5's remaining sub-issues), so this is
-  presently unobservable outside a log line or breakpoint. See #26.
+  calls the composition-root invalidation hook after server scan completion.
+  `LibraryModel.reset()` retires all collections and both `LibrarySongIndex`
+  caches. The same verified seed/live/full-sync path then refreshes the UI and
+  persistent metadata, including Work/movement tags, without waiting for another
+  view appearance. Failed/incomplete walks cannot authorize disk pruning.
 - **Song index (#24, #86):** `NavidromeClient.songIndex()` walks
   `/api/song?missing=false` fully via `paginatedGet`, excluding records whose
   files are missing/deleted. The filter is sent on every page and 401 retry;

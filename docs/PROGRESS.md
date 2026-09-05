@@ -28,7 +28,8 @@ artwork and server metadata cached on disk; Songs and selected genres paginate
 to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
 final #82 review-fix live recheck passed on 2026-08-28; #128 warm-start
-continuation is implemented and live-verified on 2026-09-04) ·
+continuation and all six sub-issues are implemented and verified on 2026-09-05,
+pending joint review and landing) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -72,6 +73,81 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #128: acceptance completion and lifecycle review (2026-09-05)
+
+- Completes #146–151 for joint review in #152/#153. The schema remains on its
+  foundation branch; all continuation fixes and evidence are on the epic branch.
+- Added acceptance coverage for slow and failed persistence without delayed
+  live rows, actual fetch-to-disk writes, manual scan completion followed by a
+  second full store refresh, and recovery when the initial collection request
+  fails but the complete sync succeeds.
+- Independent review found and the branch fixes ID-ordered album publication,
+  stale favorite flags from ordinary detail writes, obsolete playlist detail/
+  enrichment writes after edits, and a form test abandoning the native probe.
+  Initial live-load writes are drained before full sync so they cannot replay
+  over a later server snapshot. Selected sections and playlist details restart
+  after seeding/session changes; ordinary playlist listings do not retire an
+  in-flight detail request. Follow-up review found no remaining blockers.
+- Updated the #125 inventory: session walk coalescing/native joins, observable
+  projections, mutation guards, auth/capability state and artwork each retain a
+  distinct responsibility. No redundant-cache removal follow-up was identified.
+- Verification: unsigned app build **zero warnings**; full suite **407 tests /
+  428 executions, 0 failures, 0 skips**, read from
+  `/tmp/hydrophone-128-complete-final.xcresult`; SwiftLint **0 violations**;
+  `git diff --check` clean. The preceding clean-DerivedData run passed 406 tests;
+  its test compilation exposed the existing `ArtworkCacheTests.swift:223`
+  weak-variable warning. The production app build emits no compiler warnings.
+- Live: 2026-09-05, Tim's configured Navidrome **0.63.2**, exact executable
+  `/private/tmp/hydrophone-128-gate-sept5/Build/Products/Debug/Hydrophone.app`.
+  Confirmed process exit, then new PID **80900**: Home initially showed cached
+  favorites and **14,231 songs**, then live Keep Listening/Recently Added/Most
+  Played/Random shelves populated. Confirmed exit of 80900, then new PID
+  **82090**: launch directly into the saved *2027 Faculty Recital* playlist
+  rendered **10 songs / 59:21** without navigating away. Album browsing is
+  alphabetical; the on-disk snapshot contains **14,231 songs / 1,152 albums**.
+  A real **Scan Library** reported **Scan finished — 14231 items**; the disk
+  sync state advanced to generation **5**, timestamp **2026-09-05 13:42:41 UTC**.
+  After rescan, the selected playlist again showed 10 songs / 59:21 with Work
+  metadata populated, without navigating away.
+  Playback remained paused. These are functional live checks, not timing or
+  audio-quality benchmarks; the earlier 0.88-second claim below is withdrawn.
+
+## Issue #128 continuation: persistent metadata warm start (2026-09-04)
+
+- The continuation branch wires the #146 schema through an actor-owned
+  `LibraryMetadataStore`, scoped by normalized server/account identity. A
+  verified ping is required before opening and reading a seed; disconnect and
+  credential changes retire sessions while retaining disk data for a later
+  reconnect. Accepted writes are serialized and best-effort.
+- `LibraryModel` presents seeded songs, albums, artists, genres, playlists,
+  and favorites before live requests. Successful live results replace or
+  reconcile those rows while generation checks prevent stale sessions from
+  repopulating the UI. A complete song walk is required before full-sync
+  pruning; random fallback, cancellation, repeated pages, and failed pages
+  remain non-authoritative.
+- Full reconciliation is transactional and replays newer favorites/playlist
+  writes over the fetched snapshot. Manual library scans poll until the server
+  reports completion, then run the same complete refresh. No periodic timer or
+  new network endpoint was added beyond `getScanStatus`.
+- Hermetic store coverage includes disk reopen, account/API-key isolation,
+  corrupt/unwritable roots, rollback, stale sessions, graph validation,
+  deletion pruning, write replay, native-field preservation/clearing, and a
+  14,000-to-7,000 song reconciliation. The independent Swift runtime suite
+  passes **15 tests**; the earlier full app suite passed **398 tests,
+  0 failures, 0 skips** (canonical `xcresulttool` summary at
+  `/tmp/hydrophone-128-final.xcresult`). SwiftLint is clean and
+  `git diff --check` is clean. The unsigned app build passes; only the normal
+  no-AppIntents metadata notice is emitted.
+- Live verification: 2026-09-04, Tim's configured Navidrome server, exact
+  executable `/private/tmp/hydrophone-128-dd-escalated/Build/Products/Debug/Hydrophone.app`.
+  First branch launch showed the connected library while the walk progressed
+  (6,500 songs visible), later reaching **14,231 songs loaded**. The previously
+  recorded 0.88-second warm-relaunch estimate is withdrawn: that operation
+  inspected the existing process rather than establishing a restart.
+  The server-scoped store was nonempty at
+  `~/Library/Caches/app.hydrophone/Metadata/.../metadata.store` (**14,393,344
+  bytes**). No audio claim was made during this metadata check.
+
 ## Issue #146: versioned metadata schema foundation (2026-09-04)
 
 - Adds `MetadataSchemaV1` (1.0.0) and `MetadataMigrationPlan` with six cached
@@ -114,41 +190,6 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   live verification used build-command-only ad-hoc signing overrides. No
   project signing settings changed. No production metadata container opens
   in this foundation PR; schema persistence is verified by hermetic tests.
-
-## Issue #128 continuation: persistent metadata warm start (2026-09-04)
-
-- The continuation branch wires the #146 schema through an actor-owned
-  `LibraryMetadataStore`, scoped by normalized server/account identity. A
-  verified ping is required before opening and reading a seed; disconnect and
-  credential changes retire sessions while retaining disk data for a later
-  reconnect. Accepted writes are serialized and best-effort.
-- `LibraryModel` presents seeded songs, albums, artists, genres, playlists,
-  and favorites before live requests. Successful live results replace or
-  reconcile those rows while generation checks prevent stale sessions from
-  repopulating the UI. A complete song walk is required before full-sync
-  pruning; random fallback, cancellation, repeated pages, and failed pages
-  remain non-authoritative.
-- Full reconciliation is transactional and replays newer favorites/playlist
-  writes over the fetched snapshot. Manual library scans poll until the server
-  reports completion, then run the same complete refresh. No periodic timer or
-  new network endpoint was added beyond `getScanStatus`.
-- Hermetic store coverage includes disk reopen, account/API-key isolation,
-  corrupt/unwritable roots, rollback, stale sessions, graph validation,
-  deletion pruning, write replay, native-field preservation/clearing, and a
-  14,000-to-7,000 song reconciliation. The independent Swift runtime suite
--  passes **15 tests**; the full app suite passes **398 tests / 398 executions,
-  0 failures, 0 skips** (canonical `xcresulttool` summary at
-  `/tmp/hydrophone-128-final.xcresult`). SwiftLint is clean and
-  `git diff --check` is clean. The unsigned app build passes; only the normal
-  no-AppIntents metadata notice is emitted.
-- Live verification: 2026-09-04, Tim's configured Navidrome server, exact
-  executable `/private/tmp/hydrophone-128-dd-escalated/Build/Products/Debug/Hydrophone.app`.
-  First branch launch showed the connected library while the walk progressed
-  (6,500 songs visible); after the walk, a warm relaunch rendered Albums and
-  showed **14,231 songs loaded** in about **0.88 s** from the app launch call.
-  The server-scoped store was nonempty at
-  `~/Library/Caches/app.hydrophone/Metadata/.../metadata.store` (**14,393,344
-  bytes**). No audio claim was made during this metadata check.
 
 ## Issue #141: implement song-index consolidation & cache abstraction (2026-09-04)
 
@@ -4032,6 +4073,13 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Epic #128 / #146–151 (2026-09-05): all implementation and acceptance work
+  complete, pending joint review/landing. Unsigned app build zero warnings;
+  **407 tests / 428 executions, 0 failures/skips**; SwiftLint 0 violations;
+  diff check clean. Real process restarts on Navidrome 0.63.2 verified Home
+  seed-to-live behavior and saved-playlist launch (10 songs / 59:21); disk
+  snapshot holds 14,231 songs and 1,152 albums. See the newest entry for exact
+  executable/PIDs and the corrected earlier verification claim.
 - ✅ Issue #146 (2026-09-04): unsigned app build zero warnings; **375 tests /
   396 executions, 0 failures/skips**; SwiftLint 0 violations (152 files).
   In-memory and disk persistence regressions pass, including canonical
