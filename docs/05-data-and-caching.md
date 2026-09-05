@@ -11,8 +11,6 @@ Metadata never bypasses connection verification, and a failed or incomplete
 refresh cannot prune the last complete disk snapshot. No audio is cached or
 downloaded by this feature; every play continues to stream from the server.
 
-## In-memory metadata caches
-
 ## Persistent metadata store
 
 `LibraryMetadataStore` is an actor over the versioned SwiftData schema in
@@ -33,6 +31,8 @@ bound song walk plus all collection roots; only a successful complete graph is
 reconciled in one transaction. Writes accepted during that walk replay over
 the fetched snapshot before commit. Manual library rescan waits for
 `getScanStatus` to report completion and then runs the same refresh once.
+
+## In-memory metadata caches
 
 This section audits every in-memory cache and cache-like load/session state in
 the client and model layer, as implemented after #139 (inventory) → #140
