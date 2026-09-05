@@ -161,6 +161,10 @@ final class ConnectionModel {
 
     /// Verify the current form against the server without persisting.
     func testConnection() async {
+        // A form test must not abandon a persisted connection's native probe
+        // or the metadata loads waiting on it.
+        if case .connecting = state { return }
+        guard nativeFeaturesState != .checking else { return }
         connectionGeneration += 1
         let generation = connectionGeneration
         if let (_, info) = await verifyForm(generation: generation), generation == connectionGeneration {
@@ -172,8 +176,12 @@ final class ConnectionModel {
     func saveAndConnect() async {
         connectionGeneration += 1
         let generation = connectionGeneration
+        settleNativeFeatures(.checking)
         guard let (candidate, info) = await verifyForm(generation: generation),
-              generation == connectionGeneration else { return }
+              generation == connectionGeneration else {
+            if generation == connectionGeneration { settleNativeFeatures(.unavailable) }
+            return
+        }
         do {
             try credentials.save(candidate)
             persistTranscodePrefs()
@@ -181,6 +189,8 @@ final class ConnectionModel {
         } catch {
             guard generation == connectionGeneration else { return }
             await invalidateLibrary()
+            guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             state = .failed(error.localizedDescription)
         }
     }
@@ -222,9 +232,11 @@ final class ConnectionModel {
     func refresh() async {
         connectionGeneration += 1
         let generation = connectionGeneration
+        settleNativeFeatures(.checking)
         guard let candidate = credentials.load() else {
             await invalidateLibrary()
             guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             state = .unconfigured
             return
         }
@@ -237,6 +249,7 @@ final class ConnectionModel {
             guard generation == connectionGeneration else { return }
             await invalidateLibrary()
             guard generation == connectionGeneration else { return }
+            settleNativeFeatures(.unavailable)
             state = .failed(error.userMessage)
         }
     }
@@ -253,28 +266,28 @@ final class ConnectionModel {
         do {
             _ = try await navidrome.login()
             guard generation == connectionGeneration else { return }
-            nativeFeaturesState = .available
             available = true
         } catch {
             guard generation == connectionGeneration else { return }
-            nativeFeaturesState = .unavailable
             available = false
         }
+        settleNativeFeatures(available ? .available : .unavailable)
+    }
+
+    private func settleNativeFeatures(_ state: NativeFeaturesState) {
+        nativeFeaturesState = state
         let waiters = nativeFeatureWaiters
         nativeFeatureWaiters = []
-        for waiter in waiters { waiter.resume(returning: available) }
+        for waiter in waiters { waiter.resume(returning: state == .available) }
     }
 
     func disconnect() async {
         connectionGeneration += 1
-        let waiters = nativeFeatureWaiters
-        nativeFeatureWaiters = []
-        for waiter in waiters { waiter.resume(returning: false) }
+        settleNativeFeatures(.unknown)
         try? credentials.clear()
         await invalidateLibrary()
         ArtworkCache.shared.setServer(baseURL: nil)
         state = .unconfigured
-        nativeFeaturesState = .unknown
     }
 
     /// Feedback from the last library-scan trigger (shown in Settings).

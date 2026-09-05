@@ -69,7 +69,7 @@ extension ConnectionModelNativeFeaturesTests {
         #expect(await persistence.finishedSyncs == 0)
     }
 
-    private func makeMetadataModels(_ persistence: any MetadataPersistence) -> (ConnectionModel, LibraryModel) {
+    func makeMetadataModels(_ persistence: any MetadataPersistence) -> (ConnectionModel, LibraryModel) {
         let credentials = ServerCredentials(baseURL: URL(string: "https://metadata.example")!,
                                             username: "listener", secret: "fixture", authMethod: .tokenSalt)
         let store = InMemoryCredentialStore(credentials)
@@ -87,7 +87,7 @@ extension ConnectionModelNativeFeaturesTests {
         return (connection, library)
     }
 
-    private nonisolated static func metadataResponse(_ request: URLRequest) -> ConnectionProbeMockProtocol.Response {
+    nonisolated static func metadataResponse(_ request: URLRequest) -> ConnectionProbeMockProtocol.Response {
         let path = request.url?.path ?? ""
         if path.hasSuffix("/auth/login") { return response(status: 401) }
         let payload: String
@@ -112,7 +112,7 @@ extension ConnectionModelNativeFeaturesTests {
                         ))
     }
 
-    private nonisolated static func response(status: Int, body: Data = Data()) -> ConnectionProbeMockProtocol.Response {
+    nonisolated static func response(status: Int, body: Data = Data()) -> ConnectionProbeMockProtocol.Response {
         .init(status: status, headers: ["Content-Type": "application/json"], body: body)
     }
 }

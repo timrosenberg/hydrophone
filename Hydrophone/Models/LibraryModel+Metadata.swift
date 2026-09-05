@@ -42,14 +42,16 @@ extension LibraryModel {
             songs = snapshot.songs
             seededSongs = !songs.isEmpty
             if albumSortType == "alphabeticalByName", albumFilter == .none {
-                albums = snapshot.albums
+                albums = snapshot.albums.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
                 seededAlbums = !albums.isEmpty
             }
-            artists = snapshot.artists
+            artists = snapshot.artists.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             seededArtists = !artists.isEmpty
             genres = snapshot.genres
             seededGenres = !genres.isEmpty
-            playlists = snapshot.playlists
+            playlists = snapshot.playlists.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
             seededPlaylists = !playlists.isEmpty
             if let favorites = snapshot.favorites {
                 starredSongs = favorites.songs
@@ -78,7 +80,9 @@ extension LibraryModel {
             await loadSongsIfNeeded()
             return
         }
-        guard metadataRefreshTask == nil, let credentials = await client.currentCredentials else { return }
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials, generation == librarySessionGeneration,
+              metadataRefreshTask == nil else { return }
         metadataRefreshTask = Task { [weak self] in
             await self?.runMetadataRefresh(using: credentials)
         }
@@ -88,8 +92,6 @@ extension LibraryModel {
         let generation = librarySessionGeneration
         let albumGeneration = albumLoadGeneration
         let session = metadataSession
-        let token: MetadataSyncToken?
-        if let metadata, let session { token = await metadata.beginSync(for: session) } else { token = nil }
         guard generation == librarySessionGeneration, !Task.isCancelled else { return }
         async let songs: Void = loadSongsIfNeeded()
         async let albums: Void = loadAlbumsIfNeeded()
@@ -98,7 +100,11 @@ extension LibraryModel {
         async let playlists: Void = loadPlaylistsIfNeeded()
         async let favorites: Void = loadStarredIfNeeded()
         _ = await (songs, albums, artists, genres, playlists, favorites)
-        guard let metadata, let session, let token else { return }
+        // Initial loads precede the authoritative walk. Their older responses
+        // must not be replayed over the later snapshot as concurrent edits.
+        await metadataWriteTask?.value
+        guard generation == librarySessionGeneration, !Task.isCancelled,
+              let metadata, let session, let token = await metadata.beginSync(for: session) else { return }
         do {
             try Task.checkCancellation()
             guard generation == librarySessionGeneration else { throw CancellationError() }
@@ -118,19 +124,33 @@ extension LibraryModel {
     }
 
     private func publishReconciledMetadata(_ snapshot: LibraryMetadataSnapshot, albumGeneration: Int) {
-        if seededSongs { songs = snapshot.songs; seededSongs = false; songsState = .loaded(()) }
+        songs = snapshot.songs
+        seededSongs = false
+        songsState = .loaded(())
         if albumGeneration == albumLoadGeneration, albumSortType == "alphabeticalByName", albumFilter == .none {
             albumLoadGeneration += 1
-            albums = snapshot.albums
+            albums = snapshot.albums.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             albumOffset = albums.count
             albumsExhausted = true
             albumsState = .loaded(())
             seededAlbums = false
             liveAlbumPages = []
         }
-        if seededArtists { artists = snapshot.artists; seededArtists = false }
-        if seededGenres { genres = snapshot.genres; seededGenres = false }
-        if seededPlaylists { playlists = snapshot.playlists; seededPlaylists = false }
+        artists = snapshot.artists.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        artistsState = .loaded(())
+        seededArtists = false
+        genres = snapshot.genres
+        seededGenres = false
+        playlists = snapshot.playlists.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        seededPlaylists = false
+        if let favorites = snapshot.favorites {
+            starredSongs = favorites.songs
+            starredAlbums = favorites.albums
+            starredSongIDs = Set(favorites.songs.map(\.id))
+            starredLoaded = true
+        }
     }
 
     func refreshMetadataAfterScan(using credentials: ServerCredentials) async {

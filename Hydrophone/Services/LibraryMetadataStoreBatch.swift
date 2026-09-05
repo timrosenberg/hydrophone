@@ -16,6 +16,7 @@ final class LibraryMetadataStoreBatch {
     var knownArtists: [String: CachedArtist]
     var knownGenres: [String: CachedGenre]
     var knownPlaylists: [String: CachedPlaylist]
+    var hasAuthoritativeFavorites: Bool
 
     init(context: ModelContext) throws {
         self.context = context
@@ -32,6 +33,8 @@ final class LibraryMetadataStoreBatch {
         knownArtists = artists
         knownGenres = genres
         knownPlaylists = playlists
+        hasAuthoritativeFavorites = try context.fetch(FetchDescriptor<LibrarySyncState>())
+            .contains { $0.collection == "favorites" }
     }
 
     func apply(_ change: MetadataWrite) throws {
@@ -79,6 +82,7 @@ final class LibraryMetadataStoreBatch {
             value.bitDepth = value.bitDepth ?? record.bitDepth
         }
         if richMerge { value = try Self.preservingRichFields(value, existing: record.value()) }
+        if hasAuthoritativeFavorites { value.starred = record.starred }
         try record.update(value)
         return record
     }
@@ -102,6 +106,7 @@ final class LibraryMetadataStoreBatch {
             : try MetadataMapping.unique(value.song ?? []).map { try upsert($0, richMerge: richMerge) }
         value.discTitles = try value.discTitles ?? MetadataMapping.decode(record.discTitlesData, as: [DiscTitle].self)
         if richMerge { value = try Self.preservingRichFields(value, existing: record.value()) }
+        if hasAuthoritativeFavorites { value.starred = record.starred }
         try record.update(value, songs: linked)
         record.songIDs = ids
         return record
@@ -174,5 +179,6 @@ final class LibraryMetadataStoreBatch {
         for record in songs.values { record.starred = songDates[record.id] }
         for record in albums.values { record.starred = albumDates[record.id] }
         try MetadataRecords.upsert(LibrarySyncSnapshot(collection: "favorites"), in: context)
+        hasAuthoritativeFavorites = true
     }
 }

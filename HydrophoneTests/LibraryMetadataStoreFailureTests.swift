@@ -3,6 +3,29 @@ import Testing
 @testable import Hydrophone
 
 struct LibraryMetadataStoreFailureTests {
+    @Test func ordinaryWritesCannotUndoAuthoritativeFavorites() async throws {
+        let root = LibraryMetadataStoreTests.root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = LibraryMetadataStore(rootDirectory: root)
+        let session = try #require(await store.open(for: LibraryMetadataStoreTests.credentials()))
+        let staleSong = Song(id: "song", title: "Song", starred: MetadataStoreFixtures.date)
+        let staleAlbum = Album(id: "album", name: "Album", starred: MetadataStoreFixtures.date)
+        await store.write(.favorites(MetadataFavorites(songs: [staleSong], albums: [staleAlbum])), for: session)
+        let token = try #require(await store.beginSync(for: session))
+        await store.write(.favorites(MetadataFavorites(songs: [], albums: [])), for: session)
+        await store.write(.songs([staleSong]), for: session)
+        await store.write(.albums([staleAlbum]), for: session)
+        await store.write(.playlist(Playlist(id: "list", name: "List", entry: [staleSong])), for: session)
+        #expect(await store.read(for: session)?.favorites?.songs.isEmpty == true)
+        #expect(await store.read(for: session)?.favorites?.albums.isEmpty == true)
+        let snapshot = LibraryMetadataSnapshot(albums: [staleAlbum], songs: [staleSong],
+            favorites: MetadataFavorites(songs: [staleSong], albums: [staleAlbum]))
+        #expect(await store.finishSync(snapshot, token: token))
+        #expect(await store.read(for: session)?.favorites?.songs.isEmpty == true)
+        #expect(await store.read(for: session)?.favorites?.albums.isEmpty == true)
+        await store.close()
+    }
+
     @Test func corruptDatabaseIsBestEffortAndCannotRetireTheWrongSession() async throws {
         let root = LibraryMetadataStoreTests.root()
         defer { try? FileManager.default.removeItem(at: root) }

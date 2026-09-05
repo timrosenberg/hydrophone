@@ -77,6 +77,7 @@ final class LibraryModel {
     // LibraryModel+Playlists.swift.
     var playlists: [Playlist] = []
     var playlistsLoadingGeneration: Int?
+    var playlistRevision = 0
 
     static let pageSize = 100
 
@@ -139,6 +140,7 @@ final class LibraryModel {
     /// read race the actor call and observe stale (pre-reset) state.
     func reset() async {
         librarySessionGeneration += 1
+        let generation = librarySessionGeneration
         retireMetadataSession()
         albumLoadGeneration += 1
         liveAlbumPages = []
@@ -165,6 +167,7 @@ final class LibraryModel {
         homeRandom = []
         homeLoaded = false
         await invalidateSongs()
+        guard generation == librarySessionGeneration else { return }
         await metadata?.close()
     }
 
@@ -278,8 +281,7 @@ final class LibraryModel {
     // MARK: - Artists
 
     func loadArtistsIfNeeded() async {
-        guard await metadataAllowsLoading() else { return }
-        guard artists.isEmpty || seededArtists else { return }
+        guard await metadataAllowsLoading(), artists.isEmpty || seededArtists else { return }
         if case .loading = artistsState { return }
         let generation = librarySessionGeneration
         await load("artist", into: \.artistsState, generation: generation) { () async throws(SubsonicError) in
