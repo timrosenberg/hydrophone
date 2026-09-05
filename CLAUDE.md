@@ -18,7 +18,9 @@ swiftlint   # config in .swiftlint.yml; must pass clean
 
 ## Read the right doc before working (docs/)
 
-- `00` scope & non-goals · `01` architecture/layers · `10` roadmap/status
+- `00-fork` fork divergence — **read first**; most docs are inherited from
+  upstream and are not binding where this fork has diverged
+- `00` scope & non-goals (inherited) · `01` architecture/layers · `10` roadmap/status
 - API/networking/auth → `02` · playback engine/gapless/devices → `03`
 - UI/UX rationale & interaction rules → `04` · artwork cache → `05`
 - system integration → `06` · release/distribution → `07` · testing → `08`

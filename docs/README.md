@@ -11,8 +11,10 @@ detailed enough to implement (or understand) the subsystem it covers;
 
 ## How to read this set
 
-Read `00-overview.md` first for product scope and the requirements
-traceability matrix. Then `01-architecture.md` for the shape of the app.
+Read `00-fork-divergence.md` first. This repo is a fork, and much of this
+directory was inherited from the upstream project rather than written for
+this one. Then read `00-overview.md` for product scope and the requirements
+traceability matrix, and `01-architecture.md` for the shape of the app.
 After that, the numbered docs can be read in any order; the roadmap
 (`10-roadmap.md`) sequences the actual build.
 
@@ -20,6 +22,7 @@ After that, the numbered docs can be read in any order; the roadmap
 
 | Doc | Purpose |
 | --- | --- |
+| [00-fork-divergence.md](00-fork-divergence.md) | **Read first.** Fork point, which inherited docs are non-binding, where goals diverge |
 | [00-overview.md](00-overview.md) | Product vision, scope, non-goals, glossary, requirements traceability |
 | [01-architecture.md](01-architecture.md) | Layers, state model, concurrency, module structure, dependency policy |
 | [02-opensubsonic-api.md](02-opensubsonic-api.md) | Auth, networking client, endpoint map, models, errors, pagination |

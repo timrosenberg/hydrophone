@@ -1,5 +1,12 @@
 # 00 — Product Overview & Scope
 
+> **Inherited from upstream.** This file predates the fork and has not been
+> revised for this repository. Its scope list and non-goals record the upstream
+> maintainer's decisions, several of which this fork has deliberately reversed
+> (classical browsing, smart playlists, persistent metadata, distribution).
+> Read [`00-fork-divergence.md`](00-fork-divergence.md) first; it supersedes
+> this document wherever the two disagree.
+
 ## Vision
 
 Hydrophone is a **restrained, fully native macOS music player** for self-hosted
