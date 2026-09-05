@@ -101,6 +101,7 @@ a page is fetched.
 | `LibraryModel.homeNewest/Recent/Frequent/Random` / `homeLoaded` / `homeLoadingGeneration` | shares `librarySessionGeneration` | `getAlbumList2` ×4 (newest/recent/frequent/random), concurrent | Home shelves | `loadHomeIfNeeded()` | Generation-owned in-flight identity; `homeLoaded` only set true if at least one shelf came back non-empty, so an all-offline launch retries next appearance; all writes, including `rerollRandomAlbums()`, are generation guarded | `reset()` | All-empty result is treated as "didn't really load" and retried, not cached as a true empty state | View/model state |
 | `LibraryModel.playlists` / `playlistsLoadingGeneration` | shares `librarySessionGeneration` | `getPlaylists`, playlist create/update/delete endpoints | Sidebar playlist list, Add to Playlist menu, playlist CRUD reconciliation | `loadPlaylistsIfNeeded()` | Generation-owned in-flight identity coalesces same-session list loads; both lazy and forced reloads guard writes against a retired session | `reset()`; successful CRUD reloads the list | A failed list load keeps the existing list; an empty list retries on next appearance | View/model state |
 | `LibraryModel.songs` / `songsState` / `songsGeneration` | unscoped *view* of `LibrarySongIndex`'s Subsonic cache | (derives from `songIndex.allSongs()`, which now performs the native join itself before returning) | Songs tab, toolbar loading indicator (`songsAreLoading`) | `loadSongsIfNeeded()`, made eager at connect (#118) | Own generation counter (`songsGeneration`, separate from `librarySessionGeneration`): a superseded `loadSongsIfNeeded()` (invalidated mid-flight) can't overwrite `songs`/`songsState` with a stale result; partial pages publish incrementally via `onProgress` | Explicit: `invalidateSongs()`, awaited directly (not fire-and-forget) so `songIndex`'s cache is verifiably clear before the caller proceeds — wired through `ConnectionModel`'s `libraryInvalidationHandler` on `disconnect()`, credential change in `saveAndConnect()`, and (via `reset()`) `startLibraryScan()` | A failed load keeps existing (possibly partial) rows and surfaces `.failed`; next visit retries | Derived/view state layered over the Subsonic cache's authoritative data |
+| `LibraryModel.albumDetailCache` / `artistAlbumsCache` (#114) | plain `[String: Album]` / `[String: [Album]]` keyed by id, no credential scope of its own (implicitly scoped by living on `LibraryModel`, which is per-connection) | `getAlbum`, `getArtist` | `album(id:)` ("Go to Album"), `albums(forArtist:)` (Artists detail page) | First `album(id:)`/`albums(forArtist:)` call for a given id | None — a same-id call already in flight is not coalesced (unlike the generation-owned collections above); acceptable since these are user-navigation-triggered single-item fetches, not eager warm-up walks | `reset()` (disconnect/credential-change/manual scan) and a completed background full reconciliation (`publishReconciledMetadata`) both clear both dictionaries entirely, matching how the bulk collections above already get replaced by those same two events | Only a successful fetch is cached; a failed `album(id:)` (nil) or failed `albums(forArtist:)` (network error, not a genuinely-empty artist) is not cached, so the next visit retries instead of a hiccup permanently locking in a bad result | View/model state (session cache) |
 
 **Why the six `LibraryModel` collections share a plain `Int` generation
 (`librarySessionGeneration`) instead of each wrapping a `CredentialScopedCache`
@@ -119,9 +120,15 @@ all of them together. `CredentialScopedCache` stayed exactly where it earns
 its keep: the two actor-resident, already-async-network-bound walks in
 `LibrarySongIndex`, plus `NavidromeClient`'s token.
 
+`album(id:)` and `albums(forArtist:)` gained the per-item cache above in #114;
+they were previously listed here as uncached alongside `songs(forAlbum:)`,
+which stays uncached — its only callers (`HomeView`'s and `AppModel`'s
+shuffle-album paths) pick albums at random rather than revisiting a selection,
+so caching it wouldn't address a real revisit case.
+
 Not a cache (fetched fresh every call, listed for completeness/contrast):
 `LibraryModel.search(_:)`, `songs(forGenre:)`, `songs(forAlbum:)`,
-`albums(forArtist:)`, `artistInfo(id:)`, `similarSongs(id:)`,
+`artistInfo(id:)`, `similarSongs(id:)`,
 `topSongs(artist:)`, `randomAlbums()`, `randomBatch()`, and individual playlist
 entry loads (`playlist(id:)`). Playlist listing is session-cached as inventoried
 above; playlist CRUD always reaches the server and then reconciles that list.
