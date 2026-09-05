@@ -4,6 +4,16 @@ import Foundation
 /// full-replace form of `createPlaylist` (`updatePlaylist` can only append).
 /// Split from LibraryModel for the type-body-length lint.
 extension LibraryModel {
+    /// Fire a best-effort mutation, then refresh the affected collection —
+    /// the shared shape of the playlist CRUD writes below.
+    func mutate(_ endpoint: Endpoint, thenReload reload: () async -> Void) async {
+        let generation = librarySessionGeneration
+        guard let credentials = await client.currentCredentials else { return }
+        _ = try? await client.sendStatus(endpoint, using: credentials)
+        guard generation == librarySessionGeneration else { return }
+        await reload()
+    }
+
     func loadPlaylistsIfNeeded() async {
         guard await metadataAllowsLoading() else { return }
         guard playlists.isEmpty || seededPlaylists else { return }

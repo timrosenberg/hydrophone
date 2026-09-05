@@ -109,6 +109,15 @@ final class LibraryModel {
     /// for Songs specifically. Internal (not private): the Favorites, Home,
     /// and Playlists extensions read it for their own generation guards.
     var librarySessionGeneration = 0
+
+    /// Per-item detail cache for `album(id:)`/`albums(forArtist:)` (#114):
+    /// revisiting an already-fetched album or artist within a session
+    /// returns instantly instead of re-hitting the network. Cleared by
+    /// `reset()` and by a completed background reconciliation, the same
+    /// events that already invalidate the rest of the library index.
+    var albumDetailCache: [String: Album] = [:]
+    var artistAlbumsCache: [String: [Album]] = [:]
+
     let metadata: (any MetadataPersistence)?
     @ObservationIgnored var metadataSession: MetadataSession?
     @ObservationIgnored var metadataRefreshTask: Task<Void, Never>?
@@ -169,6 +178,8 @@ final class LibraryModel {
         homeFrequent = []
         homeRandom = []
         homeLoaded = false
+        albumDetailCache = [:]
+        artistAlbumsCache = [:]
         await invalidateSongs()
         guard generation == librarySessionGeneration else { return }
         await metadata?.close()
@@ -347,55 +358,6 @@ final class LibraryModel {
     // methods manage these directly.
     var starredLoaded = false
     var starredLoadingGeneration: Int?
-
-    /// Fire a best-effort mutation, then refresh the affected collection —
-    /// the shared shape of the playlist CRUD writes. Internal so
-    /// LibraryModel+Playlists can send through it.
-    func mutate(_ endpoint: Endpoint, thenReload reload: () async -> Void) async {
-        let generation = librarySessionGeneration
-        guard let credentials = await client.currentCredentials else { return }
-        _ = try? await client.sendStatus(endpoint, using: credentials)
-        guard generation == librarySessionGeneration else { return }
-        await reload()
-    }
-}
-
-// MARK: - Album detail
-
-extension LibraryModel {
-    func songs(forAlbum id: String) async -> [Song] {
-        guard await metadataAllowsLoading() else { return [] }
-        let generation = librarySessionGeneration
-        var songs = (try? await client.object(.album(id: id), as: Album.self))?.song ?? []
-        await joinWorkInfo(into: &songs)
-        guard generation == librarySessionGeneration else { return [] }
-        persistMetadata(.songs(songs), generation: generation)
-        return songs
-    }
-
-    /// The full album record for an id — used by "Go to Album" from a track,
-    /// where only the song's `albumId` is at hand.
-    func album(id: String) async -> Album? {
-        guard await metadataAllowsLoading() else { return nil }
-        let generation = librarySessionGeneration
-        guard var album = try? await client.object(.album(id: id), as: Album.self) else { return nil }
-        var songs = album.song ?? []
-        await joinWorkInfo(into: &songs)
-        guard generation == librarySessionGeneration else { return nil }
-        album.song = songs
-        persistMetadata(.albums([album]), generation: generation)
-        return album
-    }
-
-    func albums(forArtist id: String) async -> [Album] {
-        guard await metadataAllowsLoading() else { return [] }
-        let generation = librarySessionGeneration
-        let albums = (try? await client.object(.artist(id: id), as: Artist.self))?.album ?? []
-        guard generation == librarySessionGeneration else { return [] }
-        persistMetadata(.albums(albums), generation: generation)
-        return albums
-    }
-
 }
 
 // MARK: - Discovery (artist info, radio mixes, album shuffle)
