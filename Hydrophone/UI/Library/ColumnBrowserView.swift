@@ -131,13 +131,18 @@ struct ColumnBrowserView: View {
         }
         .task(id: LibraryViewLoadID(selection: storedGenre, generation: library.librarySessionGeneration,
                                     ready: library.metadataReadiness == .ready)) {
+            guard !Task.isCancelled else { return }
+            let genre = selectedGenre
+            let session = library.librarySessionGeneration
             songs = []
             genreLoadGeneration += 1
             await library.loadSongsIfNeeded()
+            guard !Task.isCancelled, session == library.librarySessionGeneration else { return }
             await library.loadGenresIfNeeded()
             // Restore: a persisted genre needs its songs loaded (without the
             // cascade — the restored artist/album selections must survive).
-            await loadGenre(selectedGenre)
+            guard !Task.isCancelled, session == library.librarySessionGeneration else { return }
+            await loadGenre(genre)
         }
     }
 
@@ -148,7 +153,7 @@ struct ColumnBrowserView: View {
     }
 
     private func loadGenre(_ genre: String?) async {
-        guard selectedGenre == genre else { return }
+        guard !Task.isCancelled, selectedGenre == genre else { return }
         genreLoadGeneration += 1
         let generation = genreLoadGeneration
         let session = library.librarySessionGeneration

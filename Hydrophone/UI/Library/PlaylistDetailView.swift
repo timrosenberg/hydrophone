@@ -50,7 +50,6 @@ struct PlaylistDetailView: View {
                 guard !name.isEmpty else { return }
                 Task {
                     await library.renamePlaylist(id: playlistID, to: name)
-                    await reload()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -115,7 +114,6 @@ struct PlaylistDetailView: View {
         playlist?.entry?.remove(atOffsets: offsets) // optimistic
         Task {
             await library.removeFromPlaylist(id: playlistID, indexes: indexes)
-            await reload()
         }
     }
 
@@ -128,7 +126,6 @@ struct PlaylistDetailView: View {
         let name = playlist?.name ?? ""
         Task {
             await library.reorderPlaylist(id: playlistID, name: name, songIds: ids)
-            await reload()
         }
     }
 }

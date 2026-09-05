@@ -6,6 +6,25 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ColumnBrowserLibraryTests {
+    @Test func canceledInitialWalkCannotStrandTheReplacementGenre() async throws {
+        await BrowserLibraryProtocol.state.reset(holdFirstSearch: true)
+        let fixture = BrowserLibraryFixture()
+        defer {
+            fixture.close()
+            Task { await BrowserLibraryProtocol.state.releaseFirstSearch() }
+        }
+        await fixture.library.loadGenresIfNeeded()
+        fixture.show()
+        try await fixture.waitUntil { await BrowserLibraryProtocol.state.searchRequests == 1 }
+        try fixture.click(pane: 0, row: 2)
+        try await fixture.waitForTracks(1)
+        #expect(fixture.displayed.map(\.id) == ["jazz"])
+        await BrowserLibraryProtocol.state.releaseFirstSearch()
+        try await fixture.waitUntil { await BrowserLibraryProtocol.state.firstSearchResumed }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(fixture.displayed.map(\.id) == ["jazz"])
+    }
+
     @Test func selectedGenreReloadsAfterSessionResetWithoutAnotherClick() async throws {
         await BrowserLibraryProtocol.state.reset(holdFirstGenre: true)
         let fixture = BrowserLibraryFixture()
