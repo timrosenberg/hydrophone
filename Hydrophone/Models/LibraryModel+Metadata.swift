@@ -126,6 +126,12 @@ extension LibraryModel {
     }
 
     private func publishReconciledMetadata(_ snapshot: LibraryMetadataSnapshot, albumGeneration: Int) {
+        // A completed full reconciliation replaces the bulk collections below
+        // with a fresh server walk, so any per-item detail cached from before
+        // it (#114) must drop too rather than keep serving pre-reconciliation
+        // data alongside the now-current bulk lists.
+        albumDetailCache = [:]
+        artistAlbumsCache = [:]
         songs = snapshot.songs
         seededSongs = false
         songsState = .loaded(())
