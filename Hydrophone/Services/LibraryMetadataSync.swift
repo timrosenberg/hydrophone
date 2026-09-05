@@ -81,7 +81,10 @@ struct LibraryMetadataSync: Sendable {
                         do {
                             return .success(try await client.object(.playlist(id: playlist.id),
                                 using: credentials, as: Playlist.self))
-                        } catch { return .failure(error) }
+                        } catch {
+                            return .failure(error as? SubsonicError
+                                            ?? .transport(error.localizedDescription))
+                        }
                     }
                     return try result.get()
                 }
