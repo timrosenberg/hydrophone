@@ -78,6 +78,29 @@ rollback. This is a performance limitation, not a redundant cache to remove.
 
 ## In-memory metadata caches
 
+### Song presentation snapshots (#157 candidate)
+
+`LibraryModel.songPresentation` owns immutable `[Song]` values for one content
+revision. Publishing identical values retains its identity; changing any song
+field, membership, or source order replaces it. The equality comparison runs
+at publication, not in a view body. Reset clears the song values and replaces
+the browser projection owner, retiring the session's derived results.
+
+Each `SongPresentation` retains at most four sorted permutations keyed by sort
+column and direction. An unrelated table owns different data and cannot evict
+the Songs cache. `SongBrowserPresentation` keeps the current artist/album/
+composer panes and filtered snapshot, invalidating only downstream projections
+when a selection changes. Unfiltered browsing shares the library snapshot.
+Selected-genre responses create snapshots only after the existing request and
+session guards succeed. These are session-only presentation results; neither
+the authoritative network caches nor SwiftData persistence is changed.
+
+The table's warm reload key uses snapshot identity plus sort/grouping/playback/
+favorite state, avoiding whole-library signature passes. Tables without a
+presentation snapshot retain their existing signature path. First use or
+changed content still incurs preparation; measured limitations and pending
+acceptance are in `157-songs-navigation-measurements.md`.
+
 This section audits every in-memory cache and cache-like load/session state in
 the client and model layer, as implemented after #139 (inventory) → #140
 (design) → #141 (implementation). It complements, but does not replace,

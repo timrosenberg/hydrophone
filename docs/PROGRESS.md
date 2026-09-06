@@ -33,6 +33,8 @@ continuation and all six sub-issues are implemented, verified, and landed
 within a session (#114)) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
+Issue #157 🚧 (warm Songs candidate: median 1,526 -> 160 ms; functional gates
+pass, 100 ms median / 150 ms maximum target and human acceptance pending) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
 M4 ✅ (gapless human-confirmed seamless 2026-07-03; only a cross-sample-rate
 transition remains untested — needs mixed-rate tracks in the library) ·
@@ -73,6 +75,39 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #157: warm Songs navigation candidate (2026-09-06)
+
+- Retained immutable song presentation snapshots in `LibraryModel`; identical
+  publication retains identity, changed metadata/order replaces it. Sorted
+  variants and browser projections survive view recreation and intervening
+  tables without whole-song hashes. Reset retires session-owned results.
+- Removed duplicate initial sort/rebuild and avoided per-song reload/selection
+  signature work on unchanged snapshot updates. Preserved the existing path
+  for tables without a model-owned presentation snapshot.
+- Replaced only the four browser List controls with fixed-height native
+  cell-based AppKit panes after profiling their layout cost. Plain appearance,
+  accessible labels, selection bindings/cascades, keyboard arrows, type-select
+  labels, and Space behavior remain intact.
+- Live, 2026-09-06, Tim's configured Navidrome with **14,231 songs**: ten
+  steady-state Songs -> Favorites -> Songs returns improved from **1,525.882 ms
+  median / 1,558.592 ms max** to **159.682 ms median / 166.686 ms max** (89.5%
+  median reduction). An earlier cache-only candidate measured 213.016 ms
+  median. Initial/changed-content costs remain; a 700.716 ms first return is
+  reported separately. The **<=100 ms median / <=150 ms maximum target is
+  not met**, so no replacement PR is opened and #157 stays in progress.
+- The final trace points mainly to native view attachment, key-view-loop
+  setup, and visible-row layout. It does not establish a hard platform limit.
+  See [measurement method, all repeats, and limitations](157-songs-navigation-measurements.md).
+- Live checks: composer filtering (Aaron Copland), arrow navigation, ~Nois
+  artist cascade, All resets, flat Songs revisit with existing preferences;
+  browser visibility restored. No playback engine behavior changed.
+- Final gate after removal of temporary timing probes: unsigned app build
+  with zero compiler warnings; **428 tests / 451 executions, 0 failures/skips**;
+  SwiftLint zero violations; `git diff --check` clean. Test compilation still
+  reports the existing unrelated `ArtworkCacheTests` weak-variable warning.
+  Numerical performance acceptance and Tim's perceived-response check remain
+  pending; all changes are isolated on `issue-157-songs-navigation-latency`.
 
 ## Issue #145: Songs-tab click-to-render lag investigation (2026-09-05)
 
@@ -4225,6 +4260,11 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- 🚧 Issue #157 (2026-09-06): unsigned build zero compiler warnings,
+  **428 tests / 451 executions, 0 failures/skips**, lint/diff clean; real-server
+  browser and flat Songs behavior checked. Warm-navigation median **160 ms**,
+  slowest **167 ms**, versus **1,526/1,559 ms** on main. Performance target and
+  human acceptance remain unmet/pending; no replacement PR opened.
 - ✅ Issue #145 (2026-09-05): Songs-tab click-to-render lag investigation
   (diagnosis only, no code change). **421 tests / 444 executions, 0
   failures/skips**, unsigned build zero compiler warnings, SwiftLint 0

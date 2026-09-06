@@ -125,6 +125,12 @@ rendered visibly washed out.
   Songs and the column browser default to locale-aware Title ascending when
   no saved user sort exists; equal titles use song id as a deterministic
   tie-break. A saved sort always wins on later launches.
+  Songs/browser tables receive a model-owned immutable presentation snapshot;
+  unchanged revisits reuse sorted values even after another table appeared.
+  Initial sort restoration performs one rebuild. The four browser panes use
+  fixed-height native cell-based tables with plain styling; SwiftUI retains
+  their selection bindings and cascade/restoration rules. All rows, arrow
+  navigation, type-select labels, and Space playback remain supported.
   Per-view column sets, expandable to 8 more (Album Artist, Comments,
   Grouping, Date Added, Last Played, Plays, Sample Rate, Sort Title — E2),
   plus native-only Work, Movement Name, and Movement columns. Work and
