@@ -40,17 +40,16 @@ final class LibraryModel {
 
     // Internal setter (not private): load/invalidate logic lives in
     // LibraryModel+Songs.swift.
-    var songs: [Song] = []
+    var songs: [Song] = [] {
+        didSet {
+            // Equality is paid only when publishing, never while rendering.
+            if songs != oldValue { songPresentation = SongPresentation(songs) }
+        }
+    }
+    private(set) var songPresentation = SongPresentation([])
+    @ObservationIgnored var songBrowserPresentation = SongBrowserPresentation()
     var songsState: Load<Void> = .idle
     var songsGeneration = 0
-
-    /// Whether the complete-library walk is actively in flight — app-wide
-    /// (not tied to any particular view's lifecycle), so callers like the
-    /// toolbar status can reflect it regardless of which page is on screen.
-    var songsAreLoading: Bool {
-        if case .loading = songsState { return true }
-        return false
-    }
 
     // Internal setters (not private): load/toggle lifecycle lives in
     // LibraryModel+Favorites.swift.
@@ -152,6 +151,7 @@ final class LibraryModel {
     /// they proceed — a fire-and-forget invalidation could let a subsequent
     /// read race the actor call and observe stale (pre-reset) state.
     func reset() async {
+        songBrowserPresentation = SongBrowserPresentation()
         librarySessionGeneration += 1
         let generation = librarySessionGeneration
         retireMetadataSession()

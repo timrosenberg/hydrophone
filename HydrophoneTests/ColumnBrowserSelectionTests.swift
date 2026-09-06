@@ -8,6 +8,33 @@ import Testing
 struct ColumnBrowserSelectionTests {
     private static var retainedWindows: [NSWindow] = []
 
+    @Test func nativePaneSupportsArrowSelectionTypeSelectAndSpace() async throws {
+        let state = ColumnBrowserSelectionFixture()
+        var spaceCount = 0
+        let pane = ColumnBrowserList(title: "Composer", items: ["Johann Sebastian Bach", "Caroline Shaw"],
+                                     allLabel: "All Composers",
+                                     selection: Binding(get: { state.selection }, set: { state.selection = $0 }),
+                                     onSpace: { spaceCount += 1 })
+        let window = host(pane)
+        let table = try await loadedTable(in: window, rows: 3)
+        #expect(table.selectedRow == 1)
+        #expect(table.dataSource?.tableView?(table, objectValueFor: table.tableColumns.first, row: 0)
+                as? String == "All Composers")
+        #expect(table.delegate?.tableView?(table, typeSelectStringFor: table.tableColumns.first, row: 2)
+                == "Caroline Shaw")
+        func key(_ code: UInt16, _ characters: String) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                         timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                         characters: characters, charactersIgnoringModifiers: characters,
+                                         isARepeat: false, keyCode: code))
+        }
+        table.keyDown(with: try key(125, "\u{F701}"))
+        #expect(state.selection == "Caroline Shaw")
+        table.keyDown(with: try key(49, " "))
+        #expect(spaceCount == 1)
+        #expect(state.selection == "Caroline Shaw")
+    }
+
     @Test(arguments: ["Genres", "Artists", "Albums", "Composers"])
     func allRowClearsAnExistingSelection(paneName: String) async throws {
         let state = ColumnBrowserSelectionFixture()

@@ -12,6 +12,7 @@ struct TrackTableView: View {
     let tracks: [Song]
     /// Content columns to show, in order — specified explicitly per call site.
     let columns: [TrackColumn]
+    var presentation: SongPresentation?
     /// When set, the table's sort key/direction and customizable column
     /// preferences persist under this view-kind name (e.g. "songs", "favorites").
     var sortAutosaveKey: String?
@@ -49,6 +50,7 @@ struct TrackTableView: View {
     var body: some View {
         MusicTrackTable(
             tracks: tracks,
+            presentation: presentation,
             sortable: !isPlaylist,
             sortAutosaveKey: sortAutosaveKey,
             defaultSortKey: defaultSortKey,

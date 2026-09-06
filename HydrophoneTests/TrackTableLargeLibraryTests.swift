@@ -8,6 +8,43 @@ import Testing
 struct TrackTableLargeLibraryTests {
     private static var retainedWindows: [NSWindow] = []
 
+    @Test func recreatedSongsTableReusesSortAfterAnInterveningTable() throws {
+        let key = "revisit-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "trackSort.\(key)") }
+        let songs = [Song(id: "b", title: "B"), Song(id: "a", title: "A")]
+        let presentation = SongPresentation(songs)
+        func mount(_ values: [Song], presentation: SongPresentation?) throws -> MusicTrackTable.Coordinator {
+            var view = table(tracks: values, sortKey: key, defaultSortKey: "title")
+            view.presentation = presentation
+            let window = host(view)
+            window.contentView?.layoutSubtreeIfNeeded()
+            let table = try #require(findTable(in: window.contentView))
+            return try #require(table.dataSource as? MusicTrackTable.Coordinator)
+        }
+        let first = try mount(songs, presentation: presentation)
+        #expect(presentation.sortBuildCount == 1)
+        _ = try mount([Song(id: "other", title: "Other")], presentation: nil)
+        let second = try mount(songs, presentation: presentation)
+        #expect(first !== second)
+        #expect(second.displayed.map(\.id) == ["a", "b"])
+        #expect(presentation.sortBuildCount == 1)
+        #expect(second.rows == [.track(0), .track(1)])
+    }
+
+    @Test func revisedSnapshotUpdatesSameIDMetadata() throws {
+        var songs = [Song(id: "a", title: "A"), Song(id: "b", title: "B")]
+        var view = table(tracks: songs, sortKey: "", defaultSortKey: nil)
+        view.presentation = SongPresentation(songs)
+        let coordinator = view.makeCoordinator()
+        coordinator.reloadIfNeeded()
+        songs[0].title = "Revised"
+        view.tracks = songs
+        view.presentation = SongPresentation(songs)
+        _ = coordinator.updateTracks(from: view)
+        #expect(coordinator.displayed[0].title == "Revised")
+        #expect(coordinator.displayed[0].id == "a")
+    }
+
     @Test func defaultTitleSortOrdersFourteenThousandRows() async throws {
         let defaultsKey = "large-default-\(UUID().uuidString)"
         defer { UserDefaults.standard.removeObject(forKey: "trackSort.\(defaultsKey)") }

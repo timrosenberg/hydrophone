@@ -67,6 +67,8 @@ enum TrackTableRow: Equatable {
 /// and a favorite column. See docs/04-ui-ux.md.
 struct MusicTrackTable: NSViewRepresentable {
     var tracks: [Song]
+    /// Optional model-owned content revision for large Songs/browser tables.
+    var presentation: SongPresentation?
     var sortable: Bool = true
     /// When set, the sort key/direction persist to UserDefaults under this
     /// name and are restored on creation (one slot per view kind).
@@ -142,6 +144,7 @@ struct MusicTrackTable: NSViewRepresentable {
         private var sortKey: String?
         private var ascending = true
         private var signature: [String] = []
+        private var renderedPresentation: SongPresentation?
         // Scroll persistence (see TrackTablePersistence.swift). The
         // selector-based observer is auto-unregistered on dealloc.
         var scrollRestored = false
@@ -170,6 +173,16 @@ struct MusicTrackTable: NSViewRepresentable {
         }
 
         func reloadIfNeeded() {
+            if let presentation = parent.presentation {
+                let sig = ["sort:\(sortKey ?? "")\(ascending)", "np:\(parent.nowPlayingID ?? "")",
+                           "discs:" + (parent.discHeadersSignature ?? "off"), "stars:\(parent.starSignature)"]
+                guard renderedPresentation !== presentation || signature != sig else { return }
+                renderedPresentation = presentation
+                signature = sig
+                rebuild()
+                return
+            }
+            renderedPresentation = nil
             var sig = parent.tracks.map(\.id)
             sig.append(contentsOf: parent.tracks.map { "group:\($0.discNumber ?? 1)|\($0.work ?? "")" })
             sig.append("sort:\(sortKey ?? "")\(ascending)")
@@ -216,8 +229,11 @@ struct MusicTrackTable: NSViewRepresentable {
         private func sortedTracks() -> [Song] {
             guard let key = sortKey else { return parent.tracks }
             let asc = ascending
-            if key == "title" { return titleSortedTracks(ascending: asc) }
-            return nonTitleSortedTracks(for: key, ascending: asc)
+            let compute = {
+                key == "title" ? self.titleSortedTracks(ascending: asc)
+                    : self.nonTitleSortedTracks(for: key, ascending: asc)
+            }
+            return parent.presentation?.sorted(key: key, ascending: asc, compute: compute) ?? compute()
         }
 
         private func nonTitleSortedTracks(for key: String, ascending: Bool) -> [Song] {
@@ -280,8 +296,8 @@ struct MusicTrackTable: NSViewRepresentable {
             }
             persistSort(key: sortKey, ascending: ascending)
             signature = [] // force rebuild
-            reloadIfNeeded()
             guard !restoringSort else { return }
+            reloadIfNeeded()
             pendingSelectionSave?.cancel()
             pendingSelection = nil
             parent.selection = []

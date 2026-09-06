@@ -4,6 +4,12 @@ import Foundation
 /// walk. Split from LibraryModel for the type-body-length lint (see
 /// PlayerModel's extension split).
 extension LibraryModel {
+    /// App-wide loading state, independent of the lifetime of the Songs view.
+    var songsAreLoading: Bool {
+        if case .loading = songsState { return true }
+        return false
+    }
+
     /// A fresh random batch for whole-library shuffle (Shuffle All). Distinct
     /// from the Songs sample above so the visible list isn't disturbed.
     /// Best-effort: an empty result simply leaves playback untouched.
