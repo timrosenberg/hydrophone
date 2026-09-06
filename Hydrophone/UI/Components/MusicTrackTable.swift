@@ -60,6 +60,28 @@ enum TrackTableRow: Equatable {
     }
 }
 
+/// Identifies a `Coordinator.sortedTracks()` result well enough to reuse it
+/// across a fresh `Coordinator` (see `Coordinator.lastSort`, #157).
+/// `contentHash` uses `Song`'s synthesized `Hashable` conformance, which
+/// combines every field via fast, non-locale-aware hashing (no ICU
+/// collation) — far cheaper than the sort it stands in for, while still
+/// catching an in-place field mutation on same-id songs
+/// (`finalMetadataSortPreservesTheSelectedSong` exercises exactly that: a
+/// live `Coordinator` re-sorting after a song's `work` field changes with
+/// the array's ids unchanged), not just a content replacement or pagination
+/// growth.
+struct TrackSortSignature: Equatable {
+    let contentHash: Int
+    let key: String
+    let ascending: Bool
+
+    static func content(of tracks: [Song]) -> Int {
+        var hasher = Hasher()
+        for track in tracks { hasher.combine(track) }
+        return hasher.finalize()
+    }
+}
+
 /// AppKit `NSTableView`-backed track list — the single track view used across the
 /// app — giving the Music behaviours SwiftUI can't combine: edge-to-edge
 /// alternating stripes, **double-click-to-play**, reliable multi-selection,
@@ -158,6 +180,21 @@ struct MusicTrackTable: NSViewRepresentable {
         /// rows whose own track carries a `work` tag — see `textCell`).
         private(set) var workHeaderGroupingActive = false
 
+        /// Process-wide, not per-`Coordinator`: a fresh `Coordinator` is
+        /// created every time `NSViewRepresentable` recreates `MusicTrackTable`
+        /// (e.g. switching sidebar sections away from Songs and back tears
+        /// the whole table down), so instance-scoped caching would never hit
+        /// on the revisit that #157 is about. One slot is enough — only
+        /// Songs and the unfiltered column browser sort at a scale where this
+        /// matters, and a user is realistically viewing one of those two at
+        /// a time.
+        private static var lastSort: (signature: TrackSortSignature, result: [Song])?
+        /// Test-observability only (mirrors the generation-counter idiom
+        /// already used throughout `LibraryModel`): increments once per
+        /// actual cache miss, never on a hit. No production behavior reads
+        /// this.
+        private(set) static var sortComputeCount = 0
+
         init(_ parent: MusicTrackTable) { self.parent = parent }
 
         /// Recompute the displayed (optionally sorted) order and reload.
@@ -216,8 +253,16 @@ struct MusicTrackTable: NSViewRepresentable {
         private func sortedTracks() -> [Song] {
             guard let key = sortKey else { return parent.tracks }
             let asc = ascending
-            if key == "title" { return titleSortedTracks(ascending: asc) }
-            return nonTitleSortedTracks(for: key, ascending: asc)
+            let signature = TrackSortSignature(
+                contentHash: TrackSortSignature.content(of: parent.tracks), key: key, ascending: asc
+            )
+            if let cached = Self.lastSort, cached.signature == signature { return cached.result }
+            let result = key == "title"
+                ? titleSortedTracks(ascending: asc)
+                : nonTitleSortedTracks(for: key, ascending: asc)
+            Self.sortComputeCount += 1
+            Self.lastSort = (signature, result)
+            return result
         }
 
         private func nonTitleSortedTracks(for key: String, ascending: Bool) -> [Song] {

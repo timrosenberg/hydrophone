@@ -64,6 +64,76 @@ struct TrackTableLargeLibraryTests {
         #expect(coordinator.displayed.map(\.id) == ["a-id", "z-id"])
     }
 
+    // #157: a fresh `Coordinator` is created every time `NSViewRepresentable`
+    // recreates `MusicTrackTable` (e.g. a sidebar tab revisit tearing the old
+    // table down) — these three prove the cross-instance sort cache actually
+    // avoids re-sorting on an unchanged revisit, and still invalidates
+    // correctly when content or sort state genuinely changes. Synchronous
+    // (no `async`/`await`): the whole point is to check
+    // `MusicTrackTable.Coordinator.sortComputeCount`'s delta across two
+    // mounts with nothing else able to interleave on the main actor between
+    // them — an `await` in between would open exactly that gap.
+    @Test func revisitingUnchangedContentReusesTheCachedSort() throws {
+        let defaultsKey = "large-cache-hit-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "trackSort.\(defaultsKey)") }
+        let songs = (0..<14_082).map { index in
+            Song(id: "song-\(index)", title: String(format: "Track %05d", index))
+        }
+
+        let firstTable = try mountedTable(tracks: songs, sortKey: defaultsKey)
+        #expect(firstTable.numberOfRows == songs.count)
+        let afterFirstMount = MusicTrackTable.Coordinator.sortComputeCount
+
+        // A brand-new Coordinator (mirrors the tab-revisit teardown), same
+        // content and sort — should be a cache hit, not a second sort.
+        let secondTable = try mountedTable(tracks: songs, sortKey: defaultsKey)
+        #expect(secondTable.numberOfRows == songs.count)
+        #expect(MusicTrackTable.Coordinator.sortComputeCount == afterFirstMount)
+        let coordinator = try #require(secondTable.dataSource as? MusicTrackTable.Coordinator)
+        #expect(coordinator.displayed.first?.id == "song-0")
+    }
+
+    @Test func differentContentInvalidatesTheCachedSort() throws {
+        let defaultsKey = "large-cache-content-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "trackSort.\(defaultsKey)") }
+        let songs = (0..<14_082).map { index in
+            Song(id: "song-\(index)", title: String(format: "Track %05d", index))
+        }
+        var changed = songs
+        changed[0] = Song(id: "different-id", title: changed[0].title)
+
+        _ = try mountedTable(tracks: songs, sortKey: defaultsKey)
+        let afterFirstMount = MusicTrackTable.Coordinator.sortComputeCount
+
+        _ = try mountedTable(tracks: changed, sortKey: defaultsKey)
+        #expect(MusicTrackTable.Coordinator.sortComputeCount == afterFirstMount + 1)
+    }
+
+    @Test func differentSortKeyInvalidatesTheCachedSort() throws {
+        let defaultsKey = "large-cache-sortkey-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "trackSort.\(defaultsKey)") }
+        let songs = (0..<14_082).map { index in
+            Song(id: "song-\(index)", title: String(format: "Track %05d", index), artist: "Artist \(index)")
+        }
+
+        _ = try mountedTable(tracks: songs, sortKey: defaultsKey)
+        let afterFirstMount = MusicTrackTable.Coordinator.sortComputeCount
+
+        // Same content, a different persisted sort this time.
+        UserDefaults.standard.set("artist|asc", forKey: "trackSort.\(defaultsKey)")
+        _ = try mountedTable(tracks: songs, sortKey: defaultsKey)
+        #expect(MusicTrackTable.Coordinator.sortComputeCount == afterFirstMount + 1)
+    }
+
+    /// Synchronous fresh mount: one `layoutSubtreeIfNeeded()` call drives
+    /// `NSHostingView` → `makeNSView` → `Coordinator.rebuild()` fully, with
+    /// no suspension point in between (see the cache tests above).
+    private func mountedTable(tracks: [Song], sortKey: String) throws -> NSTableView {
+        let window = host(table(tracks: tracks, sortKey: sortKey, defaultSortKey: "title"))
+        window.contentView?.layoutSubtreeIfNeeded()
+        return try #require(findTable(in: window.contentView))
+    }
+
     @Test func deepScrollRestoreWaitsForEnoughIncrementalRows() async throws {
         let defaultsKey = "large-scroll-\(UUID().uuidString)"
         let savedOffset: CGFloat = 12_000

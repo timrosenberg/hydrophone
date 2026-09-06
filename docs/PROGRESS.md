@@ -74,6 +74,52 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #157: Songs-tab sort cache (2026-09-06)
+
+- Fix for #145's diagnosis: `MusicTrackTable.Coordinator.sortedTracks()` now
+  caches its result across `Coordinator` instances (a process-wide one-slot
+  cache, not per-instance — a fresh `Coordinator` is created every time
+  `NSViewRepresentable` recreates the table, e.g. a sidebar tab revisit, so
+  instance-scoped caching would never hit on the case that matters). Keyed by
+  a `TrackSortSignature` (a content hash via `Song`'s synthesized `Hashable`
+  conformance, plus sort key/direction) — cheap (no locale comparisons) but
+  still correct: it catches an in-place field mutation on same-id songs, not
+  just wholesale content replacement. A first implementation using
+  `(count, firstID, lastID)` instead of a full content hash passed build/lint
+  but broke `finalMetadataSortPreservesTheSelectedSong` (mutates a song's
+  `work` field in place, same ids) — replaced with the hash before proceeding.
+- Only `SongsView` (`library.songs` directly) and the unfiltered
+  `ColumnBrowserView` (`filteredTracks` resolves to the same array when
+  nothing is selected) sort at a scale where this matters — confirmed by
+  checking every other `TrackTableView` call site (album detail, playlist,
+  composer detail, favorites, search capped at 50); no changes needed there.
+  `ColumnBrowserView`'s own uncached artists/albums/composers/`filteredTracks`
+  computed properties are a separate, smaller contributor per #145's evidence
+  and are intentionally not addressed here — filed as a follow-up rather than
+  bundled in.
+- Tests added to `TrackTableLargeLibraryTests.swift` (three, using a new
+  `private(set) static var sortComputeCount` test-observability counter on
+  `Coordinator`, mirroring the generation-counter idiom `LibraryModel` already
+  uses): a second, distinct `Coordinator` mounted with identical 14,082-row
+  content and sort reuses the cached result (`sortComputeCount` unchanged);
+  changed content, or a changed sort key, correctly invalidates it
+  (`sortComputeCount` increments). Deliberately synchronous (no `await`
+  between the before/after checks) so nothing else can interleave on the main
+  actor mid-measurement.
+- Gate: unsigned app build zero compiler warnings; **424 tests / 447
+  executions, 0 failures/skips**; SwiftLint 0 violations (170 files).
+- Live verification: partial. Confirmed the app connects to Tim's real
+  ~14,231-song Navidrome library and the Songs tab (column browser enabled)
+  renders correctly against it — screenshot-verified, nothing disturbed.
+  Attempted to automate the actual click-away/click-back timing check via
+  `osascript`/System Events UI scripting; two different approaches (raw
+  screen coordinates, then an accessibility-element path) both failed to
+  reliably trigger the sidebar selection change, and the first attempt caused
+  unintended window-focus interference with the terminal running this
+  session. Stopped rather than keep retrying blindly. The interactive
+  "does Songs feel instant on revisit now" check still needs a human click —
+  asking Tim to do that once before merging.
+
 ## Issue #145: Songs-tab click-to-render lag investigation (2026-09-05)
 
 - Diagnosis, no code change: the lag is CPU-bound main-thread sorting, not
@@ -4225,6 +4271,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- 🚧 Issue #157 (2026-09-06): Songs-tab sort cache (fix for #145). **424
+  tests / 447 executions, 0 failures/skips**, unsigned build zero compiler
+  warnings, SwiftLint 0 violations (170 files). Confirmed live against Tim's
+  real ~14,231-song Navidrome library that the app connects and the Songs tab
+  renders correctly, but the actual click-away/click-back timing feel is not
+  yet human-confirmed — two automated UI-scripting attempts to drive it were
+  unreliable and stopped short (see the dated entry below). Marked 🚧 until
+  Tim does that one click-test.
 - ✅ Issue #145 (2026-09-05): Songs-tab click-to-render lag investigation
   (diagnosis only, no code change). **421 tests / 444 executions, 0
   failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
