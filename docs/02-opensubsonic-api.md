@@ -126,9 +126,9 @@ otherwise; see `SubsonicClient.formPostRequest`).
   into `Song` values (#85), preserving source order and the work/movement join.
 
 ### Discovery (added 2026-07-18, M10)
-- `getArtistInfo2` — artist bio + similar artists (server metadata agent,
-  e.g. Navidrome's Last.fm bridge) for the artist page. Bio HTML is
-  flattened client-side (`ArtistInfo2Body.Info.plainBiography`).
+- ~~`getArtistInfo2`~~ — artist bio + similar artists shipped with M10, then
+  removed 2026-09-06 (#112): Hydrophone does not fetch or display
+  third-party artist metadata by product decision.
 - `getSimilarSongs2` — the Start Radio mix; `id` may be a song or artist.
   On Navidrome 0.62+ with the `sonicSimilarity` extension the server backs
   this with audio analysis transparently — nothing to negotiate client-side.

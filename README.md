@@ -37,7 +37,7 @@ keyboard-friendly, low-footprint, native — instead of a browser tab.
 - Output-device picker incl. AirPlay routes; USB-DAC unplug/replug recovery
 - Dense sortable track table, column browser (Genre → Artist → Album),
   global search, quality badges with lossless-first sorting
-- Home page shelves; artist pages with bio and similar artists
+- Home page shelves; artist pages with an instant album grid
 - Start Radio from any song or artist (server similarity, with fallbacks)
 - Shuffle Library (500-song mix) and Shuffle Albums (whole albums,
   filter-aware); album grid filters by genre/decade

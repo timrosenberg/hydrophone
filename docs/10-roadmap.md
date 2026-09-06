@@ -146,8 +146,13 @@ Server-powered features; API + UI work only, no engine risk.
 fallback for agent-less servers) and album shuffle shipped and
 human-verified against a real server. Internet radio deferred by choice —
 the ICY spike below remains open.
-- **Artist metadata** (`getArtistInfo2`) — bio, artist image, similar-artist
-  links on the artist detail page (currently just an album list) — `02`/`04`.
+**Update 2026-09-06 (#112):** artist metadata (bio + similar artists) was
+removed — Hydrophone does not fetch or display third-party artist
+biographies by product decision. The rest of M10 (Start Radio, richer
+shuffle) is unaffected and remains shipped.
+- ~~**Artist metadata** (`getArtistInfo2`)~~ — bio, artist image,
+  similar-artist links on the artist detail page; shipped 2026-07-18,
+  removed 2026-09-06 (#112).
 - **Instant mix / artist radio** — `getSimilarSongs2` + `getTopSongs`;
   "Start Radio" from song/artist context menus feeding the existing queue.
   Detect and prefer the `sonicSimilarity` extension (Navidrome 0.62,
@@ -162,9 +167,8 @@ the ICY spike below remains open.
   (likely a separate lightweight `AVPlayer`-style path or a stream-source
   variant) before committing — `03`. If the spike is ugly, ship M10 without
   it.
-- **Exit:** artist pages show bio + similar artists; Start Radio fills the
-  queue with plausible picks vs a real server; album shuffle queues full
-  albums.
+- **Exit:** Start Radio fills the queue with plausible picks vs a real
+  server; album shuffle queues full albums.
 
 ### M11 — Audiophile engine batch: EQ, signal-path indicator, hog mode (L)
 Aligned with the app's identity (rate matching, gapless, quality badges);

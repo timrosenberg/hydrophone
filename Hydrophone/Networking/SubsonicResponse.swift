@@ -160,31 +160,6 @@ struct OpenSubsonicExtension: Decodable, Sendable {
     var versions: [Int]?
 }
 
-/// `getArtistInfo2` payload (from the server's metadata agent).
-struct ArtistInfo: Decodable, Sendable {
-    var biography: String?
-    var similarArtist: [Artist]?
-}
-
-extension ArtistInfo {
-    /// The bio flattened for display: the trailing "Read more on Last.fm"
-    /// link is dropped, remaining HTML tags stripped, common entities
-    /// decoded. nil when nothing readable is left.
-    var plainBiography: String? {
-        guard var text = biography else { return nil }
-        text = text.replacingOccurrences(of: "<a\\s[^>]*>Read more[^<]*</a>", with: "",
-                                         options: [.regularExpression, .caseInsensitive])
-        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        let entities = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"",
-                        "&#34;": "\"", "&#39;": "'", "&apos;": "'", "&nbsp;": " "]
-        for (entity, character) in entities {
-            text = text.replacingOccurrences(of: entity, with: character)
-        }
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-    }
-}
-
 struct PlayQueue: Decodable, Sendable {
     var entry: [Song]?
     /// Id of the current song. Navidrome sends a string id; classic

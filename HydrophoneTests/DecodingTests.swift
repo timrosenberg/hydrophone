@@ -83,22 +83,6 @@ struct DecodingTests {
         #expect(song.displayGenre == "Jazz")
     }
 
-    @Test func decodesArtistInfo2AndFlattensBioHTML() throws {
-        let json = """
-        {"subsonic-response":{"status":"ok","version":"1.16.1","artistInfo2":{
-        "biography":"Miles Davis was an American trumpeter &amp; bandleader. \
-        <a href=\\"https://www.last.fm/music/Miles+Davis\\" rel=\\"nofollow\\">Read more on Last.fm</a>",
-        "largeImageUrl":"https://example/img.jpg",
-        "similarArtist":[{"id":"ar2","name":"John Coltrane","coverArt":"ar-ar2","albumCount":3}]}}}
-        """
-        let wrapper = try decoder.decode(SubsonicResponseWrapper<ObjectBody<ArtistInfo>>.self,
-                                         from: Data(json.utf8))
-        let info = try #require(wrapper.response.body?.value)
-        #expect(info.similarArtist?.first?.name == "John Coltrane")
-        let bio = try #require(info.plainBiography)
-        #expect(bio == "Miles Davis was an American trumpeter & bandleader.")
-    }
-
     @Test func decodesSimilarSongs2() throws {
         let json = """
         {"subsonic-response":{"status":"ok","version":"1.16.1","similarSongs2":{"song":[

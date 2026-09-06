@@ -76,6 +76,32 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #112: artist bio/similar-artists removed (2026-09-06)
+
+- Product decision: Hydrophone does not fetch or display third-party artist
+  biographies or a Similar Artists shelf. This supersedes the original
+  #112 proposal to decouple `getArtistInfo2` from the album grid — the
+  metadata agent round-trip is removed outright instead.
+- `ArtistDetailView` now loads and publishes only `library.albums(forArtist:)`;
+  removed the bio state, the `artistBioExpandedID` defaults key (no
+  migration — the key is simply abandoned), the bio text view, and the
+  Similar Artists shelf. Artist Radio and its scroll restoration are
+  unchanged.
+- Removed `LibraryModel.artistInfo(id:)`, `Endpoint.artistInfo2`, the
+  `ArtistInfo` response model and its bio-HTML-flattening code, and their
+  endpoint/decoding tests. No `getArtistInfo2` references remain outside
+  historical PROGRESS entries.
+- The per-artist album cache (`artistAlbumsCache`, #114/#156) is unchanged
+  and continues to make re-selecting a previously-viewed artist instant.
+- Added `ArtistDetailViewTests` (rendered, `URLProtocol` request spy): an
+  uncached artist's albums load from a single `getArtist` request, and
+  `getArtistInfo2.view` is never requested.
+- Build clean (zero warnings), full test suite passes, SwiftLint clean.
+  Live, 2026-09-06, Tim's configured Navidrome server: confirmed albums
+  appear immediately with no bio/similar-artists section, re-selecting an
+  already-viewed artist is instant, and Artist Radio still plays — Tim
+  reported it "a lot faster."
+
 ## Issue #157: warm Songs navigation accepted for review (2026-09-06)
 
 - Retained immutable song presentation snapshots in `LibraryModel`; identical
