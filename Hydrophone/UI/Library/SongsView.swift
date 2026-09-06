@@ -31,6 +31,7 @@ struct SongsView: View {
                     Divider()
                     TrackTableView(tracks: library.songs,
                                    columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
+                                   presentation: library.songPresentation,
                                    sortAutosaveKey: "songs",
                                    defaultSortKey: "title",
                                    scrollAutosaveKey: "songs",

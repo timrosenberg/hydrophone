@@ -5,8 +5,8 @@ extension MusicTrackTable.Coordinator {
     /// the actual selected song identities as newly sorted pages shift them.
     func updateTracks(from updated: MusicTrackTable) -> Set<Int> {
         let wasLoading = parent.contentIsLoading || updated.contentIsLoading
-        let previousOrder = displayed.map(\.id)
-        let selectedIDs = Set((table?.selectedRowIndexes ?? []).compactMap { row in
+        let previousOrder = wasLoading ? displayed.map(\.id) : []
+        let selectedIDs = Set((wasLoading ? table?.selectedRowIndexes ?? [] : []).compactMap { row in
             trackIndex(atRow: row).map { displayed[$0].id }
         })
         parent = updated

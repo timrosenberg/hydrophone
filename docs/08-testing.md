@@ -245,6 +245,16 @@ to the top, and row insertions before the saved artist. All four tests fail
 when the native bridge is replaced with `scrollPosition(id:)`, which does
 not report/restore this List's rows on the verified macOS runtime.
 
+`SongPresentationTests` covers unchanged and same-ID changed publication,
+session reset, per-collection sort reuse, and browser dependency/cascade
+results. `TrackTableLargeLibraryTests` also recreates Songs around an unrelated
+table and verifies the model-owned sort is reused, plus same-ID metadata
+updates. The native browser pane keeps the existing real mouse-click suite;
+an added test drives arrow selection and Space and checks native type-select
+strings. Live timing evidence for #157 is recorded separately in
+`157-songs-navigation-measurements.md`; these correctness tests do not assert
+machine-dependent timing limits or imply the performance target has passed.
+
 ## UI tests (XCUITest) ⏳ (target not yet created)
 
 - Planned smoke flows: configure server (mocked via launch-argument stub),

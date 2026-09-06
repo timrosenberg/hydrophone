@@ -6,7 +6,7 @@ import SwiftUI
 struct ColumnBrowserView: View {
     @Environment(LibraryModel.self) private var library
 
-    @State private var songs: [Song] = []          // songs for the selected genre
+    @State private var genrePresentation = SongPresentation([])
     @State private var isLoading = false
     @State private var genreLoadGeneration = 0
 
@@ -60,37 +60,15 @@ struct ColumnBrowserView: View {
 
     /// With no genre selected, browse the complete song library; otherwise
     /// use the genre-specific paginated result.
-    private var baseSongs: [Song] {
-        selectedGenre == nil ? library.songs : songs
-    }
-
-    private var artists: [String] {
-        uniqueSorted(baseSongs.compactMap(\.artist))
-    }
-
-    private var artistScoped: [Song] {
-        selectedArtist == nil ? baseSongs : baseSongs.filter { $0.artist == selectedArtist }
-    }
-
-    private var albums: [String] {
-        uniqueSorted(artistScoped.compactMap(\.album))
-    }
-
-    private var albumScoped: [Song] {
-        selectedAlbum == nil ? artistScoped : artistScoped.filter { $0.album == selectedAlbum }
-    }
-
-    private var composers: [String] {
-        uniqueSorted(albumScoped.compactMap(\.nonEmptyDisplayComposer))
-    }
-
-    private var filteredTracks: [Song] {
-        albumScoped.filter { song in
-            selectedComposer == nil || song.nonEmptyDisplayComposer == selectedComposer
-        }
+    private var presentation: SongBrowserPresentation.Result {
+        library.songBrowserPresentation.resolve(
+            base: selectedGenre == nil ? library.songPresentation : genrePresentation,
+            artist: selectedArtist, album: selectedAlbum, composer: selectedComposer
+        )
     }
 
     var body: some View {
+        let presentation = presentation
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 pane(title: "Genre",
@@ -99,17 +77,17 @@ struct ColumnBrowserView: View {
                      allLabel: "All Genres")
                 Divider()
                 pane(title: "Artist",
-                     items: artists,
+                     items: presentation.artists,
                      selection: artistSelection,
                      allLabel: "All Artists")
                 Divider()
                 pane(title: "Album",
-                     items: albums,
+                     items: presentation.albums,
                      selection: albumSelection,
                      allLabel: "All Albums")
                 Divider()
                 pane(title: "Composer",
-                     items: composers,
+                     items: presentation.composers,
                      selection: composerSelection,
                      allLabel: "All Composers")
             }
@@ -120,8 +98,9 @@ struct ColumnBrowserView: View {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                TrackTableView(tracks: filteredTracks,
+                TrackTableView(tracks: presentation.tracks.songs,
                                columns: [.title, .artist, .album, .composer, .genre, .quality, .time],
+                               presentation: presentation.tracks,
                                sortAutosaveKey: "browser",
                                defaultSortKey: "title",
                                scrollAutosaveKey: "browser",
@@ -134,7 +113,7 @@ struct ColumnBrowserView: View {
             guard !Task.isCancelled else { return }
             let genre = selectedGenre
             let session = library.librarySessionGeneration
-            songs = []
+            genrePresentation = SongPresentation([])
             genreLoadGeneration += 1
             await library.loadSongsIfNeeded()
             guard !Task.isCancelled, session == library.librarySessionGeneration else { return }
@@ -157,20 +136,17 @@ struct ColumnBrowserView: View {
         genreLoadGeneration += 1
         let generation = genreLoadGeneration
         let session = library.librarySessionGeneration
-        guard let genre else { songs = []; isLoading = false; return }
+        guard let genre else { isLoading = false; return }
         isLoading = true
         let fetched = await library.songs(forGenre: genre)
         // A canceled or retired request cannot publish into a newer selection
         // or account, including an A -> B -> A genre round trip.
         guard generation == genreLoadGeneration, storedGenre == genre,
               session == library.librarySessionGeneration, !Task.isCancelled else { return }
-        songs = fetched
+        genrePresentation = SongPresentation(fetched)
         isLoading = false
     }
 
-    private func uniqueSorted(_ values: [String]) -> [String] {
-        Array(Set(values)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
 }
 
 /// One selectable pane in the column browser. Kept as a separate view so the
@@ -181,6 +157,7 @@ struct ColumnBrowserPane: View {
     let items: [String]
     @Binding var selection: String
     let allLabel: String
+    @Environment(PlayerModel.self) private var player
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -191,20 +168,8 @@ struct ColumnBrowserPane: View {
                 .padding(.horizontal, 8)
                 .frame(height: 24, alignment: .leading)
             Divider()
-            // Separator-free rows: the track table below draws no row rules,
-            // so the panes shouldn't either.
-            // "All" must be a concrete selectable value: nil means no row
-            // selection to List, so a nil-tagged reset row ignores clicks.
-            List(selection: $selection) {
-                Text(allLabel).tag("")
-                    .listRowSeparator(.hidden)
-                ForEach(items, id: \.self) { item in
-                    Text(item).tag(item)
-                        .listRowSeparator(.hidden)
-                }
-            }
-            .listStyle(.plain)
-            .playPauseOnSpace()
+            ColumnBrowserList(title: title, items: items, allLabel: allLabel,
+                              selection: $selection, onSpace: { player.togglePlayPause() })
         }
         .frame(maxWidth: .infinity)
     }

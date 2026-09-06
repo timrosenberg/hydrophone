@@ -206,7 +206,7 @@ extension MusicTrackTable {
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         context.coordinator.table = table
-        context.coordinator.rebuild()
+        context.coordinator.reloadIfNeeded()
         if scrollAutosaveKey != nil {
             context.coordinator.observeScroll(of: scroll)
         }
