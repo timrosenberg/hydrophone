@@ -97,9 +97,10 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   uncached artist's albums load from a single `getArtist` request, and
   `getArtistInfo2.view` is never requested.
 - Build clean (zero warnings), full test suite passes, SwiftLint clean.
-  Live verification: pending — Tim to confirm against a real server
-  (select an artist, confirm albums appear immediately with no bio/similar-
-  artists section, confirm Artist Radio still plays).
+  Live, 2026-09-06, Tim's configured Navidrome server: confirmed albums
+  appear immediately with no bio/similar-artists section, re-selecting an
+  already-viewed artist is instant, and Artist Radio still plays — Tim
+  reported it "a lot faster."
 
 ## Issue #157: warm Songs navigation accepted for review (2026-09-06)
 
