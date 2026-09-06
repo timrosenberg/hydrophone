@@ -28,8 +28,9 @@ artwork and server metadata cached on disk; Songs and selected genres paginate
 to exhaustion;
 incremental Songs, stable default sorting, and deep scroll restoration confirmed;
 final #82 review-fix live recheck passed on 2026-08-28; #128 warm-start
-continuation and all six sub-issues are implemented and verified on 2026-09-05,
-including PR #153 review remediation; pending joint review and landing) ·
+continuation and all six sub-issues are implemented, verified, and landed
+2026-09-05 (PR #152, #153); per-item album/artist detail fetches now cache
+within a session (#114)) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -72,6 +73,73 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## PR #156: review remediation (2026-09-05)
+
+- Added a dedicated detail-cache generation shared by `album(id:)` and
+  `albums(forArtist:)`. Both loaders now capture it before their asynchronous
+  request and reject the result if `reset()` or a completed full metadata
+  reconciliation invalidates the caches while the request is in flight. This
+  prevents a retired response from refilling a dictionary that was just cleared.
+- Added held-response regressions for both endpoints. Each test begins a fetch,
+  invalidates while the mock response is suspended, then confirms the stale
+  caller publishes nothing and a subsequent visit performs a fresh request.
+- The two new tests failed against the original cache implementation and pass
+  with the generation guard. Final gate: unsigned app build with **zero compiler
+  warnings**; **420 tests / 443 executions, 0 failures or skips**; SwiftLint
+  **0 violations** across 170 files; `git diff --check` clean.
+- Live, 2026-09-05, fresh reviewed build against Tim's configured Navidrome
+  0.63.2: Settings → **Test Connection** returned **Connected**; the library
+  loaded 14,231 songs, and Alfred Brendel's artist detail rendered all 12
+  albums. The same gate's enabled real-server suites passed ping/capabilities,
+  stream decoding, login, pagination, composer, and song-index checks without
+  a skip. The invalidation race itself remains deterministically covered by
+  the held-response tests above.
+
+## Issue #114: cache per-item album/artist detail fetches (2026-09-05)
+
+- `LibraryModel.album(id:)` and `albums(forArtist:)` previously hit the network
+  on every call, including revisiting an already-fetched album or artist in
+  the same session — the only two `LibraryModel` loaders with no memoization
+  at all (`docs/05`'s "not a cache" list). Added a session-scoped, id-keyed
+  cache for both (`albumDetailCache`/`artistAlbumsCache`), cleared by `reset()`
+  and by a completed background full reconciliation (`LibraryModel+Metadata.swift`),
+  matching how the rest of the library index already invalidates. `songs(forAlbum:)`
+  stays uncached — its only callers are the Home/AppModel shuffle-album paths,
+  which pick albums at random rather than revisiting a selection, so caching it
+  wouldn't address a real revisit case.
+- Only a *successful* fetch populates the cache: `albums(forArtist:)`'s prior
+  behavior silently mapped a network failure to `[]`, and caching that would
+  have permanently locked in an empty artist for the rest of the session after
+  one hiccup. Fixed to distinguish "artist fetch failed" from "artist has zero
+  albums" before deciding whether to cache.
+- Split `LibraryModel+AlbumDetail.swift` out of `LibraryModel.swift` (file-length
+  lint) and relocated `mutate(_:thenReload:)` into `LibraryModel+Playlists.swift`,
+  its only caller, to keep `LibraryModel`'s type body under the line-length lint
+  after the two new cache properties.
+- Overlaps with open issue #112 (artist-page lag): this closes #112's caching
+  cause for `albums(forArtist:)` but leaves its separate blocking-on-`artistInfo`
+  cause untouched.
+- New `LibraryModelDetailCacheTests.swift`: cache-hit reuse for both fetchers,
+  distinct ids cached independently, `reset()` clears the cache so the next
+  visit refetches, a failed artist fetch is not cached, and a fetch already in
+  flight when either invalidation path runs cannot repopulate the cleared cache.
+- Full gate after PR review remediation: unsigned app build with **zero compiler
+  warnings**; full suite **420 tests / 443 executions, 0 failures or skips**;
+  SwiftLint **0 violations** (170 files); `git diff --check` clean.
+- Live: 2026-09-05, Tim's configured Navidrome 0.63.2, exact executable
+  `/Users/trosenberg/Library/Developer/Xcode/DerivedData/Hydrophone-fhlpqojgwcqtjgdrttaspftiigar/Build/Products/Debug/Hydrophone.app`,
+  PID **11586**. With temporary instrumentation (removed before the final gate
+  run above) logging each cache decision: selecting Alfred Brendel (12 albums)
+  logged a network fetch; switching to Aaron Robinson and back within the same
+  quick round-trip logged a cache hit for Brendel with no repeat `getArtist`
+  call. Opening the *Schwanengesang* album, going Back, and reselecting the
+  same album logged a cache hit for the album with no repeat `getAlbum` call.
+  A single background full reconciliation completed mid-session and correctly
+  forced one fresh re-fetch for both previously-cached ids on the next visit,
+  confirming the invalidation path fires live, not just in the hermetic tests.
+  Playback of *Before Bach: Benediction* (Brad Mehldau) continued undisturbed
+  throughout.
 
 ## PR #153: review remediation (2026-09-05)
 
@@ -4112,6 +4180,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #114 (2026-09-05): per-item album/artist detail caching. **420 tests
+  / 443 executions, 0 failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
+  violations. Live on Tim's configured Navidrome 0.63.2: revisiting Alfred
+  Brendel and the *Schwanengesang* album both hit cache with no repeat
+  network call; a mid-session background reconciliation correctly forced one
+  fresh re-fetch afterward. PR #156 review remediation added stale-completion
+  guards for both caches; Settings → Test Connection and all enabled real-server
+  suites passed again on the reviewed build.
 - ✅ PR #153 review repair (2026-09-05): **413 tests / 436 executions, no
   failures/skips**, unsigned build zero warnings, lint/diff checks clean.
   Confirmed the failed unsaved form test retains the populated live library;
