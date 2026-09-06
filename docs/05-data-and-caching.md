@@ -98,7 +98,7 @@ the authoritative network caches nor SwiftData persistence is changed.
 The table's warm reload key uses snapshot identity plus sort/grouping/playback/
 favorite state, avoiding whole-library signature passes. Tables without a
 presentation snapshot retain their existing signature path. First use or
-changed content still incurs preparation; measured limitations and pending
+changed content still incurs preparation; measured limitations and user
 acceptance are in `157-songs-navigation-measurements.md`.
 
 This section audits every in-memory cache and cache-like load/session state in

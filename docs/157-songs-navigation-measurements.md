@@ -1,8 +1,10 @@
 # Songs navigation measurements — 2026-09-06
 
-Issue #157 remains open. The candidate substantially reduces warm navigation
-latency, but does **not** meet the proposed median <=100 ms / maximum <=150 ms
-acceptance target. No replacement PR has been opened.
+Issue #157 is implemented and accepted for PR review, pending merge. The
+candidate does **not** meet the original median <=100 ms / maximum <=150 ms
+target. On 2026-09-06, Tim explicitly accepted the measured 167 ms maximum
+and confirmed the app feels "MUCH better than before." This is acceptance
+of the observed result, not a claim that the original target passed.
 
 ## Method
 
@@ -84,16 +86,18 @@ CPU samples and signposts have matching XML filenames. These are local
 diagnostic artifacts and are not committed or uploaded. Only these aggregate
 measurements are suitable for the public issue.
 
-Live verification also exercised composer filtering (Aaron Copland), arrow-key
-selection, artist filtering (~Nois), cascading All resets, and flat Songs
+Live verification also exercised composer filtering, arrow-key
+selection, artist filtering, cascading All resets, and flat Songs
 revisits. Browser visibility was restored afterward. Hermetic tests cover
 same-ID metadata publication, unchanged publication, reset, intervening tables,
 sort variants, native pane clicks/keyboard/Space/type-select data, pagination,
 stale genre requests, and saved selections.
 
-The numerical target and Tim's assessment of perceived responsiveness remain
-unmet/pending. Keep this candidate available for evaluation; do not represent
-#157 as completed or automatically merge the rejected PRs.
+Tim accepted the observed steady-state result and confirmed perceived
+responsiveness on 2026-09-06, authorizing the replacement PR. The original
+numerical target remains unmet; the first-use and other-navigation limitations
+above still apply. PRs #160 and #162 remain closed, unmerged; this replacement
+requires review and separate merge authorization.
 
 Final source verification after removing the probes: unsigned app build with
 zero compiler warnings; **428 tests / 451 executions, zero failures or skips**;
