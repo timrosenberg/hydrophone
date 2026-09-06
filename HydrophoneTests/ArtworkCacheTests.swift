@@ -73,6 +73,17 @@ struct ArtworkCacheTests {
         #expect(ArtworkView.fetchPixels(forSize: 161) == 480)   // 161*2 = 322: just over → 3rd quantum
     }
 
+    @Test func alternateFetchIDsReuseOneAlbumCacheIdentity() async throws {
+        try await withFixture { fixture in
+            let first = await fixture.cache.image(coverArt: "song-one", cacheKey: "album:shared", size: 320)
+            let second = await fixture.cache.image(coverArt: "song-two", cacheKey: "album:shared", size: 320)
+
+            #expect(first != nil)
+            #expect(second === first)
+            #expect(ArtworkMockProtocol.state.ids == ["song-one"])
+        }
+    }
+
     @Test func visibleArtworkBypassesPendingPrefetches() async throws {
         try await withFixture { fixture in
             fixture.cache.prefetch((0..<24).map { request("held-\($0)") })

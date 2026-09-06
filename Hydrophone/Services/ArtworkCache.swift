@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import CryptoKit
 
 /// Two-tier artwork cache: an in-memory `NSCache` over a persistent on-disk
 /// store. Cover art is immutable, so a disk hit is authoritative and kept
@@ -22,14 +21,20 @@ final class ArtworkCache {
     static let shared = ArtworkCache()
 
     private let cache = NSCache<NSString, NSImage>()
-    private var inFlight: [String: Task<NSImage?, Never>] = [:]
+    private var inFlight: [Request: Task<NSImage?, Never>] = [:]
     /// Pixel sizes cached per coverArt id (current server), so a different-size
     /// request can show an already-loaded variant instantly.
     private var sizesByID: [String: [Int]] = [:]
     private let diskRoot: URL
     private let session: URLSession
+    private let failureRetryDelay: Duration
     private var pendingPrefetches: [PrefetchRequest] = []
     private var prefetchTask: Task<Void, Never>?
+    private var requestObservers: [Request: [UUID: (RequestEvent) -> Void]] = [:]
+    private var generationByCacheKey: [String: Int] = [:]
+    private var invalidatedDiskCacheKeys: Set<String> = []
+    private var refreshedDiskSizes: [String: Set<Int>] = [:]
+    private var sessionGeneration = 0
 
     static let prefetchLimit = 24
 
@@ -37,6 +42,42 @@ final class ArtworkCache {
         var coverArt: String?
         var cacheKey: String?
         var size: Int
+    }
+
+    struct Request: Hashable {
+        let sessionGeneration: Int
+        let cacheGeneration: Int
+        let serverID: String
+        let cacheKey: String
+        let coverArt: String
+        let size: Int
+
+        fileprivate var storageKey: String { "\(serverID)|\(cacheKey)@\(size)" }
+    }
+
+    enum RequestEvent {
+        case ready(NSImage)
+        case invalidated
+    }
+
+    @MainActor
+    final class Interest {
+        private weak var cache: ArtworkCache?
+        private let request: Request
+        private let id: UUID
+        private var isActive = true
+
+        fileprivate init(cache: ArtworkCache, request: Request, id: UUID) {
+            self.cache = cache
+            self.request = request
+            self.id = id
+        }
+
+        func cancel() {
+            guard isActive else { return }
+            isActive = false
+            cache?.removeObserver(id: id, for: request)
+        }
     }
     /// Filesystem-safe token identifying the current server; namespaces both
     /// tiers so artwork never mixes across servers.
@@ -48,12 +89,6 @@ final class ArtworkCache {
     /// the inline `ClientBox(client)` deallocate immediately → no artwork.
     var clientBox: ClientBox?
 
-    /// Network fetches only (disk hits bypass): Navidrome rate-limits cover
-    /// art by default, and a Home page + grid can otherwise fire dozens of
-    /// simultaneous getCoverArt calls. Static so the nonisolated loaders can
-    /// share it directly (the cache is a singleton). See issue #4.
-    private static let fetchLimiter = AsyncLimiter(limit: 6)
-
     /// Byte budget for the in-memory tier, sized in decoded-pixel bytes (see
     /// `cost(of:)`) rather than entry count alone: a handful of now-playing
     /// heroes at full size shouldn't crowd out hundreds of grid thumbnails.
@@ -61,8 +96,10 @@ final class ArtworkCache {
     /// range without pinning excessive memory. See issue #15 (E7).
     private static let memoryBudgetBytes = 200 * 1_024 * 1_024
 
-    init(session: URLSession = .shared, directory: URL? = nil) {
+    init(session: URLSession = .shared, directory: URL? = nil,
+         failureRetryDelay: Duration = .seconds(1.5)) {
         self.session = session
+        self.failureRetryDelay = failureRetryDelay
         // Count limit is a loose backstop; totalCostLimit (byte-based) does
         // the real bounding so raising the visible+prefetch window doesn't
         // silently blow the memory budget.
@@ -80,41 +117,23 @@ final class ArtworkCache {
     /// drops the in-memory tier; the disk tier is namespaced per server, so each
     /// server keeps its own images and switching back reuses them.
     func setServer(baseURL: URL?) {
-        let id = baseURL.map(Self.scope(for:)) ?? "default"
-        guard id != serverID else { return }
-        serverID = id
+        let id = baseURL.map(ArtworkCacheIO.scope(for:)) ?? "default"
+        sessionGeneration &+= 1
+        let observers = requestObservers.values.flatMap(\.values)
+        requestObservers.removeAll()
         pendingPrefetches.removeAll()
+        inFlight.removeAll()
+        generationByCacheKey.removeAll()
+        guard id != serverID else {
+            observers.forEach { $0(.invalidated) }
+            return
+        }
+        serverID = id
         cache.removeAllObjects()
         sizesByID.removeAll()
-        inFlight.removeAll()
-    }
-
-    /// `cacheKey` is the cache identity (defaults to the coverArt id); `id`
-    /// only feeds the fetch URL. Passing the same key for different coverArt
-    /// ids (all songs of one album) makes them share entries and downloads.
-    func image(coverArt id: String?, cacheKey: String? = nil, size: Int) async -> NSImage? {
-        guard let id, !id.isEmpty, let clientBox else { return nil }
-        let identity = cacheKey ?? id
-        let key = "\(serverID)|\(identity)@\(size)"
-        if let cached = cache.object(forKey: key as NSString) { return cached }
-        if let existing = inFlight[key] { return await existing.value }
-
-        let client = clientBox.client
-        let fileURL = serverDir().appendingPathComponent(Self.filename(identity: identity, size: size))
-        let session = session
-        let task = Task<NSImage?, Never> { [weak self] in
-            let image = await Self.load(id: id, size: size, client: client, fileURL: fileURL, session: session)
-            if let self, let image {
-                self.cache.setObject(image, forKey: key as NSString, cost: Self.cost(of: image))
-                if !(self.sizesByID[identity]?.contains(size) ?? false) {
-                    self.sizesByID[identity, default: []].append(size)
-                }
-            }
-            self?.inFlight[key] = nil
-            return image
-        }
-        inFlight[key] = task
-        return await task.value
+        invalidatedDiskCacheKeys.removeAll()
+        refreshedDiskSizes.removeAll()
+        observers.forEach { $0(.invalidated) }
     }
 
     /// Replace the speculative window, never append to an unbounded backlog.
@@ -150,6 +169,11 @@ final class ArtworkCache {
         return nil
     }
 
+    func cachedVariant(for request: Request) -> NSImage? {
+        guard isCurrent(request) else { return nil }
+        return cachedVariant(key: request.cacheKey)
+    }
+
     /// Drop the in-memory tier (disk store persists — artwork is immutable).
     func purge() {
         cache.removeAllObjects()
@@ -162,7 +186,9 @@ final class ArtworkCache {
     func originalImageFileURL(coverArt id: String?, cacheKey: String? = nil,
                               displayName: String) async -> URL? {
         guard let id, !id.isEmpty, let clientBox else { return nil }
-        let cacheURL = serverDir().appendingPathComponent(Self.filename(identity: cacheKey ?? id, size: 0))
+        let cacheURL = serverDir().appendingPathComponent(
+            ArtworkCacheIO.filename(identity: cacheKey ?? id, size: 0)
+        )
         return await Self.stageOriginal(id: id, displayName: displayName,
                                         client: clientBox.client, cacheURL: cacheURL, session: session)
     }
@@ -175,7 +201,9 @@ final class ArtworkCache {
             // Same governed path as every other fetch: the concurrency cap
             // and the one-retry ladder apply to originals too.
             guard let url = try? await client.coverArtURL(id: id),
-                  let (fetched, _) = await fetchWithRetry(url, session: session) else { return nil }
+                  let (fetched, _) = await ArtworkCacheIO.fetchWithRetry(
+                    url, session: session, failureRetryDelay: .seconds(1.5)
+                  ) else { return nil }
             try? fetched.write(to: cacheURL, options: .atomic)
             data = fetched
         }
@@ -209,92 +237,122 @@ final class ArtworkCache {
         return dir
     }
 
-    private nonisolated static func load(id: String, size: Int, client: SubsonicClient,
-                                         fileURL: URL, session: URLSession) async -> NSImage? {
-        // Disk first: cover art doesn't change, so a hit is authoritative
-        // (and never waits on the network limiter).
-        if let data = try? Data(contentsOf: fileURL), let image = NSImage(data: data) {
-            return image
-        }
-        guard let url = try? await client.coverArtURL(id: id, size: size) else { return nil }
-        guard let (data, image) = await fetchWithRetry(url, session: session) else { return nil }
-        try? data.write(to: fileURL, options: .atomic)
-        return image
-    }
-
-    /// Fetch behind the concurrency cap. One retry: after the server's
-    /// Retry-After on a 429, or a short pause on a plain failure — a
-    /// transient blip must not leave a gray tile for the whole session.
-    private nonisolated static func fetchWithRetry(_ url: URL, session: URLSession) async -> (Data, NSImage)? {
-        var result = await fetchLimiter.run { await fetch(url, session: session) }
-        switch result {
-        case let .rateLimited(delay):
-            try? await Task.sleep(for: .seconds(delay))
-            result = await fetchLimiter.run { await fetch(url, session: session) }
-        case .failed:
-            try? await Task.sleep(for: .seconds(1.5))
-            result = await fetchLimiter.run { await fetch(url, session: session) }
-        case .image:
-            break
-        }
-        guard case let .image(data, image) = result else { return nil }
-        return (data, image)
-    }
-
-    private enum FetchResult {
-        case image(Data, NSImage)
-        case rateLimited(TimeInterval)
-        case failed
-    }
-
-    private nonisolated static func fetch(_ url: URL, session: URLSession) async -> FetchResult {
-        guard let (data, response) = try? await session.data(from: url) else {
-            return .failed
-        }
-        if let http = response as? HTTPURLResponse, http.statusCode == 429 {
-            return .rateLimited(retryDelay(from: http))
-        }
-        guard let image = NSImage(data: data) else { return .failed }
-        return .image(data, image)
-    }
-
     /// Seconds to wait per the 429's Retry-After header (delta-seconds form),
     /// clamped to something sane; 2s when absent or unparseable.
     nonisolated static func retryDelay(from response: HTTPURLResponse) -> TimeInterval {
-        guard let raw = response.value(forHTTPHeaderField: "Retry-After"),
-              let seconds = TimeInterval(raw.trimmingCharacters(in: .whitespaces)),
-              seconds > 0 else { return 2 }
-        return min(seconds, 30)
-    }
-
-    /// Approximate decoded footprint (4 bytes/pixel, RGBA) so `totalCostLimit`
-    /// bounds actual memory rather than entry count — a full-res hero and a
-    /// grid thumbnail shouldn't count the same against the budget. Falls back
-    /// to the image's point size when the representation reports no pixel
-    /// dimensions (`pixelsWide`/`pixelsHigh` read 0, not nil, for a rep that
-    /// genuinely lacks them — an unguarded `??` would never catch that).
-    private nonisolated static func cost(of image: NSImage) -> Int {
-        let rep = image.representations.first
-        let repWidth = rep?.pixelsWide ?? 0
-        let repHeight = rep?.pixelsHigh ?? 0
-        let width = repWidth > 0 ? repWidth : Int(image.size.width)
-        let height = repHeight > 0 ? repHeight : Int(image.size.height)
-        return max(width, 0) * max(height, 0) * 4
-    }
-
-    private nonisolated static func filename(identity: String, size: Int) -> String {
-        sha(of: "\(identity)@\(size)") + ".img"
-    }
-
-    private nonisolated static func scope(for url: URL) -> String {
-        String(sha(of: url.absoluteString).prefix(16))
-    }
-
-    private nonisolated static func sha(of string: String) -> String {
-        SHA256.hash(data: Data(string.utf8)).map { String(format: "%02x", $0) }.joined()
+        ArtworkCacheIO.retryDelay(from: response)
     }
 }
 
+extension ArtworkCache {
+    func request(coverArt id: String?, cacheKey: String? = nil, size: Int,
+                 refreshingCacheIdentity: Bool = false) -> Request? {
+        guard let id, !id.isEmpty, clientBox != nil else { return nil }
+        let identity = cacheKey ?? id
+        if refreshingCacheIdentity {
+            refreshCacheIdentity(identity, requestedSize: size)
+        }
+        return Request(sessionGeneration: sessionGeneration,
+                       cacheGeneration: generationByCacheKey[identity, default: 0],
+                       serverID: serverID, cacheKey: identity, coverArt: id, size: size)
+    }
+    /// `cacheKey` is the cache identity (defaults to the coverArt id); `id`
+    /// only feeds the fetch URL. Passing the same key for different coverArt
+    /// ids (all songs of one album) makes them share entries and downloads.
+    func image(coverArt id: String?, cacheKey: String? = nil, size: Int) async -> NSImage? {
+        guard let request = request(coverArt: id, cacheKey: cacheKey, size: size) else { return nil }
+        return await image(for: request)
+    }
+    func image(for request: Request) async -> NSImage? {
+        guard isCurrent(request), let clientBox else { return nil }
+        if let cached = cache.object(forKey: request.storageKey as NSString) { return cached }
+        if let existing = inFlight[request] { return await existing.value }
+        let client = clientBox.client
+        let fileURL = serverDir().appendingPathComponent(
+            ArtworkCacheIO.filename(identity: request.cacheKey, size: request.size)
+        )
+        let session = session
+        let failureRetryDelay = failureRetryDelay
+        let useDisk = !invalidatedDiskCacheKeys.contains(request.cacheKey)
+            || refreshedDiskSizes[request.cacheKey]?.contains(request.size) == true
+        let input = ArtworkLoadInput(coverArt: request.coverArt, size: request.size, fileURL: fileURL,
+                                     useDisk: useDisk, failureRetryDelay: failureRetryDelay)
+        let task = Task<NSImage?, Never> { [weak self] in
+            let result = await ArtworkCacheIO.load(input, client: client, session: session)
+            guard let self else {
+                ArtworkCacheIO.discard(result?.stagedFileURL)
+                return nil
+            }
+            defer { self.inFlight[request] = nil }
+            guard let result else { return nil }
+            guard self.isCurrent(request) else {
+                ArtworkCacheIO.discard(result.stagedFileURL)
+                return nil
+            }
+            ArtworkCacheIO.publish(result.stagedFileURL, to: fileURL)
+            let image = result.image
+            self.cache.setObject(
+                image, forKey: request.storageKey as NSString, cost: ArtworkCacheIO.cost(of: image)
+            )
+            if !(self.sizesByID[request.cacheKey]?.contains(request.size) ?? false) {
+                self.sizesByID[request.cacheKey, default: []].append(request.size)
+            }
+            if !useDisk {
+                self.refreshedDiskSizes[request.cacheKey, default: []].insert(request.size)
+            }
+            for observer in self.requestObservers[request]?.values ?? [:].values {
+                observer(.ready(image))
+            }
+            return image
+        }
+        inFlight[request] = task
+        return await task.value
+    }
+
+    func observe(_ request: Request, receive: @escaping (RequestEvent) -> Void) -> Interest? {
+        guard isCurrent(request) else { return nil }
+        let id = UUID()
+        requestObservers[request, default: [:]][id] = receive
+        let interest = Interest(cache: self, request: request, id: id)
+        if let cached = cache.object(forKey: request.storageKey as NSString) {
+            receive(.ready(cached))
+        }
+        return interest
+    }
+    func isCurrent(_ request: Request) -> Bool {
+        request.sessionGeneration == sessionGeneration
+            && request.cacheGeneration == generationByCacheKey[request.cacheKey, default: 0]
+            && request.serverID == serverID
+    }
+    fileprivate func removeObserver(id: UUID, for request: Request) {
+        requestObservers[request]?[id] = nil
+        if requestObservers[request]?.isEmpty == true {
+            requestObservers[request] = nil
+        }
+    }
+    private func refreshCacheIdentity(_ identity: String, requestedSize: Int) {
+        generationByCacheKey[identity, default: 0] &+= 1
+        let retired = requestObservers.filter { $0.key.cacheKey == identity }
+        for request in retired.keys {
+            requestObservers[request] = nil
+        }
+        invalidateVariants(cacheKey: identity, requestedSize: requestedSize)
+        retired.values.flatMap(\.values).forEach { $0(.invalidated) }
+    }
+    private func invalidateVariants(cacheKey identity: String, requestedSize: Int) {
+        let knownSizes = Set((sizesByID[identity] ?? []) + [requestedSize, 0])
+        for size in knownSizes {
+            cache.removeObject(forKey: "\(serverID)|\(identity)@\(size)" as NSString)
+            let fileURL = serverDir().appendingPathComponent(
+                ArtworkCacheIO.filename(identity: identity, size: size)
+            )
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        sizesByID[identity] = nil
+        invalidatedDiskCacheKeys.insert(identity)
+        refreshedDiskSizes[identity] = []
+    }
+}
 /// Lets the @MainActor cache hold a reference to the actor-isolated client
 /// without retaining AppModel directly.
 final class ClientBox {
