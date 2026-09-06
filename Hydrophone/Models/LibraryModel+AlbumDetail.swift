@@ -4,10 +4,16 @@ import Foundation
 /// file-length lint, same reasoning as LibraryModel+Favorites.swift.
 /// `album(id:)` and `albums(forArtist:)` cache their result in
 /// `albumDetailCache`/`artistAlbumsCache` (#114) so a revisit within a
-/// session is instant; `reset()` and a completed background reconciliation
-/// clear those caches, mirroring how the rest of the library index already
-/// invalidates.
+/// session is instant. A dedicated generation retires fetches begun before
+/// `reset()` or a completed background reconciliation, preventing a late
+/// response from refilling a cache that either event just cleared.
 extension LibraryModel {
+    func invalidateDetailCaches() {
+        detailCacheGeneration += 1
+        albumDetailCache = [:]
+        artistAlbumsCache = [:]
+    }
+
     func songs(forAlbum id: String) async -> [Song] {
         guard await metadataAllowsLoading() else { return [] }
         let generation = librarySessionGeneration
@@ -25,10 +31,12 @@ extension LibraryModel {
         if let cached = albumDetailCache[id] { return cached }
         guard await metadataAllowsLoading() else { return nil }
         let generation = librarySessionGeneration
+        let cacheGeneration = detailCacheGeneration
         guard var album = try? await client.object(.album(id: id), as: Album.self) else { return nil }
         var songs = album.song ?? []
         await joinWorkInfo(into: &songs)
-        guard generation == librarySessionGeneration else { return nil }
+        guard generation == librarySessionGeneration,
+              cacheGeneration == detailCacheGeneration else { return nil }
         album.song = songs
         albumDetailCache[id] = album
         persistMetadata(.albums([album]), generation: generation)
@@ -45,9 +53,11 @@ extension LibraryModel {
         if let cached = artistAlbumsCache[id] { return cached }
         guard await metadataAllowsLoading() else { return [] }
         let generation = librarySessionGeneration
+        let cacheGeneration = detailCacheGeneration
         guard let artist = try? await client.object(.artist(id: id), as: Artist.self) else { return [] }
         let albums = artist.album ?? []
-        guard generation == librarySessionGeneration else { return [] }
+        guard generation == librarySessionGeneration,
+              cacheGeneration == detailCacheGeneration else { return [] }
         artistAlbumsCache[id] = albums
         persistMetadata(.albums(albums), generation: generation)
         return albums

@@ -129,9 +129,9 @@ extension LibraryModel {
         // A completed full reconciliation replaces the bulk collections below
         // with a fresh server walk, so any per-item detail cached from before
         // it (#114) must drop too rather than keep serving pre-reconciliation
-        // data alongside the now-current bulk lists.
-        albumDetailCache = [:]
-        artistAlbumsCache = [:]
+        // data alongside the now-current bulk lists. The helper also retires
+        // any request that began before this reconciliation completed.
+        invalidateDetailCaches()
         songs = snapshot.songs
         seededSongs = false
         songsState = .loaded(())

@@ -96,9 +96,47 @@ struct LibraryModelDetailCacheTests {
         #expect(await DetailCacheMockProtocol.count(pathSuffix: "/rest/getArtist.view") == 2)
     }
 
+    @Test func invalidationDuringInFlightAlbumFetchCannotRepopulateTheCache() async throws {
+        let gate = DetailCacheGate()
+        await DetailCacheMockProtocol.reset()
+        await DetailCacheMockProtocol.setAsyncHandler { request in
+            if request.url?.path.hasSuffix("/rest/getAlbum.view") == true { await gate.wait() }
+            return Self.makeHandler()(request)
+        }
+        let library = makeLibrary()
+
+        let stale = Task { await library.album(id: "album-1") }
+        await gate.waitUntilEntered()
+        library.invalidateDetailCaches()
+        await gate.release()
+
+        #expect(await stale.value == nil)
+        #expect(await library.album(id: "album-1") != nil)
+        #expect(await DetailCacheMockProtocol.count(pathSuffix: "/rest/getAlbum.view") == 2)
+    }
+
+    @Test func invalidationDuringInFlightArtistFetchCannotRepopulateTheCache() async throws {
+        let gate = DetailCacheGate()
+        await DetailCacheMockProtocol.reset()
+        await DetailCacheMockProtocol.setAsyncHandler { request in
+            if request.url?.path.hasSuffix("/rest/getArtist.view") == true { await gate.wait() }
+            return Self.makeHandler()(request)
+        }
+        let library = makeLibrary()
+
+        let stale = Task { await library.albums(forArtist: "artist-1") }
+        await gate.waitUntilEntered()
+        library.invalidateDetailCaches()
+        await gate.release()
+
+        #expect(await stale.value.isEmpty)
+        #expect(await library.albums(forArtist: "artist-1").map(\.id) == ["album-1"])
+        #expect(await DetailCacheMockProtocol.count(pathSuffix: "/rest/getArtist.view") == 2)
+    }
+
     // MARK: - Mock handler
 
-    private static func makeHandler() -> @Sendable (URLRequest) -> DetailCacheMockProtocol.Response {
+    private nonisolated static func makeHandler() -> @Sendable (URLRequest) -> DetailCacheMockProtocol.Response {
         { request in
             let path = request.url?.path ?? ""
             if path.hasSuffix("/rest/getAlbum.view") {
@@ -149,12 +187,19 @@ final class DetailCacheMockProtocol: URLProtocol, @unchecked Sendable {
 
     private actor State {
         var handler: (@Sendable (URLRequest) -> Response)?
+        var asyncHandler: (@Sendable (URLRequest) async -> Response)?
         var requests: [URLRequest] = []
 
         func setHandler(_ handler: @escaping @Sendable (URLRequest) -> Response) { self.handler = handler }
-        func reset() { handler = nil; requests = [] }
+        func setAsyncHandler(_ handler: @escaping @Sendable (URLRequest) async -> Response) {
+            asyncHandler = handler
+        }
+        func reset() { handler = nil; asyncHandler = nil; requests = [] }
         func record(_ request: URLRequest) { requests.append(request) }
-        func respond(to request: URLRequest) -> Response? { handler?(request) }
+        func respond(to request: URLRequest) async -> Response? {
+            if let asyncHandler { return await asyncHandler(request) }
+            return handler?(request)
+        }
         func matchingRequests(pathSuffix: String) -> [URLRequest] {
             requests.filter { ($0.url?.path ?? "").hasSuffix(pathSuffix) }
         }
@@ -164,6 +209,10 @@ final class DetailCacheMockProtocol: URLProtocol, @unchecked Sendable {
 
     static func setHandler(_ handler: @escaping @Sendable (URLRequest) -> Response) async {
         await state.setHandler(handler)
+    }
+
+    static func setAsyncHandler(_ handler: @escaping @Sendable (URLRequest) async -> Response) async {
+        await state.setAsyncHandler(handler)
     }
 
     static func reset() async { await state.reset() }
@@ -196,4 +245,26 @@ final class DetailCacheMockProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+private actor DetailCacheGate {
+    private var isOpen = false
+    private var entered = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        entered = true
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func waitUntilEntered() async {
+        while !entered { await Task.yield() }
+    }
+
+    func release() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
 }

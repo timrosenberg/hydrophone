@@ -112,11 +112,12 @@ final class LibraryModel {
 
     /// Per-item detail cache for `album(id:)`/`albums(forArtist:)` (#114):
     /// revisiting an already-fetched album or artist within a session
-    /// returns instantly instead of re-hitting the network. Cleared by
-    /// `reset()` and by a completed background reconciliation, the same
-    /// events that already invalidate the rest of the library index.
+    /// returns instantly instead of re-hitting the network. The dedicated
+    /// generation is bumped by `reset()` and completed reconciliation so a
+    /// fetch started before either invalidation cannot refill a cleared cache.
     var albumDetailCache: [String: Album] = [:]
     var artistAlbumsCache: [String: [Album]] = [:]
+    var detailCacheGeneration = 0
 
     let metadata: (any MetadataPersistence)?
     @ObservationIgnored var metadataSession: MetadataSession?
@@ -178,8 +179,7 @@ final class LibraryModel {
         homeFrequent = []
         homeRandom = []
         homeLoaded = false
-        albumDetailCache = [:]
-        artistAlbumsCache = [:]
+        invalidateDetailCaches()
         await invalidateSongs()
         guard generation == librarySessionGeneration else { return }
         await metadata?.close()
