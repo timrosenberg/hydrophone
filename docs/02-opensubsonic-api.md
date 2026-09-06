@@ -302,7 +302,10 @@ confirmed-by-live-capture API facts live in the E3 epic (#11) and its spike
   `NativeSongRecord` carries optional row metadata as well as `id`/`title`,
   `participants` (`composer`/`artist`/`albumartist`/`performer`/`conductor`,
   each `[Credit]`), and raw `tags` (`[String: [String]]`). It stays separate
-  from `Song` (`SubsonicModels.swift`), the playback pipeline's model.
+  from `Song` (`SubsonicModels.swift`), the playback pipeline's model. The
+  native-to-playback mapping and `LibrarySongIndex.join(into:)` preserve the
+  individual artist/composer names in `Song.artists`/`.composers` for browser
+  membership while leaving `artist`/`displayComposer` joined for display.
 - **Performer/Conductor (#103):** unlike composer, Navidrome sends no
   pre-joined `displayPerformer`/`displayConductor` string. Both roles ride the
   standard OpenSubsonic `contributors` array instead (`role` + optional

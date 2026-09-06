@@ -23,6 +23,8 @@ extension MetadataSchemaV1 {
         var starred: Date?
         var genresData: Data?
         var displayComposer: String?
+        var artists: [String]?
+        var composers: [String]?
         var contributorsData: Data?
         var replayGainData: Data?
         var displayAlbumArtist: String?
@@ -63,6 +65,8 @@ extension MetadataSchemaV1 {
             starred = value.starred
             genresData = try MetadataMapping.encode(value.genres)
             displayComposer = value.displayComposer
+            artists = value.artists
+            composers = value.composers
             contributorsData = try MetadataMapping.encode(value.contributors)
             replayGainData = try MetadataMapping.encode(value.replayGain)
             displayAlbumArtist = value.displayAlbumArtist
@@ -99,6 +103,8 @@ extension MetadataSchemaV1 {
             result.starred = starred
             result.genres = try MetadataMapping.decode(genresData, as: [GenreRef].self)
             result.displayComposer = displayComposer
+            result.artists = artists
+            result.composers = composers
             result.contributors = try MetadataMapping.decode(contributorsData, as: [Contributor].self)
             result.replayGain = try MetadataMapping.decode(replayGainData, as: ReplayGainInfo.self)
             result.displayAlbumArtist = displayAlbumArtist

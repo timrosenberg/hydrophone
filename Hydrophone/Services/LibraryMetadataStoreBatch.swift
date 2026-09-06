@@ -80,6 +80,8 @@ final class LibraryMetadataStoreBatch {
             value.movementNumber = value.movementNumber ?? record.movementNumber
             value.movementTotal = value.movementTotal ?? record.movementTotal
             value.bitDepth = value.bitDepth ?? record.bitDepth
+            value.artists = value.artists ?? record.artists
+            value.composers = value.composers ?? record.composers
         }
         if richMerge { value = try Self.preservingRichFields(value, existing: record.value()) }
         if hasAuthoritativeFavorites { value.starred = record.starred }

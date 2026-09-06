@@ -73,4 +73,31 @@ struct SongPresentationTests {
         #expect(replaced.artists.isEmpty && replaced.albums.isEmpty && replaced.composers.isEmpty)
         #expect(replaced.tracks.songs.isEmpty)
     }
+
+    @Test func browserListsAndFiltersIndividualArtistAndComposerCredits() {
+        var joint = Song(id: "joint", title: "Joint", artist: "Alpha • Beta",
+                         displayComposer: "Gamma • Delta")
+        joint.artists = ["Alpha", "Beta"]
+        joint.composers = ["Gamma", "Delta"]
+        var alphaSolo = Song(id: "alpha", title: "Alpha", artist: "Alpha",
+                             displayComposer: "Gamma")
+        alphaSolo.artists = ["Alpha"]
+        alphaSolo.composers = ["Gamma"]
+        var betaSolo = Song(id: "beta", title: "Beta", artist: "Beta",
+                            displayComposer: "Delta")
+        betaSolo.artists = ["Beta"]
+        betaSolo.composers = ["Delta"]
+        let base = SongPresentation([joint, alphaSolo, betaSolo])
+        let browser = SongBrowserPresentation()
+
+        let all = browser.resolve(base: base, artist: nil, album: nil, composer: nil)
+        #expect(all.artists == ["Alpha", "Beta"])
+        #expect(all.composers == ["Delta", "Gamma"])
+
+        let alpha = browser.resolve(base: base, artist: "Alpha", album: nil, composer: nil)
+        #expect(alpha.tracks.songs.map(\.id) == ["joint", "alpha"])
+
+        let delta = browser.resolve(base: base, artist: nil, album: nil, composer: "Delta")
+        #expect(delta.tracks.songs.map(\.id) == ["joint", "beta"])
+    }
 }

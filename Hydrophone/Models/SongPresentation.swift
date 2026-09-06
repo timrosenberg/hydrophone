@@ -55,18 +55,20 @@ final class SongBrowserPresentation {
         let artistChanged = baseChanged || self.artist != artist
         let albumChanged = artistChanged || self.album != album
         let composerChanged = albumChanged || self.composer != composer
-        if baseChanged { result.artists = uniqueSorted(base.songs.compactMap(\.artist)) }
+        if baseChanged { result.artists = uniqueSorted(base.songs.flatMap(\.browserArtists)) }
         if artistChanged {
-            artistSongs = artist.map { selected in base.songs.filter { $0.artist == selected } } ?? base.songs
+            artistSongs = artist.map { selected in
+                base.songs.filter { $0.browserArtists.contains(selected) }
+            } ?? base.songs
             result.albums = uniqueSorted(artistSongs.compactMap(\.album))
         }
         if albumChanged {
             albumSongs = album.map { selected in artistSongs.filter { $0.album == selected } } ?? artistSongs
-            result.composers = uniqueSorted(albumSongs.compactMap(\.nonEmptyDisplayComposer))
+            result.composers = uniqueSorted(albumSongs.flatMap(\.browserComposers))
         }
         if composerChanged {
             let tracks = composer.map { selected in
-                albumSongs.filter { $0.nonEmptyDisplayComposer == selected }
+                albumSongs.filter { $0.browserComposers.contains(selected) }
             } ?? albumSongs
             result.tracks = artist == nil && album == nil && composer == nil ? base : SongPresentation(tracks)
         }

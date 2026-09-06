@@ -52,6 +52,39 @@ struct ColumnBrowserLibraryTests {
         #expect(ArtworkCache.shared.clientBox === original)
     }
 
+    @Test func renderedBrowserSplitsJointCreditsAndFiltersByMembership() async throws {
+        await BrowserLibraryProtocol.state.reset()
+        let fixture = BrowserLibraryFixture()
+        defer { fixture.close() }
+        var joint = Song(id: "joint", title: "Joint", artist: "Alpha • Beta",
+                         displayComposer: "Gamma • Delta")
+        joint.artists = ["Alpha", "Beta"]
+        joint.composers = ["Gamma", "Delta"]
+        var alpha = Song(id: "alpha", title: "Alpha", artist: "Alpha", displayComposer: "Gamma")
+        alpha.artists = ["Alpha"]
+        alpha.composers = ["Gamma"]
+        var beta = Song(id: "beta", title: "Beta", artist: "Beta", displayComposer: "Delta")
+        beta.artists = ["Beta"]
+        beta.composers = ["Delta"]
+        fixture.library.songs = [joint, alpha, beta]
+
+        fixture.show()
+        try await fixture.waitForTracks(3)
+        #expect(fixture.panes.map(\.numberOfRows) == [3, 3, 1, 3])
+
+        try fixture.click(pane: 1, row: 1)
+        try await fixture.waitForTracks(2)
+        #expect(fixture.displayed.map(\.id) == ["alpha", "joint"])
+        #expect(fixture.displayed.first { $0.id == "joint" }?.artist == "Alpha • Beta")
+
+        try fixture.click(pane: 1, row: 0)
+        try await fixture.waitForTracks(3)
+        try fixture.click(pane: 3, row: 1)
+        try await fixture.waitForTracks(2)
+        #expect(fixture.displayed.map(\.id) == ["beta", "joint"])
+        #expect(fixture.displayed.first { $0.id == "joint" }?.displayComposer == "Gamma • Delta")
+    }
+
     // Catches returning to a sampled base or deriving panes only from page one.
     @Test func completeLibraryIncludesLateArtistsAlbumsAndAllComposerTracks() async throws {
         await BrowserLibraryProtocol.state.reset()

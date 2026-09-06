@@ -234,8 +234,9 @@ kept as the decision record, with each sub-section noting where the shipped
 code followed it exactly and the one place (140.2's `LibraryModel` collections)
 it didn't, and why. Evidence behind each call:
 
-- **Native-only fields are genuinely native-only** (`docs/02`): work/movement
-  tags and `bitDepth` are exposed *only* via `/api/song`; plain Subsonic
+- **Native-only fields are genuinely native-only** (`docs/02`): individual
+  artist/composer credits, work/movement tags, and `bitDepth` are exposed
+  *only* via `/api/song`; plain Subsonic
   (`search3`/`getAlbum`/`getSong`) never carries them. Composer credit **ids**
   (needed for `songs(byComposerId:)`) are likewise only in
   `participants.composer[].id` — Subsonic only gets the server-joined
@@ -283,7 +284,7 @@ class, not an actor — see the shipped note below for why:
   `songIndexGeneration` / `inFlightSongIndexBuild` (moves out of
   `NavidromeClient` likewise).
 - One entry point, `allSongs(onProgress:)`: walks Subsonic (always) and joins
-  native work/movement/bitDepth (when available) — replacing today's two-step
+  native individual credits/work/movement/bitDepth (when available) — replacing today's two-step
   "`LibraryModel.loadSongsIfNeeded()` calls `client.allSongs()`, then
   separately calls `joinWorkInfo(into:)`" with one call whose join logic
   lives in one place.
@@ -611,8 +612,9 @@ compatibility, not a migration to an invented v2. Once released, preserve v1's
 persisted shape; structural evolution gets another version and explicit stages.
 
 - `CachedSong`: every stored field in the current `Song` value, including
-  composer/contributors, ReplayGain, multi-genre/grouping tags, sort and play
-  metadata, work/movement, and bit depth. Native fields are explicit columns:
+  individual artist/composer names, joined composer/contributors, ReplayGain,
+  multi-genre/grouping tags, sort and play metadata, work/movement, and bit
+  depth. Native fields are explicit columns:
   encoding `Song` directly would omit them through its wire `CodingKeys`.
 - `CachedAlbum`: all current album fields, genre/disc-title metadata, and a
   nullifying relationship to canonical songs.

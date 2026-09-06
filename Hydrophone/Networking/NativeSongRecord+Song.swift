@@ -28,6 +28,8 @@ extension NativeSongRecord {
             guard let role = credit.subRole, !role.isEmpty else { return credit.name }
             return "\(credit.name) (\(role))"
         }.joined(separator: " • ")
+        song.artists = artistCreditNames
+        song.composers = composerCreditNames
         song.contributors = Self.contributors(from: participants)
         song.displayAlbumArtist = albumArtist
         song.comment = comment
@@ -59,6 +61,14 @@ extension NativeSongRecord {
     private static func nonempty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }
+
+    private static func creditNames(_ credits: [Credit]?) -> [String]? {
+        guard let credits, !credits.isEmpty else { return nil }
+        return credits.map(\.name)
+    }
+
+    var artistCreditNames: [String]? { Self.creditNames(participants?.artist) }
+    var composerCreditNames: [String]? { Self.creditNames(participants?.composer) }
 
     // Composer keeps its own pre-joined displayComposer string (unchanged,
     // tested behavior); performer/conductor instead feed the same
