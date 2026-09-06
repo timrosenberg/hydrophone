@@ -74,6 +74,42 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #161: ColumnBrowserView scan memoization (2026-09-06)
+
+- Second fix for the Songs-tab lag family (after #157). `ColumnBrowserView`'s
+  `artists`/`albums`/`composers`/`filteredTracks` were plain SwiftUI computed
+  properties, re-evaluated on every `body` access — with nothing selected
+  (the common case), each scanned the complete library. Now memoized with a
+  process-wide cache (same shape as #157's `MusicTrackTable.Coordinator`
+  cache, needed for the same reason: `@State` doesn't survive a sidebar tab
+  revisit either — SwiftUI tears the view's identity down and recreates it),
+  keyed by exactly what each property depends on (a content hash of the base
+  song list plus only the pane selections that actually narrow it), so
+  changing e.g. the composer selection doesn't invalidate `artists`, which
+  never looked at it.
+- Deliberately independent of #157/#160 (still unmerged at the time of
+  writing): wrote a local, small content-hash helper rather than reusing
+  `MusicTrackTable`'s `TrackSortSignature`, so the two fixes don't couple
+  across branches or depend on merge order.
+- Added `selectionChangeInvalidatesOnlyItsDependents` to
+  `ColumnBrowserLibraryTests.swift`: within one live, rendered fixture,
+  selecting an artist correctly leaves `artists`'s compute count unchanged
+  while `albums`/`composers`/`filteredTracks` each increment by exactly one —
+  proves the scoped-dependency design precisely. Two additional
+  cross-fixture tests (does a *fresh* `ColumnBrowserView` instance reuse a
+  previous one's cached scan) were attempted and dropped: diagnosis showed
+  the shared `BrowserLibraryFixture` test harness lets a prior test's
+  `.task`-driven view keep rendering and interleaving with the current
+  test's after `.close()`, thrashing the one-slot cache between two
+  genuinely different keys — a test-harness lifecycle artifact (confirmed via
+  temporary instrumentation, since removed), not a bug in the cache itself,
+  and not something the real app ever hits (only one `ColumnBrowserView` is
+  ever on screen at a time). Fixing that harness gap was out of scope here.
+- Gate: unsigned app build zero compiler warnings; **422 tests / 445
+  executions, 0 failures/skips**; SwiftLint 0 violations (170 files). Per
+  Tim's standing instruction, no live/GUI verification attempted this
+  session — his to do.
+
 ## Issue #145: Songs-tab click-to-render lag investigation (2026-09-05)
 
 - Diagnosis, no code change: the lag is CPU-bound main-thread sorting, not
@@ -4225,6 +4261,12 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- 🚧 Issue #161 (2026-09-06): ColumnBrowserView scan memoization, second fix
+  in the Songs-tab lag family (after #157). **422 tests / 445 executions, 0
+  failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
+  violations (170 files). No live/GUI verification attempted — Tim now owns
+  that step. Marked 🚧 until he confirms and until #157+#161 are evaluated
+  together against the real library per his request.
 - ✅ Issue #145 (2026-09-05): Songs-tab click-to-render lag investigation
   (diagnosis only, no code change). **421 tests / 444 executions, 0
   failures/skips**, unsigned build zero compiler warnings, SwiftLint 0

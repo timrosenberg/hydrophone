@@ -204,4 +204,39 @@ struct ColumnBrowserLibraryTests {
         #expect(fixture.panes.map(\.numberOfRows) == [3, 701, 1_401, 21])
         print("Browser 14082 (Unicode-heavy metadata): initial=\(start.duration(to: rendered))")
     }
+
+    // #161: artists/albums/composers/filteredTracks are memoized (process-wide,
+    // keyed by content + exactly the selections each one depends on) so they
+    // don't rescan the library on every `body` re-evaluation. These prove the
+    // cache actually hits/invalidates correctly, via the compute-count
+    // counters (mirroring #157's `sortComputeCount` pattern) rather than a
+    // flaky timing assertion.
+    @Test func selectionChangeInvalidatesOnlyItsDependents() async throws {
+        await BrowserLibraryProtocol.state.reset()
+        let fixture = BrowserLibraryFixture()
+        defer { fixture.close() }
+        fixture.library.songs = (0..<200).map { index in
+            Song(id: "song-\(index)", title: "Track \(index)",
+                 artist: "Artist \(index % 10)", album: "Album \(index % 20)",
+                 displayComposer: "Composer \(index % 4)")
+        }
+        fixture.show()
+        try await fixture.waitForTracks(200)
+
+        let artistsBefore = ColumnBrowserView.artistsComputeCount
+        let albumsBefore = ColumnBrowserView.albumsComputeCount
+        let composersBefore = ColumnBrowserView.composersComputeCount
+        let tracksBefore = ColumnBrowserView.filteredTracksComputeCount
+
+        // Select an artist (pane 1, row 1 = "Artist 0"): narrows
+        // album/composer/tracks, but `artists` never looks at the artist
+        // selection, so it shouldn't recompute.
+        try fixture.click(pane: 1, row: 1)
+        try await fixture.waitForTracks(20)
+
+        #expect(ColumnBrowserView.artistsComputeCount == artistsBefore)
+        #expect(ColumnBrowserView.albumsComputeCount == albumsBefore + 1)
+        #expect(ColumnBrowserView.composersComputeCount == composersBefore + 1)
+        #expect(ColumnBrowserView.filteredTracksComputeCount == tracksBefore + 1)
+    }
 }
