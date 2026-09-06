@@ -218,6 +218,11 @@ are part of restorable view state. Toggleable (View menu / shortcut) so users
 who prefer a plain table can hide it. The unfiltered browser and flat Songs
 table render the first 500 songs immediately, remain usable while later
 pages arrive, and show an activity indicator with the published song count.
+On native-capable Navidrome connections, Artist and Composer rows come from
+the individual `participants` credits: a jointly credited track contributes
+one row per person and matches every credited person's filter. Track-table
+Artist/Composer cells continue to show the server's full joined string. Plain
+Subsonic connections fall back to that joined string as one browser value.
 Each pane's **All Genres / All Artists / All Albums / All Composers** row
 clears that pane's filter and the existing downstream selection cascade.
 The reset row uses the persisted empty-string sentinel as a concrete list

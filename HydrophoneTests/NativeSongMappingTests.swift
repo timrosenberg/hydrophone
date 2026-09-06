@@ -48,6 +48,23 @@ struct NativeSongMappingTests {
         #expect(song.displayComposer == "Composer (arrangement) • Other Composer")
     }
 
+    @Test func preservesIndividualArtistAndComposerNamesForBrowsing() throws {
+        let data = Data("""
+        {"id":"song","artist":"Joined Artists","participants":{
+          "artist":[{"id":"a","name":"First Artist"},
+                    {"id":"b","name":"Second Artist"}],
+          "composer":[{"id":"c","name":"First Composer","subRole":"music"},
+                      {"id":"d","name":"Second Composer"}]}}
+        """.utf8)
+
+        let song = try JSONDecoder().decode(NativeSongRecord.self, from: data).asSong()
+
+        #expect(song.artists == ["First Artist", "Second Artist"])
+        #expect(song.composers == ["First Composer", "Second Composer"])
+        #expect(song.artist == "Joined Artists")
+        #expect(song.displayComposer == "First Composer (music) • Second Composer")
+    }
+
     @Test func preservesPerformerAndConductorCredits() throws {
         let data = Data("""
         {"id":"song","participants":{

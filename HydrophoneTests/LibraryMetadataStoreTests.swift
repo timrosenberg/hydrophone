@@ -83,13 +83,19 @@ struct LibraryMetadataStoreTests {
         var raw = MetadataStoreFixtures.song
         raw.work = nil
         raw.bitDepth = nil
+        raw.artists = nil
+        raw.composers = nil
         await store.write(.songs([raw]), for: session)
         #expect(await store.read(for: session)?.songs.first?.work == "Suite")
+        #expect(await store.read(for: session)?.songs.first?.artists == ["Artist", "Guest Artist"])
+        #expect(await store.read(for: session)?.songs.first?.composers == ["Composer", "Guest Composer"])
         #expect(await store.read(for: session)?.favorites == nil)
         let favorite = Song(id: "song-1", title: "Movement", starred: MetadataStoreFixtures.date)
         await store.write(.favorites(MetadataFavorites(songs: [favorite], albums: [])), for: session)
         let starred = try #require(await store.read(for: session))
         #expect(starred.favorites?.songs.first?.bitDepth == 24)
+        #expect(starred.favorites?.songs.first?.artists == ["Artist", "Guest Artist"])
+        #expect(starred.favorites?.songs.first?.composers == ["Composer", "Guest Composer"])
         #expect(starred.songs.first?.contributors == MetadataStoreFixtures.song.contributors)
         await store.write(.favorites(MetadataFavorites(songs: [], albums: [])), for: session)
         #expect(await store.read(for: session)?.songs.first?.starred == nil)

@@ -21,6 +21,8 @@ extension LibraryMetadataStoreBatch {
         result.size = value.size ?? existing.size
         result.genres = value.genres ?? existing.genres
         result.displayComposer = value.displayComposer ?? existing.displayComposer
+        result.artists = value.artists ?? existing.artists
+        result.composers = value.composers ?? existing.composers
         result.contributors = value.contributors ?? existing.contributors
         result.replayGain = value.replayGain ?? existing.replayGain
         result.displayAlbumArtist = value.displayAlbumArtist ?? existing.displayAlbumArtist

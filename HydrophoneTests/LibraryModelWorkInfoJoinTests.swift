@@ -48,6 +48,8 @@ struct LibraryModelWorkInfoJoinTests {
         #expect(songs[0].movementNumber == 13)
         #expect(songs[0].movementTotal == 14)
         #expect(songs[0].bitDepth == 24)
+        #expect(songs[0].artists == ["Dietrich Fischer-Dieskau", "Gerald Moore"])
+        #expect(songs[0].composers == ["Franz Schubert", "Franz Liszt"])
         #expect(songs[1].work == nil) // no work tags on this one — untouched
         #expect(songs[1].bitDepth == nil)
     }
@@ -178,18 +180,24 @@ struct LibraryModelWorkInfoJoinTests {
                 return .init(status: 200, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
             }
             if path.hasSuffix("/api/song") {
-                let json = """
-                [{"id": "schubert-song", "title": "Der Doppelgänger", "bitDepth": 24,
-                  "tags": {"work": ["Schwanengesang, D. 957"], "movementname": ["Der Doppelgänger"],
-                           "movement": ["13"], "movementtotal": ["14"]}},
-                 {"id": "untagged-song", "title": "Some Other Track"}]
-                """
                 let headers = ["Content-Type": "application/json", "X-Total-Count": "2"]
-                return .init(status: 200, headers: headers, body: Data(json.utf8))
+                return .init(status: 200, headers: headers, body: Data(Self.nativeSongsJSON.utf8))
             }
             return .init(status: 404, headers: [:], body: Data())
         }
     }
+
+    private nonisolated static let nativeSongsJSON = """
+    [{"id": "schubert-song", "title": "Der Doppelgänger", "bitDepth": 24,
+      "participants": {
+        "artist": [{"id": "fischer-dieskau", "name": "Dietrich Fischer-Dieskau"},
+                   {"id": "moore", "name": "Gerald Moore"}],
+        "composer": [{"id": "schubert", "name": "Franz Schubert"},
+                     {"id": "liszt", "name": "Franz Liszt"}]},
+      "tags": {"work": ["Schwanengesang, D. 957"], "movementname": ["Der Doppelgänger"],
+               "movement": ["13"], "movementtotal": ["14"]}},
+     {"id": "untagged-song", "title": "Some Other Track"}]
+    """
 
     private nonisolated static func makeJWT(exp: TimeInterval) -> String {
         func segment(_ json: String) -> String {

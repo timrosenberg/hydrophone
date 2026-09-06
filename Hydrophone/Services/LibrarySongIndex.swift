@@ -96,6 +96,8 @@ final class LibrarySongIndex: Sendable {
                 songs[index].movementNumber = work?.movementNumber
                 songs[index].movementTotal = work?.movementTotal
                 songs[index].bitDepth = record?.bitDepth
+                songs[index].artists = record?.artistCreditNames
+                songs[index].composers = record?.composerCreditNames
             }
         }
         guard !Task.isCancelled, await client.currentCredentials == creds else {
@@ -282,8 +284,9 @@ final class LibrarySongIndex: Sendable {
         return result
     }
 
-    /// Joins `work`/`movementName`/`movementNumber`/`movementTotal`, and
-    /// `bitDepth`, onto `songs` in place, from the cached native song index.
+    /// Joins individual artist/composer credits,
+    /// `work`/`movementName`/`movementNumber`/`movementTotal`, and `bitDepth`
+    /// onto `songs` in place, from the cached native song index.
     /// A no-op — including on any native-side failure — when native features
     /// aren't available, so a plain Subsonic server never pays for or sees
     /// this. Was `LibraryModel.joinWorkInfo(into:)`; callers unchanged.
@@ -302,6 +305,13 @@ final class LibrarySongIndex: Sendable {
         if let bitDepths = try? await bitDepths(forSongIds: ids), !bitDepths.isEmpty {
             for index in songs.indices {
                 songs[index].bitDepth = bitDepths[songs[index].id]
+            }
+        }
+        if let native = try? await songIndexSnapshot() {
+            for index in songs.indices {
+                let record = native.record(id: songs[index].id)
+                songs[index].artists = record?.artistCreditNames
+                songs[index].composers = record?.composerCreditNames
             }
         }
     }

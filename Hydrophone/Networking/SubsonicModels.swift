@@ -32,6 +32,12 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// OpenSubsonic display-ready composer string (the server joins multiple
     /// composers itself). Absent when the file/server has no composer tag.
     var displayComposer: String?
+    /// Individual Navidrome artist/composer credit names. These stay separate
+    /// from the server-joined display strings so browser facets can match one
+    /// credited person without changing track-table rendering. Plain
+    /// Subsonic servers leave them absent.
+    var artists: [String]?
+    var composers: [String]?
     /// OpenSubsonic role-tagged credits (performer, conductor, composer,
     /// etc.), each with an optional subRole (e.g. an instrument for
     /// `performer`). Unlike `displayComposer`, the server sends no
@@ -60,7 +66,8 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
     /// Sort-key title (e.g. strips a leading "The"), distinct from `title`.
     var sortName: String?
 
-    /// Native (Navidrome-only) work/movement metadata, joined onto this
+    /// Native (Navidrome-only) credit, work/movement, and bit-depth metadata,
+    /// joined onto this
     /// `Song` by `LibraryModel` after the Subsonic fetch — Subsonic never
     /// sends these, so they're deliberately absent from `CodingKeys` below;
     /// every `Optional` property already defaults to `nil` on its own, which
@@ -91,6 +98,16 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         return displayComposer
     }
 
+    /// Individual browser facets when Navidrome supplied them; flat display
+    /// values keep the browser useful on plain Subsonic servers.
+    var browserArtists: [String] {
+        Self.nonEmptyNames(artists).nonEmpty ?? artist.flatMap(Self.nonEmptyName).map { [$0] } ?? []
+    }
+
+    var browserComposers: [String] {
+        Self.nonEmptyNames(composers).nonEmpty ?? nonEmptyDisplayComposer.map { [$0] } ?? []
+    }
+
     /// Performer credits for display, joined the same way `displayComposer`
     /// is server-joined: "Name (subRole)" per credit, " • "-separated.
     var nonEmptyDisplayPerformer: String? { Self.joinedCredits(contributors, role: "performer") }
@@ -105,6 +122,14 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
             return "\(credit.artist.name) (\(subRole))"
         }.joined(separator: " • ")
         return joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : joined
+    }
+
+    private static func nonEmptyNames(_ values: [String]?) -> [String] {
+        (values ?? []).compactMap(nonEmptyName)
+    }
+
+    private static func nonEmptyName(_ value: String) -> String? {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
     }
 
     /// File suffixes of lossless encodings, where the format says more than the
@@ -189,6 +214,10 @@ struct Song: Identifiable, Codable, Sendable, Hashable {
         case replayGain
         case displayAlbumArtist, comment, groupings, created, played, playCount, samplingRate, sortName
     }
+}
+
+private extension Collection {
+    var nonEmpty: Self? { isEmpty ? nil : self }
 }
 
 /// OpenSubsonic contributor credit: a role-tagged artist with an optional

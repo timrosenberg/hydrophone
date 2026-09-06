@@ -33,6 +33,8 @@ continuation and all six sub-issues are implemented, verified, and landed
 within a session (#114)) ·
 Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
+Issue #122 ✅ (joint artist/composer credits split into individual browser
+rows with membership filtering; joined track-table labels preserved) ·
 Issue #157 🚧 (implemented and accepted for review: median 1,526 -> 160 ms;
 Tim accepted the observed 167 ms maximum on 2026-09-06; pending merge) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -75,6 +77,31 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #122: individual artist/composer browser credits (2026-09-06) ✅
+
+- `Song` now retains individual Navidrome artist and composer names alongside
+  the existing server-joined `artist`/`displayComposer` strings. Both direct
+  native-to-`Song` mapping and `LibrarySongIndex` enrichment populate the
+  arrays from `participants.artist`/`.composer`; plain Subsonic data falls
+  back to its joined display value.
+- `SongBrowserPresentation` builds Artist/Composer panes by flattening those
+  individual names and filters tracks by membership. The existing left-to-right
+  Genre → Artist → Album → Composer cascade is unchanged; #121's bidirectional
+  faceting remains explicitly out of scope.
+- SwiftData stores the native credit arrays explicitly, and non-authoritative
+  song/favorite refreshes preserve them just like work/movement and bit depth.
+  Added mapping, native-join, presentation, persistence, and rendered AppKit
+  browser regressions.
+- Live, 2026-09-06, ad-hoc-signed Debug build against Tim's configured
+  Navidrome 0.63.2 server: selecting the individual Composer row “Johnny
+  Burke” returned both a sole-credit track and “What's New,” whose table cell
+  remained “Bob Haggart • Johnny Burke.” “Alexander Swete” and “Ensemble New
+  Art” appeared as separate Artist rows and each returned their jointly
+  credited tracks while the table kept the full joined artist strings.
+- Final gate: unsigned app build succeeded with zero compiler warnings;
+  **431 tests / 454 executions, 0 failures/skips**; SwiftLint reported zero
+  violations across 174 files; `git diff --check` passed.
 
 ## Issue #112: artist bio/similar-artists removed (2026-09-06)
 
