@@ -74,6 +74,28 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## PR #156: review remediation (2026-09-05)
+
+- Added a dedicated detail-cache generation shared by `album(id:)` and
+  `albums(forArtist:)`. Both loaders now capture it before their asynchronous
+  request and reject the result if `reset()` or a completed full metadata
+  reconciliation invalidates the caches while the request is in flight. This
+  prevents a retired response from refilling a dictionary that was just cleared.
+- Added held-response regressions for both endpoints. Each test begins a fetch,
+  invalidates while the mock response is suspended, then confirms the stale
+  caller publishes nothing and a subsequent visit performs a fresh request.
+- The two new tests failed against the original cache implementation and pass
+  with the generation guard. Final gate: unsigned app build with **zero compiler
+  warnings**; **420 tests / 443 executions, 0 failures or skips**; SwiftLint
+  **0 violations** across 170 files; `git diff --check` clean.
+- Live, 2026-09-05, fresh reviewed build against Tim's configured Navidrome
+  0.63.2: Settings → **Test Connection** returned **Connected**; the library
+  loaded 14,231 songs, and Alfred Brendel's artist detail rendered all 12
+  albums. The same gate's enabled real-server suites passed ping/capabilities,
+  stream decoding, login, pagination, composer, and song-index checks without
+  a skip. The invalidation race itself remains deterministically covered by
+  the held-response tests above.
+
 ## Issue #114: cache per-item album/artist detail fetches (2026-09-05)
 
 - `LibraryModel.album(id:)` and `albums(forArtist:)` previously hit the network
@@ -100,9 +122,11 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
   cause untouched.
 - New `LibraryModelDetailCacheTests.swift`: cache-hit reuse for both fetchers,
   distinct ids cached independently, `reset()` clears the cache so the next
-  visit refetches, and a failed artist fetch is not cached.
-- Full gate: unsigned app build **zero warnings**; full suite **417 tests / 440
-  executions, 0 failures**; SwiftLint **0 violations** (170 files).
+  visit refetches, a failed artist fetch is not cached, and a fetch already in
+  flight when either invalidation path runs cannot repopulate the cleared cache.
+- Full gate after PR review remediation: unsigned app build with **zero compiler
+  warnings**; full suite **420 tests / 443 executions, 0 failures or skips**;
+  SwiftLint **0 violations** (170 files); `git diff --check` clean.
 - Live: 2026-09-05, Tim's configured Navidrome 0.63.2, exact executable
   `/Users/trosenberg/Library/Developer/Xcode/DerivedData/Hydrophone-fhlpqojgwcqtjgdrttaspftiigar/Build/Products/Debug/Hydrophone.app`,
   PID **11586**. With temporary instrumentation (removed before the final gate
@@ -4156,12 +4180,14 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
-- ✅ Issue #114 (2026-09-05): per-item album/artist detail caching. **417 tests
-  / 440 executions, 0 failures**, unsigned build zero warnings, SwiftLint 0
+- ✅ Issue #114 (2026-09-05): per-item album/artist detail caching. **420 tests
+  / 443 executions, 0 failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
   violations. Live on Tim's configured Navidrome 0.63.2: revisiting Alfred
   Brendel and the *Schwanengesang* album both hit cache with no repeat
   network call; a mid-session background reconciliation correctly forced one
-  fresh re-fetch afterward.
+  fresh re-fetch afterward. PR #156 review remediation added stale-completion
+  guards for both caches; Settings → Test Connection and all enabled real-server
+  suites passed again on the reviewed build.
 - ✅ PR #153 review repair (2026-09-05): **413 tests / 436 executions, no
   failures/skips**, unsigned build zero warnings, lint/diff checks clean.
   Confirmed the failed unsaved form test retains the populated live library;
