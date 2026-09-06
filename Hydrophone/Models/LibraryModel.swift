@@ -360,15 +360,9 @@ final class LibraryModel {
     var starredLoadingGeneration: Int?
 }
 
-// MARK: - Discovery (artist info, radio mixes, album shuffle)
+// MARK: - Discovery (radio mixes, album shuffle)
 
 extension LibraryModel {
-    /// Bio + similar artists for the artist page. Best-effort: nil simply
-    /// hides the extras (servers without a metadata agent return little).
-    func artistInfo(id: String) async -> ArtistInfo? {
-        try? await client.object(.artistInfo2(id: id, count: 12), as: ArtistInfo.self)
-    }
-
     /// Similar-song mix seeding Start Radio. `id` may be a song or artist id.
     func similarSongs(id: String, count: Int = 50) async -> [Song] {
         await fetchList(.similarSongs2(id: id, count: count))

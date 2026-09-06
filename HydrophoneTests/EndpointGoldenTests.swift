@@ -57,9 +57,6 @@ struct EndpointGoldenTests {
     }
 
     @Test func discovery() {
-        #expect(Endpoint.artistInfo2(id: "ar-1", count: 12).queryItems == [
-            q("id", "ar-1"), q("count", "12")
-        ])
         #expect(Endpoint.similarSongs2(id: "s1", count: 50).queryItems == [
             q("id", "s1"), q("count", "50")
         ])

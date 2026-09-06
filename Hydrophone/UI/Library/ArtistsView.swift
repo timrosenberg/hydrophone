@@ -93,22 +93,16 @@ struct ArtistsView: View {
 }
 
 /// The selected artist's albums as a grid, under a header with the artist's
-/// name (no artwork — see #61), bio (from `getArtistInfo2`) and an Artist
-/// Radio button; similar artists shelf below. Selecting an album opens it in
-/// place (via `Navigator`).
+/// name (no artwork — see #61) and an Artist Radio button. Selecting an
+/// album opens it in place (via `Navigator`). Hydrophone does not fetch or
+/// display third-party artist biographies or a Similar Artists shelf
+/// (product decision, #112) — album loading is the only work this view does.
 struct ArtistDetailView: View {
     let artist: Artist
     @Environment(AppModel.self) private var app
     @Environment(LibraryModel.self) private var library
     @Environment(Navigator.self) private var navigator
     @State private var albums: [Album] = []
-    @State private var info: ArtistInfo?
-    /// Persisted (not @State) as the id of the artist whose bio is expanded:
-    /// opening an album tears this view down, and Back must not collapse the
-    /// bio. A different artist naturally reads as collapsed.
-    @AppStorage("artistBioExpandedID") private var bioExpandedID = ""
-
-    private var bioExpanded: Bool { bioExpandedID == artist.id }
 
     /// Per-artist scroll memory (see `Binding.scrollMemory`): scoped by
     /// artist id so only Back-from-an-album restores; the first album is the
@@ -127,7 +121,6 @@ struct ArtistDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                bio
                 AlignedAdaptiveGrid(tileMinimum: 150, spacing: 16) {
                     ForEach(albums) { album in
                         Button { navigator.openAlbum(album) } label: {
@@ -140,19 +133,16 @@ struct ArtistDetailView: View {
                     }
                 }
                 .padding()
-                similarArtists
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition(id: scrollBinding, anchor: .top)
         .task(id: artist.id) {
-            async let albumsLoad = library.albums(forArtist: artist.id)
-            async let infoLoad = library.artistInfo(id: artist.id)
-            let (loadedAlbums, loadedInfo) = await (albumsLoad, infoLoad)
-            // Cancelled loads (artist switched underneath) resolve empty —
-            // don't clobber the shown artist's grid/bio with them.
+            let loadedAlbums = await library.albums(forArtist: artist.id)
+            // A cancelled load (artist switched underneath) resolves empty —
+            // don't clobber the shown artist's grid with it.
             if Task.isCancelled { return }
-            (albums, info) = (loadedAlbums, loadedInfo)
+            albums = loadedAlbums
         }
     }
 
@@ -178,34 +168,5 @@ struct ArtistDetailView: View {
             .help("Play a mix of this artist and similar music")
         }
         .padding(.horizontal).padding(.top, 14)
-    }
-
-    @ViewBuilder private var bio: some View {
-        if let text = info?.plainBiography {
-            Text(text)
-                .font(.callout).foregroundStyle(.secondary)
-                .lineLimit(bioExpanded ? nil : 3)
-                .padding(.horizontal).padding(.top, 10)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation { bioExpandedID = bioExpanded ? "" : artist.id }
-                }
-                .help(bioExpanded ? "Click to collapse" : "Click to read the full bio")
-                .accessibilityAddTraits(.isButton)
-        }
-    }
-
-    @ViewBuilder private var similarArtists: some View {
-        if let similar = info?.similarArtist, !similar.isEmpty {
-            Divider().padding(.horizontal)
-            Shelf(title: "Similar Artists") {
-                ForEach(similar) { other in
-                    Button(other.name) { navigator.openArtist(other) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-            }
-            .padding(.bottom, 6)
-        }
     }
 }
