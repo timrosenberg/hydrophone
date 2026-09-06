@@ -166,4 +166,42 @@ struct ColumnBrowserLibraryTests {
         #expect(fixture.displayed.allSatisfy { $0.displayComposer == "Composer 0" })
         print("Browser 14082: initial=\(start.duration(to: rendered)), composer-click=\(rendered.duration(to: .now))")
     }
+
+    // #145: same scale/cardinality as the test above, but with realistic
+    // Unicode-heavy metadata (diacritics, mixed scripts) standing in for its
+    // plain-ASCII synthetic titles — the classical/international repertoire
+    // this fork treats as a first-class browsing axis
+    // (docs/00-fork-divergence.md). `localizedCaseInsensitiveCompare`'s ICU
+    // collation is markedly more expensive on non-ASCII text; this is the
+    // scenario that actually reproduces the reported click-to-render lag
+    // (#145's investigation measured the *comparator alone* at ~15ms for
+    // ASCII vs. ~410ms here, on the same 14,082-row scale). Diagnostic only,
+    // matching this file's existing convention — not a CI-gating threshold.
+    @Test func fullSizeBrowserRendersWithUnicodeHeavyMetadata() async throws {
+        await BrowserLibraryProtocol.state.reset()
+        let fixture = BrowserLibraryFixture()
+        defer { fixture.close() }
+        let titleRoots = [
+            "Symphonie fantastique, Op. 14: I. Rêveries — Passions",
+            "Клавирные сочинения: Прелюдия и фуга № 2",
+            "交響曲第9番ニ短調作品125《合唱》",
+            "Étude en forme de Valse, Op. 52 No. 6",
+            "細川俊夫: 嘆き（オーケストラのための）"
+        ]
+        let artistRoots = ["Дмитрий Шостакович", "細川俊夫", "Krzysztof Pęderecki", "Éliane Radigue", "Kaija Saariaho"]
+        let albumRoots = ["Sinfonía núm. 5 — Édition intégrale", "楽興の時", "Études-Tableaux, Vol. II", "Пиковая дама"]
+        fixture.library.songs = (0..<14_082).map { index in
+            Song(id: "large-\(index)",
+                 title: "\(titleRoots[index % titleRoots.count]) — \(String(format: "%05d", index))",
+                 artist: "\(artistRoots[index % artistRoots.count]) \(index % 700)",
+                 album: "\(albumRoots[index % albumRoots.count]) \(index % 1_400)",
+                 displayComposer: "Composer \(index % 20)")
+        }
+        let start = ContinuousClock.now
+        fixture.show()
+        try await fixture.waitForTracks(14_082)
+        let rendered = ContinuousClock.now
+        #expect(fixture.panes.map(\.numberOfRows) == [3, 701, 1_401, 21])
+        print("Browser 14082 (Unicode-heavy metadata): initial=\(start.duration(to: rendered))")
+    }
 }

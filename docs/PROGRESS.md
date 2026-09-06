@@ -74,6 +74,51 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 
 ---
 
+## Issue #145: Songs-tab click-to-render lag investigation (2026-09-05)
+
+- Diagnosis, no code change: the lag is CPU-bound main-thread sorting, not
+  caching or AppKit cell/row creation. `NSViewRepresentable` has no way to
+  preserve `MusicTrackTable`'s `Coordinator` across a sidebar-tab switch —
+  SwiftUI destroys and recreates it every time Songs is re-selected — so
+  `makeNSView`'s synchronous `Coordinator.rebuild()` re-sorts the *entire*
+  track array from scratch (the default Title sort) on every visit, with no
+  memoization. With `showColumnBrowser` defaulting to `true`, `ColumnBrowserView`
+  is what actually renders for Songs by default; its
+  artists/albums/composers/`filteredTracks` are uncached SwiftUI computed
+  properties re-scanning the complete library on every `body` evaluation, though
+  cheaper than the title sort since they dedupe first.
+- Evidence: isolated 14,082-row benchmarks (matching the real library's scale)
+  showed the title-sort comparator alone (`localizedCaseInsensitiveCompare`, no
+  dedup) at ~15ms for plain-ASCII synthetic titles vs. ~410ms for Unicode-heavy
+  ones (diacritics/mixed scripts — the classical/international repertoire this
+  fork treats as first-class). The existing full-fixture test
+  (`ColumnBrowserLibraryTests.fullSizeBrowserRendersAndFiltersFourteenThousandSongs`)
+  already measures ~0.73–0.77s end to end with ASCII data; a new sibling test
+  added this session with Unicode-heavy metadata
+  (`fullSizeBrowserRendersWithUnicodeHeavyMetadata`) measures ~1.28–1.29s,
+  matching the reported ~1s. A targeted probe (not committed) isolating a
+  single synchronous layout pass from that harness's async-task polling loop
+  complicated the picture — it showed no Unicode penalty for the full render
+  pass, meaning Swift's adaptive sort's real comparison count is sensitive to
+  input *arrangement*, not just content, and the true real-library contribution
+  couldn't be pinned down further with synthetic benchmarks alone (documented
+  in full in the follow-up issue).
+- No fix attempted — #145's own scope excludes one unless "obvious and small";
+  every candidate here is either an architecture decision (caching sort state
+  across view recreation, memoizing the browser's computed properties) or an
+  i18n/product tradeoff (comparator semantics), so a follow-up issue,
+  **#157**, was filed with the evidence above and a concrete plan (Instruments
+  trace against the real library first, then pick a fix).
+  `TrackTableLargeLibraryTests.swift` is confirmed the wrong home for a
+  timing-oriented test (correctness only); `ColumnBrowserLibraryTests.swift`'s
+  existing non-gating, real-fixture, print-diagnostic pattern (predating this
+  issue) is the right one and was extended, not replaced.
+- Gate: unsigned app build zero compiler warnings; **421 tests / 444
+  executions, 0 failures/skips**; SwiftLint 0 violations (170 files). No
+  player-behavior change, so no live-server verification applies; this
+  sandboxed session also had no path to Instruments or the app's GUI, which is
+  why #157 opens with that as its first step.
+
 ## PR #156: review remediation (2026-09-05)
 
 - Added a dedicated detail-cache generation shared by `album(id:)` and
@@ -4180,6 +4225,16 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #145 (2026-09-05): Songs-tab click-to-render lag investigation
+  (diagnosis only, no code change). **421 tests / 444 executions, 0
+  failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
+  violations (170 files). No player-behavior change, so no live-server
+  verification applies. Root cause: `Coordinator.rebuild()`'s uncached,
+  main-thread, locale-aware title sort re-runs from scratch every time
+  `NSViewRepresentable` recreates the Songs table (every sidebar revisit); a
+  synthetic 14,082-row benchmark showed the comparator alone at ~15ms for
+  ASCII vs. ~410ms for Unicode-heavy titles. Follow-up **#157** filed with the
+  full evidence and a fix plan.
 - ✅ Issue #114 (2026-09-05): per-item album/artist detail caching. **420 tests
   / 443 executions, 0 failures/skips**, unsigned build zero compiler warnings, SwiftLint 0
   violations. Live on Tim's configured Navidrome 0.63.2: revisiting Alfred
