@@ -57,29 +57,25 @@ struct DiscHeaderTests {
                          .header("Bagatelle No. 25", work: "Bagatelle No. 25"), .track(2)])
     }
 
-    @Test func multiDiscWorkHeadersFoldInDiscNumber() {
+    @Test func workHeadersIgnoreDiscNumbersThatDoNotVaryWithinTheWork() {
         let tracks = [
             song("a", disc: 1, track: 1, work: "Piano Sonata No. 14"),
             song("b", disc: 1, track: 2, work: "Piano Sonata No. 14"),
             song("c", disc: 2, track: 1, work: "Bagatelle No. 25")
         ]
         let rows = TrackTableRow.build(tracks: tracks, headers: [2: "The Late Works"])
-        #expect(rows == [.header("Disc 1 · Piano Sonata No. 14", work: "Piano Sonata No. 14"), .track(0), .track(1),
-                         .header("Disc 2 · Bagatelle No. 25", work: "Bagatelle No. 25"), .track(2)])
+        #expect(rows == [.header("Piano Sonata No. 14", work: "Piano Sonata No. 14"), .track(0), .track(1),
+                         .header("Bagatelle No. 25", work: "Bagatelle No. 25"), .track(2)])
     }
 
-    @Test func singleWorkGetsOneWorkHeaderInsteadOfDiscHeaders() {
-        // Issue #120: a single tagged Work spanning the whole album (or, as
-        // here, multiple discs) now gets a work header of its own — it no
-        // longer falls back to per-disc headers, and folds in only the disc
-        // of the track where the run started since the key (the work) never
-        // changes across the album.
+    @Test func workSplitAcrossDiscsGetsADiscQualifiedHeaderForEachDisc() {
         let tracks = [
             song("a", disc: 1, track: 1, work: "The Ring"),
             song("b", disc: 2, track: 1, work: "The Ring")
         ]
         let rows = TrackTableRow.build(tracks: tracks, headers: [2: "Götterdämmerung"])
-        #expect(rows == [.header("Disc 1 · The Ring", work: "The Ring"), .track(0), .track(1)])
+        #expect(rows == [.header("Disc 1 · The Ring", work: "The Ring"), .track(0),
+                         .header("Disc 2 · The Ring", work: "The Ring"), .track(1)])
     }
 
     @Test func singleWorkSingleDiscStillGetsAWorkHeader() {

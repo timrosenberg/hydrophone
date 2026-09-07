@@ -6,6 +6,11 @@ import UniformTypeIdentifiers
 /// All external index semantics (selection binding, onPlay, drag) stay in
 /// *displayed*-track space; the coordinator's delegate methods translate.
 enum TrackTableRow: Equatable {
+    private struct WorkGroup: Equatable {
+        let work: String
+        let disc: Int?
+    }
+
     /// `work` is non-nil only for a work header, never a disc header.
     case header(String, work: String?)
     case track(Int)   // index into the displayed track order
@@ -18,12 +23,20 @@ enum TrackTableRow: Equatable {
         let plain = tracks.indices.map(TrackTableRow.track)
         guard let headers else { return plain }
         let discs = Set(tracks.map { $0.discNumber ?? 1 })
-        let works = Set(tracks.compactMap(\.work))
-        if !works.isEmpty {
-            return groupedRows(tracks: tracks, key: { $0.work }, title: { work, track in
+        var discsByWork: [String: Set<Int>] = [:]
+        for track in tracks {
+            if let work = track.work {
+                discsByWork[work, default: []].insert(track.discNumber ?? 1)
+            }
+        }
+        if !discsByWork.isEmpty {
+            return groupedRows(tracks: tracks, key: { track -> WorkGroup? in
+                guard let work = track.work else { return nil }
                 let disc = track.discNumber ?? 1
-                return discs.count > 1 ? "Disc \(disc) · \(work)" : work
-            }, work: { $0 })
+                return WorkGroup(work: work, disc: discsByWork[work]?.count == 1 ? nil : disc)
+            }, title: { group, _ in
+                group.disc.map { "Disc \($0) · \(group.work)" } ?? group.work
+            }, work: { $0.work })
         }
         guard discs.count > 1 else { return plain }
         return groupedRows(tracks: tracks, key: { $0.discNumber ?? 1 }, title: { disc, _ in
@@ -98,9 +111,9 @@ struct MusicTrackTable: NSViewRepresentable {
     /// Whether the connected server supports Navidrome-only metadata. The
     /// picker uses this to omit native-only columns on plain Subsonic servers.
     var nativeFeaturesAvailable: Bool = false
-    /// Disc → subtitle; non-nil opts the album page into group headers. More
-    /// than one tagged work takes priority over disc grouping, prefixing the
-    /// work with its disc on multi-disc albums. Headers appear only in track
+    /// Disc → subtitle; non-nil opts the album page into group headers. Any
+    /// tagged work takes priority over disc grouping. A work gets disc-qualified
+    /// headers only when its own tracks span discs. Headers appear only in track
     /// order — natural or ascending # — since other sorts split movements.
     var discHeaders: [Int: String]?
     /// Order-stable rendering of `discHeaders` for the reload signature.

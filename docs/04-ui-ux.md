@@ -173,12 +173,15 @@ rendered visibly washed out.
   alongside a lossy bit rate) — the badge is meant to be read in isolation,
   unlike the compact table column.
 - **Album work grouping**: when an album contains at least one distinct
-  tagged Work, flat, unselectable headers mark each consecutive run — a
-  single work spanning the whole album still gets one header of its own,
-  since its title isn't necessarily redundant with the album title. Work
-  grouping takes priority over disc grouping; a multi-disc album folds the
-  disc into each label (`Disc 2 · Work Name`). A blank spacer row marks the
-  opposite boundary — where a grouped run ends and an ungrouped run begins —
+  tagged Work, flat, unselectable headers mark each consecutive run. A
+  single Work still gets grouping headers, since its title isn't necessarily
+  redundant with the album title. Work
+  grouping takes priority over disc grouping. A Work confined to one disc uses
+  only its Work name even when other album tracks use different disc numbers.
+  Only a Work whose own movements span multiple discs is split at the disc
+  boundary and folds the disc into each label (`Disc 2 · Work Name`). A blank
+  spacer row marks the opposite boundary — where a grouped run ends and an
+  ungrouped run begins —
   since no header exists there to separate them; it does not appear at the
   top of the list, between two grouped runs, or on albums with no grouping.
   Headers appear only in natural track order or ascending `#`, and withdraw

@@ -37,6 +37,8 @@ Issue #122 ✅ (joint artist/composer credits split into individual browser
 rows with membership filtering; joined track-table labels preserved) ·
 Issue #166 ✅ (observable artwork request lifecycle, bounded recovery, and
 stale memory/disk publication guards verified in rendered tests and live) ·
+Issue #107 ✅ (Work headers omit irrelevant disc numbers and retain disc
+qualification when the same Work genuinely spans discs) ·
 Issue #157 🚧 (implemented and accepted for review: median 1,526 -> 160 ms;
 Tim accepted the observed 167 ms maximum on 2026-09-06; pending merge) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -79,6 +81,24 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #107: contextual disc qualification for Work headers (2026-09-07) ✅
+
+- Work-header grouping now derives disc qualification from the discs used by
+  each Work, rather than every disc present in the album. A Work confined to
+  one disc keeps its plain Work name even in a multi-disc album; a Work that
+  spans discs is split at the boundary and retains `Disc N · Work` labels.
+- Added `DiscHeaderTests` coverage for both directions. Disc-only grouping,
+  metadata ingestion, sorting, header playback, and other table behavior are
+  unchanged.
+- Live, 2026-09-07, exact branch Debug build against Tim's configured
+  Navidrome server (**14,530 songs**): *Bach: English Suites* showed plain
+  Suite headers despite album-level disc metadata, while *Mahler: Symphony
+  No. 8* retained `Disc 1` and `Disc 2` qualification for the Work spanning
+  both discs.
+- Verification: unsigned app build succeeded with zero compiler warnings; the
+  complete serial test run passed **439 tests / 462 executions, 0
+  failures/skips**; SwiftLint and the final diff check are recorded below.
 
 ## Issue #166: artwork tiles recover without hover/navigation (2026-09-06) ✅
 
@@ -4351,6 +4371,10 @@ Status: **UI + data flow working in-memory; SwiftData cache not yet wired.**
   editing/reorder + favorites in M5; Now Playing center / media keys in M3.)
 
 ## Verification status
+- ✅ Issue #107 (2026-09-07): unsigned build zero compiler warnings; complete
+  serial suite **439 tests / 462 executions, 0 failures/skips**; real-server
+  Bach and Mahler album checks confirmed both plain single-disc Work headers
+  and disc-qualified cross-disc Work headers. SwiftLint and diff checks clean.
 - ✅ Issue #157 verification (2026-09-06; review/merge pending): unsigned build zero compiler warnings,
   **428 tests / 451 executions, 0 failures/skips**, lint/diff clean; real-server
   browser and flat Songs behavior checked. Warm-navigation median **160 ms**,
