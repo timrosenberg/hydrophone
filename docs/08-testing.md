@@ -93,7 +93,7 @@ audio hardware.
   the first load requests and stores the Navidrome roster, repeated loads are
   cached, and a library reset clears the roster and its loaded state.
 
-## Current suite (Swift Testing, 324 test cases; 344 executions including parameters)
+## Current suite (Swift Testing, 439 test cases; 462 executions including parameters)
 
 `AuthTests` · `RequestBuildingTests` · `DecodingTests` · `ConnectionTests` ·
 `ConnectionModelNativeFeaturesTests` · `PlaylistEndpointTests` ·
@@ -101,7 +101,8 @@ audio hardware.
 `PlaybackConfigTests` · `PlayerQueueTests` · `QueueEditingTests` ·
 `PlayQueueTests` ·
 `QualityLabelTests` · `ExpandedTrackColumnsTests` · `WorkMovementTrackColumnsTests` ·
-`TrackColumnPreferencesTests` · `ArtworkCacheTests` · `NowPlayingCenterTests` ·
+`TrackColumnPreferencesTests` · `ArtworkCacheTests` · `ArtworkLifecycleTests` ·
+`NowPlayingCenterTests` ·
 `DecodeContinuityTests` · `DiscHeaderTests` · `EndpointGoldenTests` ·
 `FlacStreamingTests` · `ReplayGainTests` ·
 `StarringTests` · `NavidromeClientTests` · `NavidromeClientNetworkTests` ·
@@ -221,8 +222,16 @@ This keeps the full suite compiling with Swift 6.3.3.
 `ArtworkCacheTests` uses its own ephemeral URLSession and temporary disk
 directory to verify visible requests are not queued behind speculative work,
 obsolete prefetch windows are replaced or cleared, shared visible loads are
-not cancelled, and cache reuse and measured-size selection remain correct.
-These deterministic tests do not replace the real-server artwork check.
+not cancelled, alternate per-song fetch ids retain album-identity reuse, and
+cache reuse and measured-size selection remain correct.
+
+`ArtworkLifecycleTests` hosts real `ArtworkView` instances in offscreen AppKit
+windows while stubbing only HTTP. Rendered regressions prove placeholder-to-
+ready observation, the exact bounded-recovery request count, nil-to-value and
+old-to-new fetch-id transitions under one cache identity, stale request/session
+retirement in memory and on disk, and two visible consumers joining one held
+prefetch request. These deterministic tests do not replace the real-server
+artwork check.
 
 `ExpandedTrackColumnsTests` drives the real AppKit table-sort delegate path
 and verifies missing Date Added, Last Played, Plays, and Sample Rate values

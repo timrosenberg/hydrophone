@@ -556,6 +556,26 @@ pixel size`:
   id. One trade-off: per-track embedded art that differs from the album
   cover is not shown (the album cover wins) — never fetch a cover that the
   album identity already has. Artist/playlist ids are their own identity.
+- **Visible request lifecycle.** `ArtworkView` owns an observable
+  `ArtworkLoader` with explicit idle, loading, ready, and failed states. Its
+  complete request identity contains the server-session generation, cache-
+  identity generation, cache identity, current fetchable `coverArt` id, and
+  pixel size. A visible placeholder therefore redraws when shared cache work
+  completes without needing hover, navigation, or another incidental SwiftUI
+  update. A view that disappears withdraws only its observation and recovery
+  task; it does not cancel cache work that may still serve another visible
+  consumer or prefetch request.
+- **Bounded recovery and invalidation.** A continuously visible request makes
+  at most two cache-level attempts. Each retains the cache's existing single
+  low-level network retry, for a hard maximum of four failed network requests.
+  Successful shared work can still move a terminal visible state to ready.
+  Changing a presentation from nil or an old fetch id to a new fetch id under
+  the same cache identity advances that identity's generation, retires old
+  observers, and bypasses its stale disk variants until each requested size is
+  refreshed. Re-establishing a server session advances the session generation
+  even when the base URL is unchanged. Late results must match both generations
+  before they can publish to memory or atomically replace the canonical disk
+  file.
 - **In-memory** `NSCache` bounded by a byte budget (`totalCostLimit`, ~200 MB
   of decoded pixels — a full-res hero and a grid thumbnail don't count the
   same against it — plus a looser 1,000-entry `countLimit` backstop) for the
@@ -575,11 +595,12 @@ pixel size`:
   transient initial size cannot leave the final window stale. See #15.
 - **On-disk** store under `Caches/<bundleId>/Artwork`, filenames are the SHA-256
   of the key; the original downloaded bytes (webp/jpeg) are written as-is.
-  Because cover art is immutable, a disk hit is authoritative and kept
-  indefinitely — artwork loads instantly across launches and survives network
-  blips. Disk + network I/O run off the main actor. Network fetches get one
-  retry: after `Retry-After` on a 429, or a short pause on any other failure,
-  so a transient blip doesn't leave a gray tile for the session.
+  A disk hit is authoritative until the presentation observes a fetch-id
+  transition for that cache identity; otherwise it is kept indefinitely so
+  artwork loads instantly across launches and survives network blips. Disk and
+  network reads plus response staging run off the main actor. Network fetches
+  get one retry: after `Retry-After` on a 429, or a short pause on any other
+  failure, so a transient blip doesn't leave a gray tile for the session.
 - **Scoped per server.** Both tiers are namespaced by a hash of the server's
   base URL (disk: a per-server subdirectory; memory: a key prefix). A different
   Navidrome server can reuse the same coverArt id for a different album, so
