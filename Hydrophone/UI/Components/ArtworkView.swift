@@ -14,18 +14,19 @@ struct ArtworkView: View {
     /// app icon's waveform).
     var placeholderSymbol: String = "music.note"
 
-    @State private var image: NSImage?
+    private let cache: ArtworkCache
+    @State private var loader: ArtworkLoader
 
     init(coverArt: String?, cacheKey: String? = nil, size: CGFloat, cornerRadius: CGFloat = 6,
-         placeholderSymbol: String = "music.note") {
+         placeholderSymbol: String = "music.note", cache: ArtworkCache = .shared,
+         recoveryDelay: Duration = .seconds(2)) {
         self.coverArt = coverArt
         self.cacheKey = cacheKey
         self.size = size
         self.cornerRadius = cornerRadius
         self.placeholderSymbol = placeholderSymbol
-        // Seed from any already-cached variant so cached art shows immediately
-        // (no placeholder flash when the same art is shown at a different size).
-        _image = State(initialValue: ArtworkCache.shared.cachedVariant(key: cacheKey ?? coverArt))
+        self.cache = cache
+        _loader = State(initialValue: ArtworkLoader(cache: cache, recoveryDelay: recoveryDelay))
     }
 
     /// Requested pixel size: displayed points × screen scale, rounded up to a
@@ -39,6 +40,19 @@ struct ArtworkView: View {
     /// never asks for.
     static func fetchPixels(forSize size: CGFloat) -> Int {
         max(Int((size * 2 / 160).rounded(.up)) * 160, 160)
+    }
+
+    private var input: ArtworkLoader.Input {
+        ArtworkLoader.Input(coverArt: coverArt, cacheKey: cacheKey, size: fetchPixels)
+    }
+
+    private var image: NSImage? {
+        let requestedImage = loader.image(for: input)
+        if loader.hasStarted {
+            return requestedImage
+        }
+        guard !(coverArt?.isEmpty ?? true) else { return nil }
+        return requestedImage ?? cache.cachedVariant(key: cacheKey ?? coverArt)
     }
 
     var body: some View {
@@ -61,18 +75,11 @@ struct ArtworkView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        // Keyed on the fetch size as well as the id: views measured by
-        // GeometryReader (the Now Playing hero) first render at a placeholder
-        // size, and the fetch must re-run once the real width is known.
-        .task(id: "\(cacheKey ?? coverArt ?? "")-\(fetchPixels)") {
-            // Show a cached variant for this identity at once (nil here clears
-            // stale art when the identity changes), then upgrade to the
-            // fetched size (keep the variant if the fetch fails).
-            image = ArtworkCache.shared.cachedVariant(key: cacheKey ?? coverArt)
-            if let exact = await ArtworkCache.shared.image(coverArt: coverArt, cacheKey: cacheKey,
-                                                           size: fetchPixels) {
-                image = exact
-            }
+        .task(id: input) {
+            loader.start(input)
+        }
+        .onDisappear {
+            loader.stop()
         }
     }
 }

@@ -35,6 +35,8 @@ Issue #84 ✅ (complete-browser panes, selection cascades, and genre generation
 guard verified at full-library size; isolated browser and artwork fixtures) ·
 Issue #122 ✅ (joint artist/composer credits split into individual browser
 rows with membership filtering; joined track-table labels preserved) ·
+Issue #166 ✅ (observable artwork request lifecycle, bounded recovery, and
+stale memory/disk publication guards verified in rendered tests and live) ·
 Issue #157 🚧 (implemented and accepted for review: median 1,526 -> 160 ms;
 Tim accepted the observed 167 ms maximum on 2026-09-06; pending merge) ·
 M3 ✅ (playback live-verified end-to-end; seek + Now Playing/media keys work) ·
@@ -77,6 +79,40 @@ xcodebuild -project Hydrophone.xcodeproj -scheme Hydrophone \
 ```
 
 ---
+
+## Issue #166: artwork tiles recover without hover/navigation (2026-09-06) ✅
+
+- `ArtworkView` now delegates visible demand to an observable
+  `ArtworkLoader` with explicit idle/loading/ready/failed states. Completion
+  redraws a placeholder in place, while a disappearing view withdraws its
+  scoped interest without cancelling shared cache or prefetch work.
+- `ArtworkCache` keys in-flight work and observers by the complete request:
+  server-session generation, cache-identity generation, server/cache identity,
+  fetchable cover-art id, and pixel size. Fetch-id transitions under one cache
+  identity and same-server reconnects retire stale demand; late responses must
+  still match both generations before publishing to memory or atomically
+  replacing the disk entry. Existing per-song-id reuse under an album identity,
+  cache tiers, prefetch window, and visible priority are preserved.
+- One visible presentation recovery wraps the existing one network retry, so a
+  continuously visible request stops after exactly four failed network calls.
+  Later shared success remains observable and can promote that terminal state
+  to ready without hover or navigation.
+- Added seven rendered `ArtworkLifecycleTests` plus an album-identity cache
+  regression. They cover placeholder-to-ready completion, exact bounded
+  recovery, nil-to-value and old-to-new fetch ids, stale request/session memory
+  and disk results, and two visible consumers joining one held prefetch.
+- Live, 2026-09-06, isolated Debug probe with an empty artwork cache against
+  Tim's configured Navidrome 0.63.2 server (**14,136 songs**), exact executable
+  `/private/tmp/hydrophone-166-live-dd/Build/Products/Debug/Hydrophone.app`:
+  after rapidly scrolling twelve viewports and stopping, every visible cover
+  settled without pointer movement. Hovering the settled grid, opening *Beyond
+  The Wall: Denisov, Schulhoff, Hindemith, Albright*, and returning left the
+  loaded covers intact. The public demo catalog also connected as 0.63.2, but
+  its cover endpoint returned no bytes before a 20-second timeout, so it was
+  not used as passing artwork evidence.
+- Final gate: unsigned app build succeeded with zero compiler warnings; **439
+  tests / 462 executions, 0 failures/skips**; SwiftLint reported zero
+  violations; `git diff --check` passed.
 
 ## Issue #122: individual artist/composer browser credits (2026-09-06) ✅
 
